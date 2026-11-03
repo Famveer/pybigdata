@@ -1,10 +1,10 @@
-title: Vigeogames with PyGame
+title: BigData with PySpark
 description: undergraduate course
 theme: just-the-docs
 remote_theme: just-the-docs/just-the-docs
 
 url: "https://famveer.github.io"
-baseurl: "/pygames"
+baseurl: "/pybigdata"
 
 plugins:
   - jekyll-polyglot
