@@ -4,7 +4,11 @@
 
 pyspark==4.0.1
 delta-spark==4.0.0   # Lab 7 (Delta Lake); baja los jars en la primera ejecución
-pandas>=2.1.1,<3     # 2.1.1 = primera con wheel para 3.12; pandas 3 no es soportado por PySpark 4.0
+pandas>=2.2,<3       # pandas 3 no es soportado por PySpark 4.0 (Pandas API on Spark, Lab 11)
 numpy>=1.26          # primera con wheel para 3.12
 pyarrow>=14          # primera con wheel para 3.12; pandas_udf / toPandas
+polars>=1.25         # Lab 11; collect(engine="streaming")
+duckdb               # Lab 11
+matplotlib           # Lab 11
+requests             # Lab 12 (WebHDFS)
 jupyter

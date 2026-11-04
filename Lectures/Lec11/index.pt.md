@@ -1,0 +1,26 @@
+---
+lang: pt
+page_id: lec11
+permalink: /Lectures/Lec11/
+title: Lec11
+parent: Aulas
+nav_order: 11
+layout: default
+---
+
+# Aula 11: Quando Não Usar Spark
+{: .no_toc }
+
+{: .summary}
+>Nesta aula, vamos aprender:
+>
+>* O que torna Polars e DuckDB rápidos
+>* A mesma consulta em cinco ferramentas: tempo, memória e sintaxe
+>* Pandas API on Spark para migrar código Pandas
+>* Apache Arrow para trocar dados entre ferramentas
+>* Critérios para escolher a ferramenta certa
+
+
+### Slides
+
+* <a href="./slides/teoria.pt.html" target="_blank">**Slides**</a>

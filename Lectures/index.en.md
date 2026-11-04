@@ -42,3 +42,8 @@ Lectures will help you understand the theory and concepts behind big data proces
 
 **Lecture 10**: [Machine Learning with MLlib](./Lec10)
 
+
+**Lecture 11**: [When Not to Use Spark](./Lec11)
+
+
+**Lecture 12**: [Hadoop: What Lies Beneath Spark](./Lec12)

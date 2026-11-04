@@ -53,3 +53,8 @@ Descarga el archivo de requirements [aquí](./../requirements.txt).
 
 **Laboratorio 10**: [MLlib: Ajuste y Despliegue](./Lab10)
 
+
+**Laboratorio 11**: [Cuándo No Usar Spark](./Lab11)
+
+
+**Laboratorio 12**: [Hadoop: MapReduce y HDFS](./Lab12)

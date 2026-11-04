@@ -42,3 +42,8 @@ Las clases te ayudarán a comprender la teoría y los conceptos detrás del proc
 
 **Clase 10**: [Machine Learning con MLlib](./Lec10)
 
+
+**Clase 11**: [Cuándo No Usar Spark](./Lec11)
+
+
+**Clase 12**: [Hadoop: Lo que Hay Debajo de Spark](./Lec12)

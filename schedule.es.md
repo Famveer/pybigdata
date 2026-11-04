@@ -134,5 +134,28 @@ nav_order: 2
 >Laboratorio 10: [MLlib: Ajuste y Despliegue](./Labs/Lab10/)
 >
 
+---
+
+
+### Semana 12
+
+{: .lecture}
+>Clase 11: [Cuándo No Usar Spark](./Lectures/Lec11/)
+
+{: .lab}
+>Laboratorio 11: [Cuándo No Usar Spark](./Labs/Lab11/)
+>
+
 --- 
 
+
+### Semana 13
+
+{: .lecture}
+>Clase 12: [Hadoop: Lo que Hay Debajo de Spark](./Lectures/Lec12/)
+
+{: .lab}
+>Laboratorio 12: [Hadoop: MapReduce y HDFS](./Labs/Lab12/)
+>
+
+--- 

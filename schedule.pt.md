@@ -134,5 +134,28 @@ Para os laboratórios, por favor traga seu notebook!
 >Laboratório 10: [MLlib: Ajuste e Implantação](./Labs/Lab10/)
 >
 
+---
+
+
+### Semana 12
+
+{: .lecture}
+>Aula 11: [Quando Não Usar Spark](./Lectures/Lec11/)
+
+{: .lab}
+>Laboratório 11: [Quando Não Usar Spark](./Labs/Lab11/)
+>
+
 --- 
 
+
+### Semana 13
+
+{: .lecture}
+>Aula 12: [Hadoop: O que Está por Baixo do Spark](./Lectures/Lec12/)
+
+{: .lab}
+>Laboratório 12: [Hadoop: MapReduce e HDFS](./Labs/Lab12/)
+>
+
+--- 

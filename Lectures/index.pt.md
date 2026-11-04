@@ -42,3 +42,8 @@ As aulas vão ajudar você a entender a teoria e os conceitos por trás do proce
 
 **Aula 10**: [Machine Learning com MLlib](./Lec10)
 
+
+**Aula 11**: [Quando Não Usar Spark](./Lec11)
+
+
+**Aula 12**: [Hadoop: O que Está por Baixo do Spark](./Lec12)

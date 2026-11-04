@@ -134,5 +134,28 @@ For labs, please bring your notebooks!
 >Lab 10: [MLlib: Tuning and Deployment](./Labs/Lab10/)
 >
 
+---
+
+
+### Week 12
+
+{: .lecture}
+>Lecture 11: [When Not to Use Spark](./Lectures/Lec11/)
+
+{: .lab}
+>Lab 11: [When Not to Use Spark](./Labs/Lab11/)
+>
+
 --- 
 
+
+### Week 13
+
+{: .lecture}
+>Lecture 12: [Hadoop: What Lies Beneath Spark](./Lectures/Lec12/)
+
+{: .lab}
+>Lab 12: [Hadoop: MapReduce and HDFS](./Labs/Lab12/)
+>
+
+--- 

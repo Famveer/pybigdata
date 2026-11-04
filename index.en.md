@@ -14,7 +14,7 @@ The general goal of this course is to give students the foundations to process a
 {: .fs-6 .fw-300 }
 
 ---
-Learn to work with data that does not fit on one machine! This course starts with Python and Pandas and moves on to distributed processing with PySpark. You will build ETL pipelines with the Medallion architecture and Delta Lake, process data in real time with Structured Streaming, and train machine learning models with MLlib.
+Learn to work with data that does not fit on one machine! This course starts with Python and Pandas and moves on to distributed processing with PySpark. You will build ETL pipelines with the Medallion architecture and Delta Lake, process data in real time with Structured Streaming, and train machine learning models with MLlib. You will also learn when a single machine with Polars or DuckDB is enough, and what Hadoop does underneath Spark.
 
 By the end of the course, students will have acquired:
 
