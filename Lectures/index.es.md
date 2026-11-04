@@ -31,19 +31,19 @@ Las clases te ayudarán a comprender la teoría y los conceptos detrás del proc
 **Clase 6**: [Skew, Cache, AQE y UDFs](./Lec6)
 
 
-**Clase 7**: [ETL con Arquitectura Medallion](./Lec7)
+**Clase 7**: [Hadoop: Lo que Hay Debajo de Spark](./Lec7)
 
 
-**Clase 8**: [Delta Lake](./Lec8)
+**Clase 8**: [ETL con Arquitectura Medallion](./Lec8)
 
 
-**Clase 9**: [Structured Streaming](./Lec9)
+**Clase 9**: [Delta Lake](./Lec9)
 
 
-**Clase 10**: [Machine Learning con MLlib](./Lec10)
+**Clase 10**: [Structured Streaming](./Lec10)
 
 
-**Clase 11**: [Cuándo No Usar Spark](./Lec11)
+**Clase 11**: [Machine Learning con MLlib](./Lec11)
 
 
-**Clase 12**: [Hadoop: Lo que Hay Debajo de Spark](./Lec12)
+**Clase 12**: [Cuándo No Usar Spark](./Lec12)

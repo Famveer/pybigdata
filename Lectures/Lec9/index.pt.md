@@ -8,16 +8,16 @@ nav_order: 9
 layout: default
 ---
 
-# Aula 9: Structured Streaming
+# Aula 9: Delta Lake
 {: .no_toc }
 
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* Tabelas ilimitadas e micro-batches
->* Output modes e triggers
->* Janelas e watermark
->* Checkpoint e exactly-once
+>* O log de transações
+>* MERGE e time travel
+>* Schema enforcement e evolution
+>* OPTIMIZE e VACUUM
 
 
 ### Slides

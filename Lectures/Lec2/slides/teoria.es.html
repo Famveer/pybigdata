@@ -210,6 +210,7 @@ Felipe A. Moreno-Vera
 <h2>Lo que aprenderás</h2>
 <ul>
 <li>Python esencial: tipos, colecciones, control de flujo y funciones</li>
+<li>Por qué Pandas: origen y motivación</li>
 <li>Pandas: <strong>Series</strong> y <strong>DataFrame</strong></li>
 <li>Explorar, filtrar, transformar y limpiar datos</li>
 <li>Agregaciones, joins y method chaining</li>
@@ -267,6 +268,51 @@ Felipe A. Moreno-Vera
 </section>
 <section id="por-qué-pandas" class="slide level2">
 <h2>¿Por qué Pandas?</h2>
+<p>Python no tenía una buena forma de trabajar con <strong>datos tabulares</strong>:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 54%">
+<col style="width: 45%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Alternativa</th>
+<th>Limitación</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Excel</td>
+<td>Cerca de 1 millón de filas, trabajo manual, difícil de reproducir</td>
+</tr>
+<tr class="even">
+<td>Listas y dicts de Python</td>
+<td>Bucles largos, lentos con mucho volumen</td>
+</tr>
+<tr class="odd">
+<td>NumPy</td>
+<td>Rápido, pero un solo tipo por array, sin etiquetas ni nulos</td>
+</tr>
+<tr class="even">
+<td>R</td>
+<td>Tenía <code>data.frame</code>, pero fuera del ecosistema de Python</td>
+</tr>
+</tbody>
+</table>
+<p><strong>2008:</strong> Wes McKinney, entonces en el fondo AQR Capital, empieza Pandas para analizar datos financieros. Se abre como open source en 2009, sobre NumPy.</p>
+</section>
+<section id="el-mismo-total-con-menos-código" class="slide level2">
+<h2>El mismo total, con menos código</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a><span class="co"># Python puro</span></span>
+<span id="cb2-2"><a href=""></a>totales <span class="op">=</span> {}</span>
+<span id="cb2-3"><a href=""></a><span class="cf">for</span> row <span class="kw">in</span> rows:</span>
+<span id="cb2-4"><a href=""></a>    totales[row[<span class="st">"cat"</span>]] <span class="op">=</span> totales.get(row[<span class="st">"cat"</span>], <span class="dv">0</span>) <span class="op">+</span> row[<span class="st">"price"</span>]</span>
+<span id="cb2-5"><a href=""></a></span>
+<span id="cb2-6"><a href=""></a><span class="co"># Pandas</span></span>
+<span id="cb2-7"><a href=""></a>df.groupby(<span class="st">"cat"</span>)[<span class="st">"price"</span>].<span class="bu">sum</span>()</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="lo-que-se-transfiere-a-spark" class="slide level2">
+<h2>Lo que se transfiere a Spark</h2>
 <table class="caption-top">
 <colgroup>
 <col style="width: 36%">
@@ -313,28 +359,28 @@ Felipe A. Moreno-Vera
 </section>
 <section id="explorar-y-seleccionar" class="slide level2">
 <h2>Explorar y seleccionar</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>df.shape<span class="op">;</span> df.head(<span class="dv">5</span>)<span class="op">;</span> df.info()<span class="op">;</span> df.describe()</span>
-<span id="cb2-2"><a href=""></a>df[<span class="st">"categoria"</span>].value_counts()</span>
-<span id="cb2-3"><a href=""></a>df.isnull().<span class="bu">sum</span>()</span>
-<span id="cb2-4"><a href=""></a></span>
-<span id="cb2-5"><a href=""></a>df[[<span class="st">"produto"</span>, <span class="st">"preco"</span>]]                    <span class="co"># columns</span></span>
-<span id="cb2-6"><a href=""></a>df.loc[<span class="dv">0</span>:<span class="dv">2</span>, [<span class="st">"produto"</span>, <span class="st">"preco"</span>]]           <span class="co"># label</span></span>
-<span id="cb2-7"><a href=""></a>df.iloc[<span class="dv">0</span>:<span class="dv">3</span>, <span class="dv">0</span>:<span class="dv">3</span>]                           <span class="co"># position</span></span>
-<span id="cb2-8"><a href=""></a></span>
-<span id="cb2-9"><a href=""></a>df[(df[<span class="st">"preco"</span>] <span class="op">&gt;</span> <span class="dv">200</span>) <span class="op">&amp;</span> (df[<span class="st">"avaliacao"</span>] <span class="op">&gt;=</span> <span class="fl">4.5</span>)]</span>
-<span id="cb2-10"><a href=""></a>df[df[<span class="st">"categoria"</span>].isin([<span class="st">"Periféricos"</span>, <span class="st">"Áudio"</span>])]</span>
-<span id="cb2-11"><a href=""></a>df.query(<span class="st">"preco &gt; 100 and categoria == 'Periféricos'"</span>)</span>
-<span id="cb2-12"><a href=""></a>df.sort_values(<span class="st">"preco"</span>, ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>df.shape<span class="op">;</span> df.head(<span class="dv">5</span>)<span class="op">;</span> df.info()<span class="op">;</span> df.describe()</span>
+<span id="cb3-2"><a href=""></a>df[<span class="st">"categoria"</span>].value_counts()</span>
+<span id="cb3-3"><a href=""></a>df.isnull().<span class="bu">sum</span>()</span>
+<span id="cb3-4"><a href=""></a></span>
+<span id="cb3-5"><a href=""></a>df[[<span class="st">"produto"</span>, <span class="st">"preco"</span>]]                    <span class="co"># columns</span></span>
+<span id="cb3-6"><a href=""></a>df.loc[<span class="dv">0</span>:<span class="dv">2</span>, [<span class="st">"produto"</span>, <span class="st">"preco"</span>]]           <span class="co"># label</span></span>
+<span id="cb3-7"><a href=""></a>df.iloc[<span class="dv">0</span>:<span class="dv">3</span>, <span class="dv">0</span>:<span class="dv">3</span>]                           <span class="co"># position</span></span>
+<span id="cb3-8"><a href=""></a></span>
+<span id="cb3-9"><a href=""></a>df[(df[<span class="st">"preco"</span>] <span class="op">&gt;</span> <span class="dv">200</span>) <span class="op">&amp;</span> (df[<span class="st">"avaliacao"</span>] <span class="op">&gt;=</span> <span class="fl">4.5</span>)]</span>
+<span id="cb3-10"><a href=""></a>df[df[<span class="st">"categoria"</span>].isin([<span class="st">"Periféricos"</span>, <span class="st">"Áudio"</span>])]</span>
+<span id="cb3-11"><a href=""></a>df.query(<span class="st">"preco &gt; 100 and categoria == 'Periféricos'"</span>)</span>
+<span id="cb3-12"><a href=""></a>df.sort_values(<span class="st">"preco"</span>, ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 <section id="transformar-y-limpiar" class="slide level2">
 <h2>Transformar y limpiar</h2>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>df[<span class="st">"valor_estoque"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>] <span class="op">*</span> df[<span class="st">"estoque"</span>]</span>
-<span id="cb3-2"><a href=""></a>df[<span class="st">"caro"</span>] <span class="op">=</span> np.where(df[<span class="st">"preco"</span>] <span class="op">&gt;</span> <span class="dv">500</span>, <span class="st">"Sim"</span>, <span class="st">"Não"</span>)</span>
-<span id="cb3-3"><a href=""></a>df[<span class="st">"faixa_preco"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>].<span class="bu">apply</span>(classificar_preco)</span>
-<span id="cb3-4"><a href=""></a></span>
-<span id="cb3-5"><a href=""></a>df[<span class="st">"avaliacao"</span>] <span class="op">=</span> df[<span class="st">"avaliacao"</span>].fillna(df[<span class="st">"avaliacao"</span>].mean())</span>
-<span id="cb3-6"><a href=""></a>df[<span class="st">"preco"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>].astype(<span class="bu">float</span>)</span>
-<span id="cb3-7"><a href=""></a>df <span class="op">=</span> df.rename(columns<span class="op">=</span>{<span class="st">"preco"</span>: <span class="st">"preco_brl"</span>})</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>df[<span class="st">"valor_estoque"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>] <span class="op">*</span> df[<span class="st">"estoque"</span>]</span>
+<span id="cb4-2"><a href=""></a>df[<span class="st">"caro"</span>] <span class="op">=</span> np.where(df[<span class="st">"preco"</span>] <span class="op">&gt;</span> <span class="dv">500</span>, <span class="st">"Sim"</span>, <span class="st">"Não"</span>)</span>
+<span id="cb4-3"><a href=""></a>df[<span class="st">"faixa_preco"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>].<span class="bu">apply</span>(classificar_preco)</span>
+<span id="cb4-4"><a href=""></a></span>
+<span id="cb4-5"><a href=""></a>df[<span class="st">"avaliacao"</span>] <span class="op">=</span> df[<span class="st">"avaliacao"</span>].fillna(df[<span class="st">"avaliacao"</span>].mean())</span>
+<span id="cb4-6"><a href=""></a>df[<span class="st">"preco"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>].astype(<span class="bu">float</span>)</span>
+<span id="cb4-7"><a href=""></a>df <span class="op">=</span> df.rename(columns<span class="op">=</span>{<span class="st">"preco"</span>: <span class="st">"preco_brl"</span>})</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="callout callout-note callout-titled callout-style-default">
 <div class="callout-body">
 <div class="callout-title">
@@ -351,28 +397,28 @@ Felipe A. Moreno-Vera
 </section>
 <section id="groupby-joins" class="slide level2">
 <h2>GroupBy &amp; joins</h2>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>resumo <span class="op">=</span> df.groupby(<span class="st">"categoria"</span>).agg(</span>
-<span id="cb4-2"><a href=""></a>    qtd_produtos <span class="op">=</span> (<span class="st">"produto"</span>,   <span class="st">"count"</span>),</span>
-<span id="cb4-3"><a href=""></a>    preco_medio  <span class="op">=</span> (<span class="st">"preco_brl"</span>, <span class="st">"mean"</span>),</span>
-<span id="cb4-4"><a href=""></a>    estoque_total<span class="op">=</span> (<span class="st">"estoque"</span>,   <span class="st">"sum"</span>),</span>
-<span id="cb4-5"><a href=""></a>).<span class="bu">round</span>(<span class="dv">2</span>).reset_index()</span>
-<span id="cb4-6"><a href=""></a></span>
-<span id="cb4-7"><a href=""></a>df[<span class="st">"media_cat"</span>] <span class="op">=</span> df.groupby(<span class="st">"categoria"</span>)[<span class="st">"preco_brl"</span>].transform(<span class="st">"mean"</span>)</span>
-<span id="cb4-8"><a href=""></a></span>
-<span id="cb4-9"><a href=""></a>df.merge(fornecedores, on<span class="op">=</span><span class="st">"categoria"</span>, how<span class="op">=</span><span class="st">"left"</span>)   <span class="co"># inner, left, right, outer</span></span>
-<span id="cb4-10"><a href=""></a>pd.concat([df_a, df_b], ignore_index<span class="op">=</span><span class="va">True</span>)           <span class="co"># UNION</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>resumo <span class="op">=</span> df.groupby(<span class="st">"categoria"</span>).agg(</span>
+<span id="cb5-2"><a href=""></a>    qtd_produtos <span class="op">=</span> (<span class="st">"produto"</span>,   <span class="st">"count"</span>),</span>
+<span id="cb5-3"><a href=""></a>    preco_medio  <span class="op">=</span> (<span class="st">"preco_brl"</span>, <span class="st">"mean"</span>),</span>
+<span id="cb5-4"><a href=""></a>    estoque_total<span class="op">=</span> (<span class="st">"estoque"</span>,   <span class="st">"sum"</span>),</span>
+<span id="cb5-5"><a href=""></a>).<span class="bu">round</span>(<span class="dv">2</span>).reset_index()</span>
+<span id="cb5-6"><a href=""></a></span>
+<span id="cb5-7"><a href=""></a>df[<span class="st">"media_cat"</span>] <span class="op">=</span> df.groupby(<span class="st">"categoria"</span>)[<span class="st">"preco_brl"</span>].transform(<span class="st">"mean"</span>)</span>
+<span id="cb5-8"><a href=""></a></span>
+<span id="cb5-9"><a href=""></a>df.merge(fornecedores, on<span class="op">=</span><span class="st">"categoria"</span>, how<span class="op">=</span><span class="st">"left"</span>)   <span class="co"># inner, left, right, outer</span></span>
+<span id="cb5-10"><a href=""></a>pd.concat([df_a, df_b], ignore_index<span class="op">=</span><span class="va">True</span>)           <span class="co"># UNION</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 <section id="pipeline-con-method-chaining" class="slide level2">
 <h2>Pipeline con method chaining</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>resultado <span class="op">=</span> (</span>
-<span id="cb5-2"><a href=""></a>    df_raw</span>
-<span id="cb5-3"><a href=""></a>    .fillna({<span class="st">"avaliacao"</span>: df_raw[<span class="st">"avaliacao"</span>].mean()})</span>
-<span id="cb5-4"><a href=""></a>    .assign(valor_estoque<span class="op">=</span><span class="kw">lambda</span> d: d[<span class="st">"preco"</span>] <span class="op">*</span> d[<span class="st">"estoque"</span>])</span>
-<span id="cb5-5"><a href=""></a>    .query(<span class="st">"avaliacao &gt;= 4.0"</span>)</span>
-<span id="cb5-6"><a href=""></a>    [[<span class="st">"produto"</span>, <span class="st">"categoria"</span>, <span class="st">"preco"</span>, <span class="st">"valor_estoque"</span>]]</span>
-<span id="cb5-7"><a href=""></a>    .sort_values(<span class="st">"valor_estoque"</span>, ascending<span class="op">=</span><span class="va">False</span>)</span>
-<span id="cb5-8"><a href=""></a>    .reset_index(drop<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb5-9"><a href=""></a>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>resultado <span class="op">=</span> (</span>
+<span id="cb6-2"><a href=""></a>    df_raw</span>
+<span id="cb6-3"><a href=""></a>    .fillna({<span class="st">"avaliacao"</span>: df_raw[<span class="st">"avaliacao"</span>].mean()})</span>
+<span id="cb6-4"><a href=""></a>    .assign(valor_estoque<span class="op">=</span><span class="kw">lambda</span> d: d[<span class="st">"preco"</span>] <span class="op">*</span> d[<span class="st">"estoque"</span>])</span>
+<span id="cb6-5"><a href=""></a>    .query(<span class="st">"avaliacao &gt;= 4.0"</span>)</span>
+<span id="cb6-6"><a href=""></a>    [[<span class="st">"produto"</span>, <span class="st">"categoria"</span>, <span class="st">"preco"</span>, <span class="st">"valor_estoque"</span>]]</span>
+<span id="cb6-7"><a href=""></a>    .sort_values(<span class="st">"valor_estoque"</span>, ascending<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb6-8"><a href=""></a>    .reset_index(drop<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-9"><a href=""></a>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Este mismo estilo de escritura se usa en PySpark.</p>
 </section>
 <section id="de-pandas-a-spark" class="slide level2">

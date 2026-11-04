@@ -15,6 +15,7 @@ layout: default
 >In this lecture, we will learn:
 >
 >* Python essentials
+>* Why Pandas: origin and motivation
 >* Pandas Series and DataFrames
 >* Filtering, cleaning, GroupBy and joins
 

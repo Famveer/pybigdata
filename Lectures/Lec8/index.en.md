@@ -8,16 +8,16 @@ nav_order: 8
 layout: default
 ---
 
-# Lecture 8: Delta Lake
+# Lecture 8: ETL with the Medallion Architecture
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* The transaction log
->* MERGE and time travel
->* Schema enforcement and evolution
->* OPTIMIZE and VACUUM
+>* Data warehouse, data lake and lakehouse
+>* Bronze, Silver and Gold layers
+>* Quality rules and quarantine
+>* Partitioned Parquet and pruning
 
 
 ### Slides

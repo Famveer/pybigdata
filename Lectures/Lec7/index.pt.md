@@ -8,16 +8,17 @@ nav_order: 7
 layout: default
 ---
 
-# Aula 7: ETL com Arquitetura Medallion
+# Aula 7: Hadoop: O que Está por Baixo do Spark
 {: .no_toc }
 
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* Data warehouse, data lake e lakehouse
->* Camadas Bronze, Silver e Gold
->* Regras de qualidade e quarentena
->* Parquet particionado e pruning
+>* Os três pilares do Hadoop: HDFS, MapReduce e YARN
+>* MapReduce com scripts Python, comparado com Spark
+>* A API FileSystem do Hadoop e por que `s3a://` funciona
+>* HDFS de um nó com Spark e Pandas
+>* Hadoop hoje e o caminho para a nuvem
 
 
 ### Slides

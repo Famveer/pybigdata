@@ -36,6 +36,7 @@ For labs, please bring your notebooks!
 
 {: .lecture}
 >Lecture 3: [From Pandas to Spark](./Lectures/Lec3/)
+>
 
 {: .lab}
 >Lab 2: [The Spark DataFrame API](./Labs/Lab2/)
@@ -48,6 +49,7 @@ For labs, please bring your notebooks!
 
 {: .lecture}
 >Lecture 4: [Aggregations, Joins and Spark SQL](./Lectures/Lec4/)
+>
 
 {: .lab}
 >Lab 3: [Aggregations, Joins and Spark SQL](./Labs/Lab3/)
@@ -60,6 +62,7 @@ For labs, please bring your notebooks!
 
 {: .lecture}
 >Lecture 5: [How Spark Runs: Partitions and Joins](./Lectures/Lec5/)
+>
 
 {: .lab}
 >Lab 4: [Execution, Partitions and Joins](./Labs/Lab4/)
@@ -72,6 +75,7 @@ For labs, please bring your notebooks!
 
 {: .lecture}
 >Lecture 6: [Skew, Cache, AQE and UDFs](./Lectures/Lec6/)
+>
 
 {: .lab}
 >Lab 5: [Skew, Cache, AQE and UDFs](./Labs/Lab5/)
@@ -83,10 +87,11 @@ For labs, please bring your notebooks!
 ### Week 7
 
 {: .lecture}
->Lecture 7: [ETL with the Medallion Architecture](./Lectures/Lec7/)
+>Lecture 7: [Hadoop: What Lies Beneath Spark](./Lectures/Lec7/)
+>
 
 {: .lab}
->Lab 6: [ETL with the Medallion Architecture](./Labs/Lab6/)
+>Lab 6: [Hadoop: MapReduce and HDFS](./Labs/Lab6/)
 >
 
 --- 
@@ -95,10 +100,11 @@ For labs, please bring your notebooks!
 ### Week 8
 
 {: .lecture}
->Lecture 8: [Delta Lake](./Lectures/Lec8/)
+>Lecture 8: [ETL with the Medallion Architecture](./Lectures/Lec8/)
+>
 
 {: .lab}
->Lab 7: [Delta Lake](./Labs/Lab7/)
+>Lab 7: [ETL with the Medallion Architecture](./Labs/Lab7/)
 >
 
 --- 
@@ -107,10 +113,11 @@ For labs, please bring your notebooks!
 ### Week 9
 
 {: .lecture}
->Lecture 9: [Structured Streaming](./Lectures/Lec9/)
+>Lecture 9: [Delta Lake](./Lectures/Lec9/)
+>
 
 {: .lab}
->Lab 8: [Structured Streaming](./Labs/Lab8/)
+>Lab 8: [Delta Lake](./Labs/Lab8/)
 >
 
 --- 
@@ -119,10 +126,11 @@ For labs, please bring your notebooks!
 ### Week 10
 
 {: .lecture}
->Lecture 10: [Machine Learning with MLlib](./Lectures/Lec10/)
+>Lecture 10: [Structured Streaming](./Lectures/Lec10/)
+>
 
 {: .lab}
->Lab 9: [MLlib: Pipelines and Models](./Labs/Lab9/)
+>Lab 9: [Structured Streaming](./Labs/Lab9/)
 >
 
 --- 
@@ -130,20 +138,21 @@ For labs, please bring your notebooks!
 
 ### Week 11
 
-{: .lab}
->Lab 10: [MLlib: Tuning and Deployment](./Labs/Lab10/)
+{: .lecture}
+>Lecture 11: [Machine Learning with MLlib](./Lectures/Lec11/)
 >
 
----
+{: .lab}
+>Lab 10: [MLlib: Pipelines and Models](./Labs/Lab10/)
+>
+
+--- 
 
 
 ### Week 12
 
-{: .lecture}
->Lecture 11: [When Not to Use Spark](./Lectures/Lec11/)
-
 {: .lab}
->Lab 11: [When Not to Use Spark](./Labs/Lab11/)
+>Lab 11: [MLlib: Tuning and Deployment](./Labs/Lab11/)
 >
 
 --- 
@@ -152,10 +161,11 @@ For labs, please bring your notebooks!
 ### Week 13
 
 {: .lecture}
->Lecture 12: [Hadoop: What Lies Beneath Spark](./Lectures/Lec12/)
-
-{: .lab}
->Lab 12: [Hadoop: MapReduce and HDFS](./Labs/Lab12/)
+>Lecture 12: [When Not to Use Spark](./Lectures/Lec12/)
 >
 
---- 
+{: .lab}
+>Lab 12: [When Not to Use Spark](./Labs/Lab12/)
+>
+
+---

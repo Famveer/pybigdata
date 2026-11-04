@@ -19,11 +19,55 @@ format:
 
 ## Lo que aprenderás
 
+- Por qué Hadoop y por qué Spark: origen y motivación
 - Cómo funciona Spark: driver, executors y particiones
 - Crear una `SparkSession` en modo local
 - Crear y leer DataFrames, con schemas explícitos
 - Explorar, seleccionar, filtrar y transformar: Pandas vs Spark
 - UDFs y por qué evitarlas cuando sea posible
+
+---
+
+## El problema: una máquina no basta
+
+Pandas necesita que los datos quepan en la memoria de una máquina. En los años 2000, indexar la web superaba eso por mucho.
+
+| | Escalar vertical | Escalar horizontal |
+|-|------------------|--------------------|
+| Idea | Un servidor más grande | Más máquinas comunes |
+| Límite | Físico, y el precio se dispara | Sin límite práctico |
+| Costo | Hardware | Coordinación: red, fallos, repartir el trabajo |
+
+Escalar horizontalmente es la única forma de superar ese límite, pero escribir un programa que sobreviva a fallos de máquinas es muy difícil.
+
+---
+
+## ¿Por qué Hadoop?
+
+**2003–04:** Google publica los artículos de GFS y MapReduce. **2006:** Doug Cutting y Mike Cafarella crean Hadoop, una implementación open source.
+
+| Idea | Qué resolvió |
+|------|--------------|
+| Máquinas comunes, los fallos son normales | Los datos se replican y el trabajo fallido se rehace solo |
+| Mover el código hacia los datos | Evita enviar terabytes por la red |
+| Solo `map` y `reduce` | El framework se encarga de la distribución, no tú |
+
+Por primera vez, cualquier empresa podía procesar datos a esa escala.
+
+---
+
+## ¿Por qué Spark? {.smaller}
+
+MapReduce escribe en disco en cada paso, así que el trabajo iterativo o de muchos pasos era lento y difícil de expresar.
+
+| | Hadoop MapReduce | Spark |
+|-|------------------|-------|
+| Entre pasos | Disco | Memoria cuando es posible |
+| Trabajo iterativo (ML) | Un job por iteración | Los datos quedan en caché |
+| API | `map` y `reduce`, en Java | DataFrames, SQL, streaming, ML |
+| Optimizador | Ninguno | Catalyst + AQE |
+
+**2009:** Matei Zaharia inicia Spark en UC Berkeley. **2014:** pasa a ser proyecto principal de Apache. Spark no reemplazó todo Hadoop: sigue leyendo de HDFS y corriendo sobre YARN.
 
 ---
 

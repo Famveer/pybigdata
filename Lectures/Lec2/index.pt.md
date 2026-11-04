@@ -15,6 +15,7 @@ layout: default
 >Nesta aula, vamos aprender:
 >
 >* Python essencial
+>* Por que Pandas: origem e motivação
 >* Series e DataFrames no Pandas
 >* Filtragem, limpeza, GroupBy e joins
 

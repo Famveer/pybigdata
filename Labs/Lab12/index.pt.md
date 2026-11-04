@@ -8,11 +8,10 @@ nav_order: 12
 layout: default
 ---
 
-# Laboratório 12: Hadoop: MapReduce e HDFS
+# Laboratório 12: Quando Não Usar Spark
 
-O primeiro notebook só precisa do PySpark. O segundo instala o Hadoop e sobe um HDFS real: foi pensado para Colab ou Linux com permissão de escrita em `/opt`, baixa cerca de 500 MB e leva alguns minutos.
+Compare Pandas, Polars, DuckDB, Pandas API on Spark e Spark na mesma consulta e pratique como escolher entre eles. O benchmark vai até 20 milhões de linhas: o notebook explica como reduzi-lo em máquinas menores. Funciona em Linux ou Colab, porque a medição de memória lê `/proc`.
 
 ### Arquivos
 
-* [API FileSystem, MapReduce, Hadoop Streaming e exercícios](./files/01_hadoop_filesystem_mapreduce.ipynb)
-* [HDFS de um nó: `hdfs dfs`, Spark, um job MapReduce e Pandas](./files/02_hdfs_single_node.ipynb)
+* [Benchmarks, Pandas API on Spark, Polars, DuckDB, Arrow e exercícios](./files/01_when_not_to_use_spark.ipynb)

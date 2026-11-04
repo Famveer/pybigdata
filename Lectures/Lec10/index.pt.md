@@ -8,16 +8,16 @@ nav_order: 10
 layout: default
 ---
 
-# Aula 10: Machine Learning com MLlib
+# Aula 10: Structured Streaming
 {: .no_toc }
 
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* Transformers, Estimators e Pipelines
->* Preparação de features
->* Avaliação e limiar de decisão
->* Validação cruzada, salvar modelos e scoring
+>* Tabelas ilimitadas e micro-batches
+>* Output modes e triggers
+>* Janelas e watermark
+>* Checkpoint e exactly-once
 
 
 ### Slides

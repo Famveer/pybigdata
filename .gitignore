@@ -17,4 +17,10 @@ Icon\r
 vendor/
 
 .DS_Store
-Icon
+Icon
+__pycache__
+*.pyc
+*.py[cod]
+*.pyo
+.ipynb_checkpoints
+.ipynb_checkpoints/

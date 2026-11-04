@@ -8,16 +8,17 @@ nav_order: 7
 layout: default
 ---
 
-# Lecture 7: ETL with the Medallion Architecture
+# Lecture 7: Hadoop: What Lies Beneath Spark
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* Data warehouse, data lake and lakehouse
->* Bronze, Silver and Gold layers
->* Quality rules and quarantine
->* Partitioned Parquet and pruning
+>* The three pillars of Hadoop: HDFS, MapReduce and YARN
+>* MapReduce with Python scripts, compared with Spark
+>* The Hadoop FileSystem API and why `s3a://` works
+>* Single-node HDFS with Spark and Pandas
+>* Hadoop today and the move to the cloud
 
 
 ### Slides

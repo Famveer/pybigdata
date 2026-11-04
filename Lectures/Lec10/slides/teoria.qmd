@@ -1,5 +1,5 @@
 ---
-title: "Distributed Machine Learning with MLlib"
+title: "Structured Streaming"
 subtitle: "BigData with PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: en
@@ -19,138 +19,138 @@ format:
 
 ## What you will learn
 
-- Transformer, Estimator and Pipeline
-- Feature preparation: nulls, categories and vectors
-- Train and evaluate a classifier (customer churn)
-- Choosing the decision threshold
-- Cross-validation, saving models, batch and streaming scoring
+- The unbounded table model and micro-batches
+- Sources, sinks, output modes and triggers
+- Aggregate by **event time** with windows
+- Handle late data with **watermarks**
+- Fault tolerance with **checkpoints**
 
 ---
 
-## When to use MLlib
+## Batch vs streaming
 
-| | scikit-learn | Spark MLlib |
-|-|-------------|-------------|
-| Data | Fits in one machine's memory | Distributed, no practical limit |
-| Input | NumPy / Pandas | Spark DataFrame |
-| Features | A matrix `X` | **One vector column** (`features`) |
-| Algorithms | Very broad | The main ones: linear, trees, ensembles, clustering, ALS |
-
-Rule of thumb: if training data fits on one machine, scikit-learn is usually simpler.
-
----
-
-## Three core concepts
-
-| Concept | What it is | Method |
-|---------|-----------|--------|
-| **Transformer** | Takes a DataFrame and returns one with new columns | `.transform(df)` |
-| **Estimator** | Learns from data and produces a Transformer | `.fit(df)` |
-| **Pipeline** | Sequence of stages; itself an Estimator | `.fit(df)` gives a `PipelineModel` |
-
-::: {.callout-important}
-Everything learned from data is fitted **on the training set only**. Otherwise, the evaluation is optimistic (*data leakage*). The Pipeline guarantees this.
-:::
+| | Batch | Streaming |
+|-|-------|-----------|
+| Data | Closed set | Endless flow |
+| Execution | Runs once and finishes | Runs continuously |
+| Read | `spark.read` | `spark.readStream` |
+| Write | `df.write` | `df.writeStream` |
+| Typical latency | Minutes to hours | Seconds |
 
 ---
 
-## Feature preparation
+## The unbounded table
 
-| Column | Problem | Stage |
-|--------|---------|-------|
-| `last_rating`, `monthly_spend` | Nulls | `Imputer` (median) |
-| `plan`, `region` | Text | `StringIndexer` + `OneHotEncoder` |
-| All | Many columns | `VectorAssembler` |
-| Numeric | Different scales | `StandardScaler` |
+The stream is a **table that never stops growing**. You write the query as if over the whole table; Spark runs it **incrementally**.
+
+```
+   source     [e1 e2]        [e3 e4 e5]        [e6]
+                 │               │               │
+   query      groupBy        groupBy        groupBy
+                 │               │               │
+   result     [A:2]          [A:3 B:2]      [A:3 B:3]
+```
+
+```
+   SOURCE ──▶ TRANSFORMATIONS ──▶ SINK
+              CHECKPOINT: processed offsets + aggregation state
+              TRIGGER   : when each micro-batch runs
+```
+
+---
+
+## Output modes
+
+| Mode | Written in each micro-batch | Typical use |
+|------|-----------------------------|-------------|
+| `append` | Only new rows that **will not change** | Events without aggregation; windows closed by the watermark |
+| `update` | Only result rows that **changed** | Dashboards, upserts |
+| `complete` | The **entire** result, again | Small aggregations |
+
+**Processing time:** when Spark received the event. **Event time:** when it happened. For business metrics, we almost always want event time, which requires handling late data.
+
+---
+
+## File sources: two precautions
+
+- **The schema is mandatory:** it must stay stable for the life of the query
+- **Files must appear complete:** write elsewhere, then **move** (atomic on the same file system)
 
 ```python
-train, test = customers.randomSplit([0.8, 0.2], seed=42)   # before any preparation
+orders_stream = (spark.readStream.schema(event_schema)
+                 .option("maxFilesPerTrigger", 1).json(INPUT))
 
-lr = LogisticRegression(featuresCol="features", labelCol="churn", maxIter=50)
-pipeline = Pipeline(stages=[imputer, indexer, encoder, assembler, scaler, lr])
-model = pipeline.fit(train)
-pred  = model.transform(test)
+q = (orders_stream.groupBy("region").count()
+     .writeStream.format("memory").queryName("by_region")
+     .outputMode("complete").start())
 ```
 
 ---
 
-## Evaluation {.smaller}
-
-| Metric | Question | When it matters |
-|--------|----------|-----------------|
-| **AUC-ROC** | Does the model rank customers well by risk? | Comparing models, regardless of threshold |
-| **AUC-PR** | Same, focused on the positive class | Imbalanced classes |
-| **Precision** | Of those flagged as churn, how many were? | Cost of contacting a customer needlessly |
-| **Recall** | Of the actual churners, how many did I find? | Cost of losing a customer |
-| **Accuracy** | How many did I get right overall? | Misleading with imbalanced classes |
-
-The 0.5 threshold is rarely ideal: choosing it is a **business decision**.
-
----
-
-## Comparing models
-
-| | Logistic regression | Random Forest | Gradient-Boosted Trees |
-|-|---------------------|---------------|------------------------|
-| Relationships | Linear | Non-linear | Non-linear |
-| Interpretation | Coefficients | Feature importance | Feature importance |
-| Training | Fast | Parallel (independent trees) | Sequential (slower) |
-| Overfitting risk | Low | Medium | Higher, needs tuning |
-
-::: {.callout-tip}
-The most complex model is not automatically the best: always compare against a simple baseline.
-:::
-
----
-
-## Cross-validation
-
-```
-  params 1:  [train ][train ][valid ]  -> AUC_1
-             [train ][valid ][train ]  -> AUC_2
-             [valid ][train ][train ]  -> AUC_3   => mean
-  params 2:  ...                                  => mean
-```
+## Windows
 
 ```python
-grid = (ParamGridBuilder()
-        .addGrid(lr.regParam, [0.0, 0.01, 0.1])
-        .addGrid(lr.elasticNetParam, [0.0, 1.0]).build())
-cv = CrossValidator(estimator=pipeline, estimatorParamMaps=grid,
-                    evaluator=BinaryClassificationEvaluator(labelCol="churn"),
-                    numFolds=3, parallelism=2, seed=42)
-best = cv.fit(train).bestModel
+.groupBy(F.window("event_time", "5 minutes"))                # tumbling
+.groupBy(F.window("event_time", "10 minutes", "5 minutes"))  # sliding
+```
+
+```
+  Tumbling (5 min)                         Sliding (10 min, every 5 min)
+  |10:00-10:05|10:05-10:10|10:10-10:15|    |10:00-------10:10|
+                                                 |10:05-------10:15|
+  each event falls in 1 window             each event falls in 2 windows
 ```
 
 ---
 
-## Save and serve
+## Watermark
 
-A saved `PipelineModel` contains **all stages**, so whoever loads it applies the same preparation. It also works on streaming DataFrames.
-
-```python
-best.write().overwrite().save(MODEL_PATH)
-loaded = PipelineModel.load(MODEL_PATH)
-
-stream = spark.readStream.schema(schema).json(STREAM_IN)
-q = (loaded.transform(stream)
-     .select("customer_id",
-             F.round(vector_to_array("probability")[1], 3).alias("p_churn"))
-     .filter("p_churn >= 0.5")
-     .writeStream.format("memory").queryName("at_risk")
-     .outputMode("append").start())
 ```
+  watermark = latest event_time seen − tolerated delay
+
+  tolerated delay 5 min, latest event_time = 10:11  ->  watermark = 10:06
+
+  - window 10:00-10:05 -> end < watermark: closed, emitted, state released
+  - event at 10:07     -> window 10:05-10:10 still open: accepted
+  - event at 10:02     -> its window is closed: dropped
+```
+
+**Trade-off:** a larger delay accepts more late events, but holds more state in memory and delays results.
 
 ---
 
-## The full journey
+## Checkpoint
 
 ```
-  raw files ─▶ Bronze ─▶ Silver ─▶ Gold ─▶ model ─▶ batch and streaming predictions
+  checkpoint/
+  ├── offsets/    <- what each micro-batch will read (written BEFORE processing)
+  ├── commits/    <- which micro-batches finished    (written AFTER the sink)
+  ├── sources/    <- files already seen by the source
+  └── state/      <- aggregation and window state
 ```
 
-- **DataFrame API:** Pandas vs Spark
-- **Performance:** shuffles, joins, skew, AQE, cache
-- **ETL Medallion + Delta Lake**
-- **Structured Streaming**
-- **MLlib**
+Restarting with the **same checkpoint** resumes where it stopped. With a transactional sink (Spark files, Delta), the guarantee is **exactly-once**. Each query needs its own checkpoint.
+
+---
+
+## Triggers
+
+| Trigger | Behavior | Use |
+|---------|----------|-----|
+| (default) | New micro-batch when the previous one ends | Lowest latency |
+| `processingTime="1 minute"` | One micro-batch per interval | Control cost and file size |
+| `availableNow=True` | Processes **everything available** and **stops** | Scheduled incremental ingestion |
+| `continuous="1 second"` | Continuous, no micro-batch (experimental) | Millisecond latency, simple operations |
+
+---
+
+## Other operations {.smaller}
+
+| Operation | Support | Note |
+|-----------|---------|------|
+| `select`, `filter`, `withColumn` | Yes | Same as batch |
+| Stream + static join | Yes | Enrich with dimensions |
+| Stream + stream join | Yes | Watermark on both sides and a time condition |
+| `dropDuplicatesWithinWatermark` | Yes (3.5+) | Deduplication with bounded state |
+| `orderBy` | Only after aggregation in `complete` | Sorting an infinite stream makes no sense |
+| `show()`, `collect()` | No | Use a sink (memory, foreachBatch) |

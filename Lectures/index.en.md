@@ -31,19 +31,19 @@ Lectures will help you understand the theory and concepts behind big data proces
 **Lecture 6**: [Skew, Cache, AQE and UDFs](./Lec6)
 
 
-**Lecture 7**: [ETL with the Medallion Architecture](./Lec7)
+**Lecture 7**: [Hadoop: What Lies Beneath Spark](./Lec7)
 
 
-**Lecture 8**: [Delta Lake](./Lec8)
+**Lecture 8**: [ETL with the Medallion Architecture](./Lec8)
 
 
-**Lecture 9**: [Structured Streaming](./Lec9)
+**Lecture 9**: [Delta Lake](./Lec9)
 
 
-**Lecture 10**: [Machine Learning with MLlib](./Lec10)
+**Lecture 10**: [Structured Streaming](./Lec10)
 
 
-**Lecture 11**: [When Not to Use Spark](./Lec11)
+**Lecture 11**: [Machine Learning with MLlib](./Lec11)
 
 
-**Lecture 12**: [Hadoop: What Lies Beneath Spark](./Lec12)
+**Lecture 12**: [When Not to Use Spark](./Lec12)

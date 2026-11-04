@@ -8,10 +8,10 @@ nav_order: 10
 layout: default
 ---
 
-# Lab 10: MLlib: Tuning and Deployment
+# Lab 10: MLlib: Pipelines and Models
 
-Tune the model with cross-validation, save it and score customers in batch and streaming. The notebook retrains the Lab 9 pipeline.
+Predict customer churn: prepare features, train models and choose a decision threshold.
 
 ### Files
 
-* [Cross-validation, saving models and streaming scoring](./files/01_mllib_tuning_deployment.ipynb)
+* [Features, logistic regression, Random Forest and exercises](./files/01_mllib_pipelines_models.ipynb)

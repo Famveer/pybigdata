@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Pipeline ETL com Arquitetura Medallion</title>
+  <title>Hadoop: O que Está por Baixo do Spark</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,7 +194,7 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Pipeline ETL com Arquitetura Medallion</h1>
+  <h1 class="title">Hadoop: O que Está por Baixo do Spark</h1>
   <p class="subtitle">Big Data com PySpark</p>
 
 <div class="quarto-title-authors">
@@ -209,276 +209,434 @@ Felipe A. Moreno-Vera
 <section id="o-que-você-vai-aprender" class="slide level2">
 <h2>O que você vai aprender</h2>
 <ul>
-<li>Data warehouse, data lake e lakehouse</li>
-<li>Arquitetura Medallion: Bronze, Silver e Gold</li>
-<li>Ingerir CSV e JSON com problemas reais</li>
-<li>Regras de qualidade e quarentena</li>
-<li>Parquet particionado e <em>partition pruning</em></li>
+<li>Os três pilares do Hadoop: HDFS, MapReduce e YARN</li>
+<li>MapReduce com scripts Python, comparado com Spark</li>
+<li>Como o Spark usa a API FileSystem do Hadoop (e por que <code>s3a://</code> funciona)</li>
+<li>Um HDFS de um nó com Spark e Pandas</li>
+<li>Hadoop hoje e o caminho para a nuvem</li>
 </ul>
 </section>
-<section id="warehouse-lake-lakehouse" class="slide level2">
-<h2>Warehouse, lake &amp; lakehouse</h2>
+<section id="de-onde-veio-o-hadoop" class="slide level2">
+<h2>De onde veio o Hadoop</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 2%">
 <col style="width: 41%">
-<col style="width: 28%">
-<col style="width: 28%">
+<col style="width: 58%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Ano</th>
+<th>Marco</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>2003–04</td>
+<td>Google publica os artigos do <strong>GFS</strong> e do <strong>MapReduce</strong></td>
+</tr>
+<tr class="even">
+<td>2006</td>
+<td>Doug Cutting e Mike Cafarella criam o <strong>Hadoop</strong>, open source</td>
+</tr>
+<tr class="odd">
+<td>2012</td>
+<td>Hadoop 2 separa o gerenciamento de recursos no <strong>YARN</strong></td>
+</tr>
+<tr class="even">
+<td>2014</td>
+<td><strong>Spark</strong> vira projeto principal da Apache: o mesmo modelo, em memória</td>
+</tr>
+<tr class="odd">
+<td>Hoje</td>
+<td>Na nuvem, object storage e Kubernetes; on-premise, Hadoop segue em produção</td>
+</tr>
+</tbody>
+</table>
+<p>A ideia central: <strong>centenas de máquinas comuns em vez de um servidor gigante</strong>, aceitando que algumas vão falhar o tempo todo.</p>
+</section>
+<section id="os-três-pilares" class="slide level2">
+<h2>Os três pilares</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 16%">
+<col style="width: 13%">
+<col style="width: 69%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Pilar</th>
+<th>Papel</th>
+<th>Equivalente moderno mais comum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>HDFS</strong></td>
+<td>Sistema de arquivos distribuído</td>
+<td>S3, GCS, ADLS</td>
+</tr>
+<tr class="even">
+<td><strong>YARN</strong></td>
+<td>Gerenciador de recursos do cluster</td>
+<td>Kubernetes, gerenciadores de Databricks/EMR</td>
+</tr>
+<tr class="odd">
+<td><strong>MapReduce</strong></td>
+<td>Modelo e motor de processamento</td>
+<td>Spark, Flink</td>
+</tr>
+</tbody>
+</table>
+<p>Em volta deles, um ecossistema: <strong>Hive</strong> (seu Metastore ainda é um catálogo comum), <strong>HBase</strong>, <strong>Sqoop</strong> (aposentado), <strong>Oozie</strong> (substituído por Airflow e similares) e <strong>Parquet/ORC</strong>, mais usados do que nunca.</p>
+</section>
+<section id="hdfs-blocos-e-replicação" class="slide level2">
+<h2>HDFS: blocos e replicação</h2>
+<pre><code>  vendas.csv (300 MB) -&gt; bloco A (128) | bloco B (128) | bloco C (44)
+
+             NameNode ("vendas.csv = A, B, C; A está em 1, 2, 4...")
+                │
+     ┌──────────┼──────────┬──────────┬──────────┐
+  DataNode 1  DataNode 2  DataNode 3  DataNode 4  DataNode 5
+  [A] [C]     [A] [B]     [B] [C]     [A] [C]     [B]</code></pre>
+<ul>
+<li>Blocos de <strong>128 MB</strong> por padrão, <strong>3 cópias</strong> em máquinas diferentes</li>
+<li>Se um DataNode morre, o NameNode manda recriar as cópias que faltam</li>
+<li>O cliente pergunta ao NameNode onde estão os blocos e <strong>lê direto dos DataNodes</strong></li>
+</ul>
+</section>
+<section id="hdfs-limites-que-ainda-importam" class="slide level2">
+<h2>HDFS: limites que ainda importam</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 35%">
+<col style="width: 65%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Limite</th>
+<th>Consequência</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Arquivos <strong>write-once</strong> (só append)</td>
+<td>Sem UPDATE; daí Delta e Iceberg</td>
+</tr>
+<tr class="even">
+<td>O NameNode guarda tudo na memória (~150 bytes por arquivo ou bloco)</td>
+<td>O <strong>problema dos arquivos pequenos</strong></td>
+</tr>
+<tr class="odd">
+<td>Armazenamento e processamento nas mesmas máquinas</td>
+<td>Mais disco significa comprar mais CPU</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Localidade de dados: mover o código até os dados.</strong> Mover 1 TB pela rede é lento; mover um programa de 10 KB é instantâneo. O Spark herdou isso: veja <strong>Locality Level</strong> na Spark UI (<code>NODE_LOCAL</code>, <code>RACK_LOCAL</code>, <code>ANY</code>).</p>
+</section>
+<section id="a-api-filesystem-do-hadoop" class="slide level2">
+<h2>A API FileSystem do Hadoop</h2>
+<p>O Spark nunca fala diretamente com o disco, o HDFS ou o S3. O <strong>esquema da URL</strong> escolhe a implementação.</p>
+<pre><code>     spark.read.parquet("&lt;esquema&gt;://caminho")
+                    │
+         API FileSystem do Hadoop
+                    │
+    ┌───────┬───────┼──────────┬──────────┐
+  file://  hdfs://  s3a://     gs://      abfs://
+  local    HDFS     Amazon S3  Google     Azure</code></pre>
+<p><code>hdfs://</code> funciona de cara: o PySpark traz o cliente do Hadoop. <code>s3a://</code>, <code>gs://</code> e <code>abfs://</code> precisam do conector. Toda configuração do Hadoop passa pelo prefixo <code>spark.hadoop.*</code>.</p>
+</section>
+<section id="blocos-e-partições-do-spark" class="slide level2">
+<h2>Blocos e partições do Spark</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 82%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>API</th>
+<th>Como divide a entrada</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>sc.textFile</code> (RDD)</td>
+<td><code>InputFormat</code> do Hadoop: <strong>uma partição por bloco</strong></td>
+</tr>
+<tr class="even">
+<td><code>spark.read</code> (DataFrame)</td>
+<td>Critério próprio (<code>spark.sql.files.maxPartitionBytes</code>); os blocos decidem <strong>onde</strong> cada task roda</td>
+</tr>
+</tbody>
+</table>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="bu">print</span>(sc.textFile(CORPUS).getNumPartitions())</span>
+<span id="cb3-2"><a href=""></a><span class="bu">print</span>(spark.read.text(CORPUS).rdd.getNumPartitions())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="mapreduce-o-modelo" class="slide level2">
+<h2>MapReduce: o modelo</h2>
+<pre><code>  MAP                     SHUFFLE &amp; SORT           REDUCE
+  "spark hdfs" -&gt; (spark,1)(hdfs,1)    hdfs  -&gt; [1,1] -&gt; (hdfs, 2)
+  "hdfs yarn"  -&gt; (hdfs,1)(yarn,1) ──▶ spark -&gt; [1,1] -&gt; (spark, 2)
+  "spark"      -&gt; (spark,1)            yarn  -&gt; [1]   -&gt; (yarn, 1)</code></pre>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Etapa</th>
+<th>Quem escreve</th>
+<th>Paralelismo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Map</td>
+<td>Você</td>
+<td>Uma task por bloco de entrada</td>
+</tr>
+<tr class="even">
+<td>Shuffle &amp; Sort</td>
+<td>O framework</td>
+<td><code>hash(chave) % R</code> escolhe o reducer</td>
+</tr>
+<tr class="odd">
+<td>Reduce</td>
+<td>Você</td>
+<td>R tasks, com chaves <strong>ordenadas</strong></td>
+</tr>
+</tbody>
+</table>
+<p>O mesmo que um <code>groupBy</code> do Spark: map é o stage antes do <code>Exchange</code>, reduce o stage depois.</p>
+</section>
+<section id="hadoop-streaming-mapreduce-em-python" class="slide level2">
+<h2>Hadoop Streaming: MapReduce em Python</h2>
+<p>Qualquer programa que leia stdin e escreva stdout. Dá para testar um job inteiro no terminal:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource bash number-lines code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href=""></a><span class="fu">cat</span> input <span class="kw">|</span> <span class="ex">python</span> mapper.py <span class="kw">|</span> <span class="fu">sort</span> <span class="kw">|</span> <span class="ex">python</span> reducer.py</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a><span class="co"># mapper.py</span></span>
+<span id="cb6-2"><a href=""></a><span class="cf">for</span> line <span class="kw">in</span> sys.stdin:</span>
+<span id="cb6-3"><a href=""></a>    <span class="cf">for</span> word <span class="kw">in</span> re.findall(<span class="vs">r"[a-z]+"</span>, line.lower()):</span>
+<span id="cb6-4"><a href=""></a>        <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>word<span class="sc">}</span><span class="ch">\t</span><span class="ss">1"</span>)</span>
+<span id="cb6-5"><a href=""></a></span>
+<span id="cb6-6"><a href=""></a><span class="co"># reducer.py: a entrada está ordenada, cada chave chega junta</span></span>
+<span id="cb6-7"><a href=""></a>current, count <span class="op">=</span> <span class="va">None</span>, <span class="dv">0</span></span>
+<span id="cb6-8"><a href=""></a><span class="cf">for</span> line <span class="kw">in</span> sys.stdin:</span>
+<span id="cb6-9"><a href=""></a>    word, n <span class="op">=</span> line.rstrip(<span class="st">"</span><span class="ch">\n</span><span class="st">"</span>).split(<span class="st">"</span><span class="ch">\t</span><span class="st">"</span>)</span>
+<span id="cb6-10"><a href=""></a>    <span class="cf">if</span> word <span class="op">!=</span> current:</span>
+<span id="cb6-11"><a href=""></a>        <span class="cf">if</span> current <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb6-12"><a href=""></a>            <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>current<span class="sc">}</span><span class="ch">\t</span><span class="sc">{</span>count<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb6-13"><a href=""></a>        current, count <span class="op">=</span> word, <span class="dv">0</span></span>
+<span id="cb6-14"><a href=""></a>    count <span class="op">+=</span> <span class="bu">int</span>(n)</span>
+<span id="cb6-15"><a href=""></a><span class="cf">if</span> current <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb6-16"><a href=""></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>current<span class="sc">}</span><span class="ch">\t</span><span class="sc">{</span>count<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="o-mesmo-word-count-no-spark" class="slide level2">
+<h2>O mesmo word count no Spark</h2>
+<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a><span class="co"># RDD: a API original, imita map/reduce</span></span>
+<span id="cb7-2"><a href=""></a>(sc.textFile(CORPUS)</span>
+<span id="cb7-3"><a href=""></a>   .flatMap(<span class="kw">lambda</span> line: re.findall(<span class="vs">r"[a-z]+"</span>, line.lower()))</span>
+<span id="cb7-4"><a href=""></a>   .<span class="bu">map</span>(<span class="kw">lambda</span> w: (w, <span class="dv">1</span>))</span>
+<span id="cb7-5"><a href=""></a>   .reduceByKey(<span class="kw">lambda</span> a, b: a <span class="op">+</span> b))</span>
+<span id="cb7-6"><a href=""></a></span>
+<span id="cb7-7"><a href=""></a><span class="co"># DataFrame</span></span>
+<span id="cb7-8"><a href=""></a>(spark.read.text(CORPUS)</span>
+<span id="cb7-9"><a href=""></a>   .select(F.explode(F.split(F.lower(<span class="st">"value"</span>), <span class="st">" "</span>)).alias(<span class="st">"word"</span>))</span>
+<span id="cb7-10"><a href=""></a>   .groupBy(<span class="st">"word"</span>).count())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="por-que-o-spark-substituiu-o-mapreduce" class="slide level2">
+<h2>Por que o Spark substituiu o MapReduce</h2>
+<pre><code>  MapReduce: HDFS ─▶ [job 1] ─▶ HDFS ─▶ [job 2] ─▶ HDFS ─▶ ...
+  Spark:     HDFS ─▶ [stage 1] ─shuffle─▶ [stage 2] ─▶ HDFS</code></pre>
+<table class="caption-top">
+<colgroup>
+<col style="width: 5%">
+<col style="width: 57%">
+<col style="width: 36%">
 </colgroup>
 <thead>
 <tr class="header">
 <th></th>
-<th>Data Warehouse</th>
-<th>Data Lake</th>
-<th>Lakehouse</th>
+<th>MapReduce</th>
+<th>Spark</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Armazena</td>
-<td>Tabelas estruturadas</td>
-<td>Arquivos de qualquer tipo</td>
-<td>Arquivos abertos + camada de tabela</td>
+<td>Entre etapas</td>
+<td>Escreve no HDFS (disco + replicação)</td>
+<td>Memória / disco local</td>
 </tr>
 <tr class="even">
-<td>Formato</td>
-<td>Proprietário</td>
-<td>CSV, JSON, Parquet…</td>
-<td>Parquet + log de transações</td>
+<td>Algoritmos iterativos</td>
+<td>Um job por iteração</td>
+<td>Dados em cache entre iterações</td>
 </tr>
 <tr class="odd">
-<td>Custo</td>
-<td>Alto</td>
-<td>Baixo (object storage)</td>
-<td>Baixo</td>
+<td>API</td>
+<td>Só map e reduce</td>
+<td>DataFrames, SQL, streaming, ML</td>
 </tr>
 <tr class="even">
-<td>Transações (ACID)</td>
-<td>Sim</td>
-<td>Não</td>
-<td>Sim</td>
-</tr>
-<tr class="odd">
-<td>UPDATE / DELETE</td>
-<td>Sim</td>
-<td>Difícil (reescrever arquivos)</td>
-<td>Sim</td>
+<td>Otimizador</td>
+<td>Nenhum</td>
+<td>Catalyst + AQE</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="arquitetura-medallion" class="slide level2">
-<h2>Arquitetura Medallion</h2>
-<pre><code>  SOURCES          BRONZE             SILVER              GOLD
-  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
-  APIs, CDC        + metadata         typed, validated    BI / ML / API
-                   all strings        no duplicates
-                                 └──▶ QUARANTINE (rejected)</code></pre>
+<section id="yarn-quem-roda-onde" class="slide level2">
+<h2>YARN: quem roda onde</h2>
 <table class="caption-top">
-<colgroup>
-<col style="width: 17%">
-<col style="width: 51%">
-<col style="width: 31%">
-</colgroup>
 <thead>
 <tr class="header">
-<th>Camada</th>
-<th>Pergunta que responde</th>
-<th>Regra de ouro</th>
+<th>YARN</th>
+<th>Spark</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Bronze</strong></td>
-<td>O que exatamente chegou?</td>
-<td>Nunca descartar nada. Permite reprocessar.</td>
+<td>ResourceManager</td>
+<td>O “master” do cluster</td>
 </tr>
 <tr class="even">
-<td><strong>Silver</strong></td>
-<td>Qual é a versão correta de cada registro?</td>
-<td>Tipos certos, uma linha por entidade, regras aplicadas.</td>
+<td>ApplicationMaster</td>
+<td>No modo <code>cluster</code>, o driver roda dentro dele</td>
 </tr>
 <tr class="odd">
-<td><strong>Gold</strong></td>
-<td>O que o negócio precisa ver?</td>
-<td>Agregações e métricas, modeladas para o consumo.</td>
+<td>Container</td>
+<td>Cada <strong>executor</strong> é um container</td>
+</tr>
+<tr class="even">
+<td>Filas</td>
+<td>Limitam quanto cada time pode usar</td>
 </tr>
 </tbody>
 </table>
+<p>Do lado do Spark, a principal mudança é o <code>--master</code> (<code>local[*]</code>, <code>yarn</code>, <code>k8s://...</code>, <code>spark://...</code>):</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode numberSource bash number-lines code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href=""></a><span class="ex">spark-submit</span> <span class="at">--master</span> yarn <span class="at">--deploy-mode</span> cluster <span class="dt">\</span></span>
+<span id="cb9-2"><a href=""></a>  <span class="at">--num-executors</span> 10 <span class="at">--executor-cores</span> 4 <span class="at">--executor-memory</span> 8g <span class="dt">\</span></span>
+<span id="cb9-3"><a href=""></a>  <span class="at">--queue</span> analytics pipeline_silver.py</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="por-que-parquet" class="slide level2">
-<h2>Por que Parquet</h2>
+<section id="mão-na-massa-hdfs-de-um-nó" class="slide level2">
+<h2>Mão na massa: HDFS de um nó</h2>
+<p>NameNode e DataNode em uma máquina: o mesmo software de um cluster de 1.000 nós.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode numberSource bash number-lines code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href=""></a><span class="ex">hdfs</span> namenode <span class="at">-format</span> <span class="at">-force</span> <span class="at">-nonInteractive</span></span>
+<span id="cb10-2"><a href=""></a><span class="ex">hdfs</span> <span class="at">--daemon</span> start namenode</span>
+<span id="cb10-3"><a href=""></a><span class="ex">hdfs</span> <span class="at">--daemon</span> start datanode</span>
+<span id="cb10-4"><a href=""></a></span>
+<span id="cb10-5"><a href=""></a><span class="ex">hdfs</span> dfs <span class="at">-mkdir</span> <span class="at">-p</span> /aula9/raw</span>
+<span id="cb10-6"><a href=""></a><span class="ex">hdfs</span> dfs <span class="at">-put</span> <span class="at">-f</span> corpus.txt /aula9/raw/corpus.txt</span>
+<span id="cb10-7"><a href=""></a><span class="ex">hdfs</span> dfs <span class="at">-D</span> dfs.blocksize=4194304 <span class="at">-put</span> <span class="at">-f</span> corpus.txt /aula9/raw/corpus_4mb.txt</span>
+<span id="cb10-8"><a href=""></a><span class="ex">hdfs</span> dfs <span class="at">-ls</span> <span class="at">-h</span> /aula9/raw</span>
+<span id="cb10-9"><a href=""></a><span class="ex">hdfs</span> fsck /aula9/raw/corpus_4mb.txt <span class="at">-files</span> <span class="at">-blocks</span> <span class="at">-locations</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Os blocos são arquivos <code>blk_&lt;id&gt;</code> comuns no disco do DataNode. O NameNode nunca vê o conteúdo.</p>
+</section>
+<section id="spark-e-pandas-no-hdfs" class="slide level2">
+<h2>Spark e Pandas no HDFS</h2>
+<div class="sourceCode" id="cb11"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href=""></a><span class="co"># Spark: o HDFS é só mais um esquema de URL</span></span>
+<span id="cb11-2"><a href=""></a>HDFS <span class="op">=</span> <span class="st">"hdfs://localhost:9000"</span></span>
+<span id="cb11-3"><a href=""></a>words <span class="op">=</span> (spark.read.text(<span class="ss">f"</span><span class="sc">{</span>HDFS<span class="sc">}</span><span class="ss">/aula9/raw/corpus.txt"</span>)</span>
+<span id="cb11-4"><a href=""></a>         .select(F.explode(F.split(<span class="st">"value"</span>, <span class="st">" "</span>)).alias(<span class="st">"word"</span>))</span>
+<span id="cb11-5"><a href=""></a>         .groupBy(<span class="st">"word"</span>).count())</span>
+<span id="cb11-6"><a href=""></a>words.write.mode(<span class="st">"overwrite"</span>).parquet(<span class="ss">f"</span><span class="sc">{</span>HDFS<span class="sc">}</span><span class="ss">/aula9/gold/wordcount"</span>)</span>
+<span id="cb11-7"><a href=""></a></span>
+<span id="cb11-8"><a href=""></a><span class="co"># Pandas via PyArrow (libhdfs)</span></span>
+<span id="cb11-9"><a href=""></a>hdfs <span class="op">=</span> pafs.HadoopFileSystem(<span class="st">"localhost"</span>, <span class="dv">9000</span>)</span>
+<span id="cb11-10"><a href=""></a>wc <span class="op">=</span> pq.read_table(<span class="st">"/aula9/gold/wordcount"</span>, filesystem<span class="op">=</span>hdfs).to_pandas()</span>
+<span id="cb11-11"><a href=""></a></span>
+<span id="cb11-12"><a href=""></a><span class="co"># Sem libhdfs: WebHDFS, a API REST</span></span>
+<span id="cb11-13"><a href=""></a>requests.get(<span class="st">"http://localhost:9870/webhdfs/v1/aula9/raw?op=LISTSTATUS"</span>).json()</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>O marcador <code>_SUCCESS</code> indica que a saída está completa. O Spark também o escreve, herança do Hadoop.</p>
+</section>
+<section id="hadoop-hoje" class="slide level2 smaller">
+<h2>Hadoop hoje</h2>
+<p>A maior mudança: <strong>separar armazenamento e processamento</strong>. Object storage barato o tempo todo; clusters que sobem e descem por job.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 4%">
-<col style="width: 52%">
+<col style="width: 57%">
 <col style="width: 42%">
 </colgroup>
 <thead>
 <tr class="header">
-<th></th>
-<th>CSV / JSON</th>
-<th>Parquet</th>
+<th>Componente</th>
+<th>Situação</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Orientação</td>
-<td>Linha</td>
-<td><strong>Coluna</strong></td>
+<td><strong>HDFS</strong></td>
+<td>Ainda forte on-premise; na nuvem, substituído por object storage</td>
 </tr>
 <tr class="even">
-<td>Schema</td>
-<td>Inferido a cada leitura</td>
-<td>Gravado no arquivo</td>
+<td><strong>MapReduce</strong></td>
+<td>Praticamente só em sistemas legados</td>
 </tr>
 <tr class="odd">
-<td>Compressão</td>
-<td>Fraca</td>
-<td>Forte (por coluna)</td>
+<td><strong>YARN</strong></td>
+<td>Ainda muito usado (inclusive no AWS EMR); Kubernetes cresce rápido</td>
 </tr>
 <tr class="even">
-<td>Ler 2 de 20 colunas</td>
-<td>Lê tudo</td>
-<td>Lê só as 2 (<em>column pruning</em>)</td>
+<td><strong>API FileSystem</strong></td>
+<td><strong>Onipresente</strong>: é como Spark, Hive, Trino e Flink acessam S3/GCS/ADLS</td>
 </tr>
 <tr class="odd">
-<td>Filtrar <code>price &gt; 100</code></td>
-<td>Lê tudo</td>
-<td>Pula blocos via estatísticas min/max (<em>predicate pushdown</em>)</td>
+<td><strong>Parquet/ORC</strong></td>
+<td>O padrão de armazenamento analítico</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="bronze-ingerir-sem-perder-nada" class="slide level2">
-<h2>Bronze: ingerir sem perder nada</h2>
-<ul>
-<li>Ler <strong>tudo como string</strong>: um preço como <code>N/A</code> não pode falhar nem virar nulo silenciosamente</li>
-<li>Juntar as fontes preservando colunas que só existem em uma</li>
-<li>Adicionar <strong>metadados de linhagem</strong>: arquivo de origem e momento da ingestão</li>
-</ul>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>raw_csv <span class="op">=</span> (spark.read.option(<span class="st">"header"</span>, <span class="va">True</span>).csv(path)</span>
-<span id="cb2-2"><a href=""></a>    .select(<span class="st">"*"</span>, F.col(<span class="st">"_metadata.file_path"</span>).alias(<span class="st">"_source_file"</span>)))</span>
-<span id="cb2-3"><a href=""></a></span>
-<span id="cb2-4"><a href=""></a>bronze <span class="op">=</span> (raw_csv.unionByName(raw_json, allowMissingColumns<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb2-5"><a href=""></a>    .withColumn(<span class="st">"_ingested_at"</span>, F.current_timestamp()))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="silver-limpar-validar-e-deduplicar" class="slide level2">
-<h2>Silver: limpar, validar e deduplicar</h2>
-<pre><code>  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
-                                                   └──▶ QUARANTINE (+ reason)</code></pre>
-<p><strong>O modo ANSI vem ligado por padrão no Spark 4</strong>: um <code>cast</code> inválido gera erro em vez de retornar nulo.</p>
-<table class="caption-top">
+<section id="resumo" class="slide level2 smaller">
+<h2>Resumo</h2>
+<table class="caption-top" style="width:100%;">
 <colgroup>
-<col style="width: 18%">
-<col style="width: 52%">
+<col style="width: 33%">
 <col style="width: 29%">
+<col style="width: 37%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Operação</th>
-<th>Falha com valor inválido</th>
-<th>Retorna nulo</th>
+<th>Conceito</th>
+<th>Hadoop</th>
+<th>No Spark</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Conversão de tipo</td>
-<td><code>col.cast("int")</code></td>
-<td><code>col.try_cast("int")</code></td>
+<td>Arquivos distribuídos</td>
+<td>HDFS: blocos de 128 MB, 3 réplicas</td>
+<td><code>hdfs://</code> via API FileSystem</td>
 </tr>
 <tr class="even">
-<td>Texto para timestamp</td>
-<td><code>F.to_timestamp(c, fmt)</code></td>
-<td><code>F.try_to_timestamp(c, F.lit(fmt))</code></td>
+<td>Processamento</td>
+<td>MapReduce: map, shuffle e sort, reduce</td>
+<td>Stages separados por shuffles</td>
 </tr>
 <tr class="odd">
-<td>Divisão</td>
-<td><code>a / b</code></td>
-<td><code>F.try_divide(a, b)</code></td>
+<td>Recursos</td>
+<td>YARN: ResourceManager, containers</td>
+<td><code>--master yarn</code>, executors = containers</td>
+</tr>
+<tr class="even">
+<td>Código até os dados</td>
+<td>Localidade de blocos</td>
+<td><code>Locality Level</code> na Spark UI</td>
+</tr>
+<tr class="odd">
+<td>Saída concluída</td>
+<td>Marcador <code>_SUCCESS</code></td>
+<td>O mesmo marcador</td>
+</tr>
+<tr class="even">
+<td>Configurações</td>
+<td><code>core-site.xml</code>, <code>hdfs-site.xml</code></td>
+<td><code>spark.hadoop.*</code></td>
+</tr>
+<tr class="odd">
+<td>Nuvem</td>
+<td>Conectores S3A, GCS, ABFS</td>
+<td><code>s3a://</code>, <code>gs://</code>, <code>abfs://</code></td>
 </tr>
 </tbody>
 </table>
-</section>
-<section id="regras-de-qualidade-e-quarentena" class="slide level2">
-<h2>Regras de qualidade e quarentena</h2>
-<p>Em vez de apagar registros ruins, guarde-os <strong>com o motivo</strong>: permite medir a qualidade da fonte, avisar o time de origem e reprocessar.</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>RULES <span class="op">=</span> {</span>
-<span id="cb4-2"><a href=""></a>    <span class="st">"preco_invalido"</span>:      F.col(<span class="st">"price"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"price"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
-<span id="cb4-3"><a href=""></a>    <span class="st">"quantidade_invalida"</span>: F.col(<span class="st">"quantity"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"quantity"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
-<span id="cb4-4"><a href=""></a>}</span>
-<span id="cb4-5"><a href=""></a>errors <span class="op">=</span> F.array_compact(F.array(<span class="op">*</span>[F.when(c, F.lit(n)) <span class="cf">for</span> n, c <span class="kw">in</span> RULES.items()]))</span>
-<span id="cb4-6"><a href=""></a>df <span class="op">=</span> df.withColumn(<span class="st">"_errors"</span>, errors)</span>
-<span id="cb4-7"><a href=""></a>valid    <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">==</span> <span class="dv">0</span>).drop(<span class="st">"_errors"</span>)</span>
-<span id="cb4-8"><a href=""></a>rejected <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">&gt;</span> <span class="dv">0</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="escrita-particionada" class="slide level2">
-<h2>Escrita particionada</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>(silver_df</span>
-<span id="cb5-2"><a href=""></a> .repartition(<span class="st">"order_date"</span>)      <span class="co"># all rows of a day in the same task</span></span>
-<span id="cb5-3"><a href=""></a> .write.mode(<span class="st">"overwrite"</span>)</span>
-<span id="cb5-4"><a href=""></a> .partitionBy(<span class="st">"order_date"</span>)</span>
-<span id="cb5-5"><a href=""></a> .parquet(SILVER))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<ul>
-<li>Boas colunas de partição têm <strong>baixa cardinalidade</strong> e são <strong>usadas em filtros</strong></li>
-<li>Cada task escreve um arquivo por partição que encontrar: sem o <code>repartition</code>, surge o problema dos <strong>arquivos pequenos</strong></li>
-</ul>
-</section>
-<section id="pruning-no-plano" class="slide level2">
-<h2>Pruning no plano</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 33%">
-<col style="width: 33%">
-<col style="width: 33%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Mecanismo</th>
-<th>Campo no plano</th>
-<th>Efeito</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Partition pruning</td>
-<td><code>PartitionFilters</code></td>
-<td>Pula pastas inteiras</td>
-</tr>
-<tr class="even">
-<td>Predicate pushdown</td>
-<td><code>PushedFilters</code></td>
-<td>Pula blocos dentro dos arquivos</td>
-</tr>
-<tr class="odd">
-<td>Column pruning</td>
-<td><code>ReadSchema</code></td>
-<td>Lê só as colunas usadas</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="reprocessar-e-gold" class="slide level2">
-<h2>Reprocessar e Gold</h2>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>spark.conf.<span class="bu">set</span>(<span class="st">"spark.sql.sources.partitionOverwriteMode"</span>, <span class="st">"dynamic"</span>)</span>
-<span id="cb6-2"><a href=""></a>day3.repartition(<span class="st">"order_date"</span>).write.mode(<span class="st">"overwrite"</span>) <span class="op">\</span></span>
-<span id="cb6-3"><a href=""></a>    .partitionBy(<span class="st">"order_date"</span>).parquet(SILVER)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-warning callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Aviso</strong></p>
-</div>
-<div class="callout-content">
-<p>Com o modo padrão <code>static</code>, o mesmo comando <strong>apagaria todos os outros dias</strong>.</p>
-</div>
-</div>
-</div>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>gold_daily <span class="op">=</span> (sales.groupBy(<span class="st">"order_date"</span>, <span class="st">"region"</span>, <span class="st">"category"</span>)</span>
-<span id="cb7-2"><a href=""></a>    .agg(F.count(<span class="st">"*"</span>).alias(<span class="st">"orders"</span>),</span>
-<span id="cb7-3"><a href=""></a>         F.<span class="bu">round</span>(F.<span class="bu">sum</span>(<span class="st">"revenue"</span>), <span class="dv">2</span>).alias(<span class="st">"revenue"</span>)))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 </section>
     </div>

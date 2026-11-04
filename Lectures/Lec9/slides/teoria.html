@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Structured Streaming</title>
+  <title>Delta Lake</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,7 +194,7 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Structured Streaming</h1>
+  <h1 class="title">Delta Lake</h1>
   <p class="subtitle">BigData with PySpark</p>
 
 <div class="quarto-title-authors">
@@ -209,225 +209,184 @@ Felipe A. Moreno-Vera
 <section id="what-you-will-learn" class="slide level2">
 <h2>What you will learn</h2>
 <ul>
-<li>The unbounded table model and micro-batches</li>
-<li>Sources, sinks, output modes and triggers</li>
-<li>Aggregate by <strong>event time</strong> with windows</li>
-<li>Handle late data with <strong>watermarks</strong></li>
-<li>Fault tolerance with <strong>checkpoints</strong></li>
+<li>The limits of plain Parquet</li>
+<li>The transaction log and ACID writes</li>
+<li><code>MERGE</code>, time travel and schema enforcement</li>
+<li><code>DELETE</code>, <code>UPDATE</code>, <code>RESTORE</code>, <code>OPTIMIZE</code> and <code>VACUUM</code></li>
 </ul>
 </section>
-<section id="batch-vs-streaming" class="slide level2">
-<h2>Batch vs streaming</h2>
-<table class="caption-top">
-<thead>
-<tr class="header">
-<th></th>
-<th>Batch</th>
-<th>Streaming</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Data</td>
-<td>Closed set</td>
-<td>Endless flow</td>
-</tr>
-<tr class="even">
-<td>Execution</td>
-<td>Runs once and finishes</td>
-<td>Runs continuously</td>
-</tr>
-<tr class="odd">
-<td>Read</td>
-<td><code>spark.read</code></td>
-<td><code>spark.readStream</code></td>
-</tr>
-<tr class="even">
-<td>Write</td>
-<td><code>df.write</code></td>
-<td><code>df.writeStream</code></td>
-</tr>
-<tr class="odd">
-<td>Typical latency</td>
-<td>Minutes to hours</td>
-<td>Seconds</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="the-unbounded-table" class="slide level2">
-<h2>The unbounded table</h2>
-<p>The stream is a <strong>table that never stops growing</strong>. You write the query as if over the whole table; Spark runs it <strong>incrementally</strong>.</p>
-<pre><code>   source     [e1 e2]        [e3 e4 e5]        [e6]
-                 │               │               │
-   query      groupBy        groupBy        groupBy
-                 │               │               │
-   result     [A:2]          [A:3 B:2]      [A:3 B:3]</code></pre>
-<pre><code>   SOURCE ──▶ TRANSFORMATIONS ──▶ SINK
-              CHECKPOINT: processed offsets + aggregation state
-              TRIGGER   : when each micro-batch runs</code></pre>
-</section>
-<section id="output-modes" class="slide level2">
-<h2>Output modes</h2>
+<section id="the-limits-of-plain-parquet" class="slide level2">
+<h2>The limits of plain Parquet</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 12%">
-<col style="width: 60%">
-<col style="width: 27%">
+<col style="width: 50%">
+<col style="width: 50%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Mode</th>
-<th>Written in each micro-batch</th>
-<th>Typical use</th>
+<th>Problem</th>
+<th>Example</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>append</code></td>
-<td>Only new rows that <strong>will not change</strong></td>
-<td>Events without aggregation; windows closed by the watermark</td>
+<td><strong>No atomicity</strong></td>
+<td>A job fails during <code>overwrite</code>: the table is left half-written</td>
 </tr>
 <tr class="even">
-<td><code>update</code></td>
-<td>Only result rows that <strong>changed</strong></td>
-<td>Dashboards, upserts</td>
+<td><strong>No UPDATE/MERGE</strong></td>
+<td>A status update forces rewriting the partition or table</td>
 </tr>
 <tr class="odd">
-<td><code>complete</code></td>
-<td>The <strong>entire</strong> result, again</td>
-<td>Small aggregations</td>
+<td><strong>Inconsistent reads</strong></td>
+<td>A reader sees old and new files mixed during a write</td>
+</tr>
+<tr class="even">
+<td><strong>No history</strong></td>
+<td>You cannot see what the table looked like yesterday</td>
+</tr>
+<tr class="odd">
+<td><strong>Unprotected schema</strong></td>
+<td>A file with different columns silently corrupts the table</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Processing time:</strong> when Spark received the event. <strong>Event time:</strong> when it happened. For business metrics, we almost always want event time, which requires handling late data.</p>
 </section>
-<section id="file-sources-two-precautions" class="slide level2">
-<h2>File sources: two precautions</h2>
-<ul>
-<li><strong>The schema is mandatory:</strong> it must stay stable for the life of the query</li>
-<li><strong>Files must appear complete:</strong> write elsewhere, then <strong>move</strong> (atomic on the same file system)</li>
-</ul>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>orders_stream <span class="op">=</span> (spark.readStream.schema(event_schema)</span>
-<span id="cb3-2"><a href=""></a>                 .option(<span class="st">"maxFilesPerTrigger"</span>, <span class="dv">1</span>).json(INPUT))</span>
-<span id="cb3-3"><a href=""></a></span>
-<span id="cb3-4"><a href=""></a>q <span class="op">=</span> (orders_stream.groupBy(<span class="st">"region"</span>).count()</span>
-<span id="cb3-5"><a href=""></a>     .writeStream.<span class="bu">format</span>(<span class="st">"memory"</span>).queryName(<span class="st">"by_region"</span>)</span>
-<span id="cb3-6"><a href=""></a>     .outputMode(<span class="st">"complete"</span>).start())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="the-transaction-log" class="slide level2">
+<h2>The transaction log</h2>
+<pre><code>  silver_delta/
+  ├── _delta_log/
+  │   ├── 00000000000000000000.json   &lt;- v0: add files A, B, C
+  │   ├── 00000000000000000001.json   &lt;- v1: remove B, add D   (MERGE)
+  │   └── 00000000000000000002.json   &lt;- v2: remove A          (DELETE)
+  ├── order_date=2024-07-01/part-....parquet
+  └── order_date=2024-07-02/part-....parquet</code></pre>
+<p>Data stays in Parquet. The log says <strong>which files make up each version</strong>. Writing is atomic: either the log file of the new version exists, or the version never happened.</p>
 </section>
-<section id="windows" class="slide level2">
-<h2>Windows</h2>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>.groupBy(F.window(<span class="st">"event_time"</span>, <span class="st">"5 minutes"</span>))                <span class="co"># tumbling</span></span>
-<span id="cb4-2"><a href=""></a>.groupBy(F.window(<span class="st">"event_time"</span>, <span class="st">"10 minutes"</span>, <span class="st">"5 minutes"</span>))  <span class="co"># sliding</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<pre><code>  Tumbling (5 min)                         Sliding (10 min, every 5 min)
-  |10:00-10:05|10:05-10:10|10:10-10:15|    |10:00-------10:10|
-                                                 |10:05-------10:15|
-  each event falls in 1 window             each event falls in 2 windows</code></pre>
+<section id="merge-upsert" class="slide level2">
+<h2>MERGE (upsert)</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>(orders_dt.alias(<span class="st">"t"</span>)</span>
+<span id="cb2-2"><a href=""></a> .merge(updates.alias(<span class="st">"s"</span>), <span class="st">"t.order_id = s.order_id"</span>)</span>
+<span id="cb2-3"><a href=""></a> .whenMatchedUpdateAll(condition<span class="op">=</span><span class="st">"s.updated_at &gt; t.updated_at"</span>)</span>
+<span id="cb2-4"><a href=""></a> .whenNotMatchedInsertAll()</span>
+<span id="cb2-5"><a href=""></a> .execute())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The condition <code>s.updated_at &gt; t.updated_at</code> protects against late data: an old event that arrives later does not overwrite a newer state.</p>
 </section>
-<section id="watermark" class="slide level2">
-<h2>Watermark</h2>
-<pre><code>  watermark = latest event_time seen − tolerated delay
-
-  tolerated delay 5 min, latest event_time = 10:11  -&gt;  watermark = 10:06
-
-  - window 10:00-10:05 -&gt; end &lt; watermark: closed, emitted, state released
-  - event at 10:07     -&gt; window 10:05-10:10 still open: accepted
-  - event at 10:02     -&gt; its window is closed: dropped</code></pre>
-<p><strong>Trade-off:</strong> a larger delay accepts more late events, but holds more state in memory and delays results.</p>
+<section id="history-and-time-travel" class="slide level2">
+<h2>History and time travel</h2>
+<p>Each operation creates a new version. Old versions stay readable until <code>VACUUM</code> removes them.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>orders_dt.history().select(<span class="st">"version"</span>, <span class="st">"timestamp"</span>, <span class="st">"operation"</span>).show()</span>
+<span id="cb3-2"><a href=""></a></span>
+<span id="cb3-3"><a href=""></a>v0 <span class="op">=</span> spark.read.<span class="bu">format</span>(<span class="st">"delta"</span>).option(<span class="st">"versionAsOf"</span>, <span class="dv">0</span>).load(SILVER_DELTA)</span>
+<span id="cb3-4"><a href=""></a></span>
+<span id="cb3-5"><a href=""></a>spark.sql(<span class="ss">f"SELECT status, COUNT(*) FROM delta.`</span><span class="sc">{</span>SILVER_DELTA<span class="sc">}</span><span class="ss">` "</span></span>
+<span id="cb3-6"><a href=""></a>          <span class="st">"VERSION AS OF 0 GROUP BY status"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="checkpoint" class="slide level2">
-<h2>Checkpoint</h2>
-<pre><code>  checkpoint/
-  ├── offsets/    &lt;- what each micro-batch will read (written BEFORE processing)
-  ├── commits/    &lt;- which micro-batches finished    (written AFTER the sink)
-  ├── sources/    &lt;- files already seen by the source
-  └── state/      &lt;- aggregation and window state</code></pre>
-<p>Restarting with the <strong>same checkpoint</strong> resumes where it stopped. With a transactional sink (Spark files, Delta), the guarantee is <strong>exactly-once</strong>. Each query needs its own checkpoint.</p>
+<section id="schema-enforcement-evolution" class="slide level2">
+<h2>Schema enforcement &amp; evolution</h2>
+<p>Delta <strong>refuses</strong> writes with an incompatible schema. Intentional changes are explicit:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>(with_coupon.write.<span class="bu">format</span>(<span class="st">"delta"</span>)</span>
+<span id="cb4-2"><a href=""></a> .mode(<span class="st">"append"</span>)</span>
+<span id="cb4-3"><a href=""></a> .option(<span class="st">"mergeSchema"</span>, <span class="st">"true"</span>)     <span class="co"># old rows get null</span></span>
+<span id="cb4-4"><a href=""></a> .save(SILVER_DELTA))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="triggers" class="slide level2">
-<h2>Triggers</h2>
+<section id="delete-update-restore" class="slide level2">
+<h2>DELETE, UPDATE &amp; RESTORE</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>orders_dt.restoreToVersion(merge_version)</span>
+<span id="cb5-2"><a href=""></a>orders_dt.delete(F.col(<span class="st">"customer_id"</span>) <span class="op">==</span> customer)</span>
+<span id="cb5-3"><a href=""></a>orders_dt.update(</span>
+<span id="cb5-4"><a href=""></a>    condition<span class="op">=</span><span class="st">"status = 'created' AND created_at &lt; '2024-07-03'"</span>,</span>
+<span id="cb5-5"><a href=""></a>    <span class="bu">set</span><span class="op">=</span>{<span class="st">"status"</span>: F.lit(<span class="st">"expired"</span>)},</span>
+<span id="cb5-6"><a href=""></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-warning callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Warning</strong></p>
+</div>
+<div class="callout-content">
+<p>After a <code>DELETE</code>, the data still exists in the Parquet files of old versions and time travel can read it. For a real deletion (e.g.&nbsp;LGPD), you must run <code>VACUUM</code>.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="optimize-vacuum" class="slide level2">
+<h2>OPTIMIZE &amp; VACUUM</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 37%">
-<col style="width: 41%">
-<col style="width: 20%">
+<col style="width: 30%">
+<col style="width: 43%">
+<col style="width: 26%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Trigger</th>
-<th>Behavior</th>
-<th>Use</th>
+<th>Command</th>
+<th>What it does</th>
+<th>When</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>(default)</td>
-<td>New micro-batch when the previous one ends</td>
-<td>Lowest latency</td>
+<td><code>OPTIMIZE</code></td>
+<td>Compacts small files into larger ones</td>
+<td>After many MERGEs/appends</td>
 </tr>
 <tr class="even">
-<td><code>processingTime="1 minute"</code></td>
-<td>One micro-batch per interval</td>
-<td>Control cost and file size</td>
+<td><code>OPTIMIZE ... ZORDER BY (col)</code></td>
+<td>Also reorganizes data to skip more blocks when filtering on <code>col</code></td>
+<td>Heavily filtered columns outside the partition</td>
 </tr>
 <tr class="odd">
-<td><code>availableNow=True</code></td>
-<td>Processes <strong>everything available</strong> and <strong>stops</strong></td>
-<td>Scheduled incremental ingestion</td>
-</tr>
-<tr class="even">
-<td><code>continuous="1 second"</code></td>
-<td>Continuous, no micro-batch (experimental)</td>
-<td>Millisecond latency, simple operations</td>
+<td><code>VACUUM</code></td>
+<td>Deletes files that no recent version uses</td>
+<td>Periodically; the default keeps 7 days</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="other-operations" class="slide level2 smaller">
-<h2>Other operations</h2>
+<section id="summary" class="slide level2">
+<h2>Summary</h2>
 <table class="caption-top">
 <colgroup>
+<col style="width: 57%">
 <col style="width: 42%">
-<col style="width: 34%">
-<col style="width: 23%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Operation</th>
-<th>Support</th>
-<th>Note</th>
+<th>Delta Lake</th>
+<th>Command</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>select</code>, <code>filter</code>, <code>withColumn</code></td>
-<td>Yes</td>
-<td>Same as batch</td>
+<td>Upsert</td>
+<td><code>DeltaTable.merge(...).whenMatchedUpdateAll().whenNotMatchedInsertAll()</code></td>
 </tr>
 <tr class="even">
-<td>Stream + static join</td>
-<td>Yes</td>
-<td>Enrich with dimensions</td>
+<td>History</td>
+<td><code>.history()</code> / <code>DESCRIBE HISTORY</code></td>
 </tr>
 <tr class="odd">
-<td>Stream + stream join</td>
-<td>Yes</td>
-<td>Watermark on both sides and a time condition</td>
+<td>Time travel</td>
+<td><code>.option("versionAsOf", n)</code> / <code>VERSION AS OF n</code></td>
 </tr>
 <tr class="even">
-<td><code>dropDuplicatesWithinWatermark</code></td>
-<td>Yes (3.5+)</td>
-<td>Deduplication with bounded state</td>
+<td>Undo</td>
+<td><code>.restoreToVersion(n)</code></td>
 </tr>
 <tr class="odd">
-<td><code>orderBy</code></td>
-<td>Only after aggregation in <code>complete</code></td>
-<td>Sorting an infinite stream makes no sense</td>
+<td>Evolve schema</td>
+<td><code>.option("mergeSchema", "true")</code></td>
 </tr>
 <tr class="even">
-<td><code>show()</code>, <code>collect()</code></td>
-<td>No</td>
-<td>Use a sink (memory, foreachBatch)</td>
+<td>Compact</td>
+<td><code>.optimize().executeCompaction()</code> / <code>.executeZOrderBy(col)</code></td>
+</tr>
+<tr class="odd">
+<td>Clean old versions</td>
+<td><code>.vacuum(hours)</code></td>
 </tr>
 </tbody>
 </table>

@@ -8,10 +8,10 @@ nav_order: 10
 layout: default
 ---
 
-# Laboratorio 10: MLlib: Ajuste y Despliegue
+# Laboratorio 10: MLlib: Pipelines y Modelos
 
-Ajusta el modelo con validación cruzada, guárdalo y puntúa clientes en batch y streaming. El notebook reentrena el pipeline del Laboratorio 9.
+Predice el churn de clientes: prepara features, entrena modelos y elige un umbral de decisión.
 
 ### Archivos
 
-* [Validación cruzada, guardar modelos y scoring en streaming](./files/01_mllib_tuning_deployment.ipynb)
+* [Features, regresión logística, Random Forest y ejercicios](./files/01_mllib_pipelines_models.ipynb)

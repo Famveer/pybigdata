@@ -209,12 +209,116 @@ Felipe A. Moreno-Vera
 <section id="lo-que-aprenderás" class="slide level2">
 <h2>Lo que aprenderás</h2>
 <ul>
+<li>Por qué Hadoop y por qué Spark: origen y motivación</li>
 <li>Cómo funciona Spark: driver, executors y particiones</li>
 <li>Crear una <code>SparkSession</code> en modo local</li>
 <li>Crear y leer DataFrames, con schemas explícitos</li>
 <li>Explorar, seleccionar, filtrar y transformar: Pandas vs Spark</li>
 <li>UDFs y por qué evitarlas cuando sea posible</li>
 </ul>
+</section>
+<section id="el-problema-una-máquina-no-basta" class="slide level2">
+<h2>El problema: una máquina no basta</h2>
+<p>Pandas necesita que los datos quepan en la memoria de una máquina. En los años 2000, indexar la web superaba eso por mucho.</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th></th>
+<th>Escalar vertical</th>
+<th>Escalar horizontal</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Idea</td>
+<td>Un servidor más grande</td>
+<td>Más máquinas comunes</td>
+</tr>
+<tr class="even">
+<td>Límite</td>
+<td>Físico, y el precio se dispara</td>
+<td>Sin límite práctico</td>
+</tr>
+<tr class="odd">
+<td>Costo</td>
+<td>Hardware</td>
+<td>Coordinación: red, fallos, repartir el trabajo</td>
+</tr>
+</tbody>
+</table>
+<p>Escalar horizontalmente es la única forma de superar ese límite, pero escribir un programa que sobreviva a fallos de máquinas es muy difícil.</p>
+</section>
+<section id="por-qué-hadoop" class="slide level2">
+<h2>¿Por qué Hadoop?</h2>
+<p><strong>2003–04:</strong> Google publica los artículos de GFS y MapReduce. <strong>2006:</strong> Doug Cutting y Mike Cafarella crean Hadoop, una implementación open source.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 30%">
+<col style="width: 70%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Idea</th>
+<th>Qué resolvió</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Máquinas comunes, los fallos son normales</td>
+<td>Los datos se replican y el trabajo fallido se rehace solo</td>
+</tr>
+<tr class="even">
+<td>Mover el código hacia los datos</td>
+<td>Evita enviar terabytes por la red</td>
+</tr>
+<tr class="odd">
+<td>Solo <code>map</code> y <code>reduce</code></td>
+<td>El framework se encarga de la distribución, no tú</td>
+</tr>
+</tbody>
+</table>
+<p>Por primera vez, cualquier empresa podía procesar datos a esa escala.</p>
+</section>
+<section id="por-qué-spark" class="slide level2 smaller">
+<h2>¿Por qué Spark?</h2>
+<p>MapReduce escribe en disco en cada paso, así que el trabajo iterativo o de muchos pasos era lento y difícil de expresar.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 3%">
+<col style="width: 69%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Hadoop MapReduce</th>
+<th>Spark</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Entre pasos</td>
+<td>Disco</td>
+<td>Memoria cuando es posible</td>
+</tr>
+<tr class="even">
+<td>Trabajo iterativo (ML)</td>
+<td>Un job por iteración</td>
+<td>Los datos quedan en caché</td>
+</tr>
+<tr class="odd">
+<td>API</td>
+<td><code>map</code> y <code>reduce</code>, en Java</td>
+<td>DataFrames, SQL, streaming, ML</td>
+</tr>
+<tr class="even">
+<td>Optimizador</td>
+<td>Ninguno</td>
+<td>Catalyst + AQE</td>
+</tr>
+</tbody>
+</table>
+<p><strong>2009:</strong> Matei Zaharia inicia Spark en UC Berkeley. <strong>2014:</strong> pasa a ser proyecto principal de Apache. Spark no reemplazó todo Hadoop: sigue leyendo de HDFS y corriendo sobre YARN.</p>
 </section>
 <section id="cómo-funciona-spark" class="slide level2">
 <h2>Cómo funciona Spark</h2>

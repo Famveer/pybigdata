@@ -1,5 +1,5 @@
 ---
-title: "Pipeline ETL com Arquitetura Medallion"
+title: "Hadoop: O que Está por Baixo do Spark"
 subtitle: "Big Data com PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: pt
@@ -19,145 +19,266 @@ format:
 
 ## O que você vai aprender
 
-- Data warehouse, data lake e lakehouse
-- Arquitetura Medallion: Bronze, Silver e Gold
-- Ingerir CSV e JSON com problemas reais
-- Regras de qualidade e quarentena
-- Parquet particionado e *partition pruning*
+- Os três pilares do Hadoop: HDFS, MapReduce e YARN
+- MapReduce com scripts Python, comparado com Spark
+- Como o Spark usa a API FileSystem do Hadoop (e por que `s3a://` funciona)
+- Um HDFS de um nó com Spark e Pandas
+- Hadoop hoje e o caminho para a nuvem
 
 ---
 
-## Warehouse, lake & lakehouse
+## De onde veio o Hadoop
 
-| | Data Warehouse | Data Lake | Lakehouse |
-|-|----------------|-----------|-----------|
-| Armazena | Tabelas estruturadas | Arquivos de qualquer tipo | Arquivos abertos + camada de tabela |
-| Formato | Proprietário | CSV, JSON, Parquet... | Parquet + log de transações |
-| Custo | Alto | Baixo (object storage) | Baixo |
-| Transações (ACID) | Sim | Não | Sim |
-| UPDATE / DELETE | Sim | Difícil (reescrever arquivos) | Sim |
+| Ano | Marco |
+|-----|-------|
+| 2003–04 | Google publica os artigos do **GFS** e do **MapReduce** |
+| 2006 | Doug Cutting e Mike Cafarella criam o **Hadoop**, open source |
+| 2012 | Hadoop 2 separa o gerenciamento de recursos no **YARN** |
+| 2014 | **Spark** vira projeto principal da Apache: o mesmo modelo, em memória |
+| Hoje | Na nuvem, object storage e Kubernetes; on-premise, Hadoop segue em produção |
+
+A ideia central: **centenas de máquinas comuns em vez de um servidor gigante**, aceitando que algumas vão falhar o tempo todo.
 
 ---
 
-## Arquitetura Medallion
+## Os três pilares
+
+| Pilar | Papel | Equivalente moderno mais comum |
+|-------|------|------------------------------|
+| **HDFS** | Sistema de arquivos distribuído | S3, GCS, ADLS |
+| **YARN** | Gerenciador de recursos do cluster | Kubernetes, gerenciadores de Databricks/EMR |
+| **MapReduce** | Modelo e motor de processamento | Spark, Flink |
+
+Em volta deles, um ecossistema: **Hive** (seu Metastore ainda é um catálogo comum), **HBase**, **Sqoop** (aposentado), **Oozie** (substituído por Airflow e similares) e **Parquet/ORC**, mais usados do que nunca.
+
+---
+
+## HDFS: blocos e replicação
 
 ```
-  SOURCES          BRONZE             SILVER              GOLD
-  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
-  APIs, CDC        + metadata         typed, validated    BI / ML / API
-                   all strings        no duplicates
-                                 └──▶ QUARANTINE (rejected)
+  vendas.csv (300 MB) -> bloco A (128) | bloco B (128) | bloco C (44)
+
+             NameNode ("vendas.csv = A, B, C; A está em 1, 2, 4...")
+                │
+     ┌──────────┼──────────┬──────────┬──────────┐
+  DataNode 1  DataNode 2  DataNode 3  DataNode 4  DataNode 5
+  [A] [C]     [A] [B]     [B] [C]     [A] [C]     [B]
 ```
 
-| Camada | Pergunta que responde | Regra de ouro |
-|-------|---------------------|-------------|
-| **Bronze** | O que exatamente chegou? | Nunca descartar nada. Permite reprocessar. |
-| **Silver** | Qual é a versão correta de cada registro? | Tipos certos, uma linha por entidade, regras aplicadas. |
-| **Gold** | O que o negócio precisa ver? | Agregações e métricas, modeladas para o consumo. |
+- Blocos de **128 MB** por padrão, **3 cópias** em máquinas diferentes
+- Se um DataNode morre, o NameNode manda recriar as cópias que faltam
+- O cliente pergunta ao NameNode onde estão os blocos e **lê direto dos DataNodes**
 
 ---
 
-## Por que Parquet
+## HDFS: limites que ainda importam
 
-| | CSV / JSON | Parquet |
-|-|-----------|---------|
-| Orientação | Linha | **Coluna** |
-| Schema | Inferido a cada leitura | Gravado no arquivo |
-| Compressão | Fraca | Forte (por coluna) |
-| Ler 2 de 20 colunas | Lê tudo | Lê só as 2 (*column pruning*) |
-| Filtrar `price > 100` | Lê tudo | Pula blocos via estatísticas min/max (*predicate pushdown*) |
+| Limite | Consequência |
+|-------|-------------|
+| Arquivos **write-once** (só append) | Sem UPDATE; daí Delta e Iceberg |
+| O NameNode guarda tudo na memória (~150 bytes por arquivo ou bloco) | O **problema dos arquivos pequenos** |
+| Armazenamento e processamento nas mesmas máquinas | Mais disco significa comprar mais CPU |
+
+**Localidade de dados: mover o código até os dados.** Mover 1 TB pela rede é lento; mover um programa de 10 KB é instantâneo. O Spark herdou isso: veja **Locality Level** na Spark UI (`NODE_LOCAL`, `RACK_LOCAL`, `ANY`).
 
 ---
 
-## Bronze: ingerir sem perder nada
+## A API FileSystem do Hadoop
 
-- Ler **tudo como string**: um preço como `N/A` não pode falhar nem virar nulo silenciosamente
-- Juntar as fontes preservando colunas que só existem em uma
-- Adicionar **metadados de linhagem**: arquivo de origem e momento da ingestão
+O Spark nunca fala diretamente com o disco, o HDFS ou o S3. O **esquema da URL** escolhe a implementação.
+
+```
+     spark.read.parquet("<esquema>://caminho")
+                    │
+         API FileSystem do Hadoop
+                    │
+    ┌───────┬───────┼──────────┬──────────┐
+  file://  hdfs://  s3a://     gs://      abfs://
+  local    HDFS     Amazon S3  Google     Azure
+```
+
+`hdfs://` funciona de cara: o PySpark traz o cliente do Hadoop. `s3a://`, `gs://` e `abfs://` precisam do conector. Toda configuração do Hadoop passa pelo prefixo `spark.hadoop.*`.
+
+---
+
+## Blocos e partições do Spark
+
+| API | Como divide a entrada |
+|-----|------------------------|
+| `sc.textFile` (RDD) | `InputFormat` do Hadoop: **uma partição por bloco** |
+| `spark.read` (DataFrame) | Critério próprio (`spark.sql.files.maxPartitionBytes`); os blocos decidem **onde** cada task roda |
 
 ```python
-raw_csv = (spark.read.option("header", True).csv(path)
-    .select("*", F.col("_metadata.file_path").alias("_source_file")))
-
-bronze = (raw_csv.unionByName(raw_json, allowMissingColumns=True)
-    .withColumn("_ingested_at", F.current_timestamp()))
+print(sc.textFile(CORPUS).getNumPartitions())
+print(spark.read.text(CORPUS).rdd.getNumPartitions())
 ```
 
 ---
 
-## Silver: limpar, validar e deduplicar
+## MapReduce: o modelo
 
 ```
-  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
-                                                   └──▶ QUARANTINE (+ reason)
+  MAP                     SHUFFLE & SORT           REDUCE
+  "spark hdfs" -> (spark,1)(hdfs,1)    hdfs  -> [1,1] -> (hdfs, 2)
+  "hdfs yarn"  -> (hdfs,1)(yarn,1) ──▶ spark -> [1,1] -> (spark, 2)
+  "spark"      -> (spark,1)            yarn  -> [1]   -> (yarn, 1)
 ```
 
-**O modo ANSI vem ligado por padrão no Spark 4**: um `cast` inválido gera erro em vez de retornar nulo.
+| Etapa | Quem escreve | Paralelismo |
+|-----|--------------|-------------|
+| Map | Você | Uma task por bloco de entrada |
+| Shuffle & Sort | O framework | `hash(chave) % R` escolhe o reducer |
+| Reduce | Você | R tasks, com chaves **ordenadas** |
 
-| Operação | Falha com valor inválido | Retorna nulo |
-|---------|-------------------------|--------------|
-| Conversão de tipo | `col.cast("int")` | `col.try_cast("int")` |
-| Texto para timestamp | `F.to_timestamp(c, fmt)` | `F.try_to_timestamp(c, F.lit(fmt))` |
-| Divisão | `a / b` | `F.try_divide(a, b)` |
+O mesmo que um `groupBy` do Spark: map é o stage antes do `Exchange`, reduce o stage depois.
 
 ---
 
-## Regras de qualidade e quarentena
+## Hadoop Streaming: MapReduce em Python
 
-Em vez de apagar registros ruins, guarde-os **com o motivo**: permite medir a qualidade da fonte, avisar o time de origem e reprocessar.
+Qualquer programa que leia stdin e escreva stdout. Dá para testar um job inteiro no terminal:
+
+```bash
+cat input | python mapper.py | sort | python reducer.py
+```
 
 ```python
-RULES = {
-    "preco_invalido":      F.col("price").isNull() | (F.col("price") <= 0),
-    "quantidade_invalida": F.col("quantity").isNull() | (F.col("quantity") <= 0),
-}
-errors = F.array_compact(F.array(*[F.when(c, F.lit(n)) for n, c in RULES.items()]))
-df = df.withColumn("_errors", errors)
-valid    = df.filter(F.size("_errors") == 0).drop("_errors")
-rejected = df.filter(F.size("_errors") > 0)
+# mapper.py
+for line in sys.stdin:
+    for word in re.findall(r"[a-z]+", line.lower()):
+        print(f"{word}\t1")
+
+# reducer.py: a entrada está ordenada, cada chave chega junta
+current, count = None, 0
+for line in sys.stdin:
+    word, n = line.rstrip("\n").split("\t")
+    if word != current:
+        if current is not None:
+            print(f"{current}\t{count}")
+        current, count = word, 0
+    count += int(n)
+if current is not None:
+    print(f"{current}\t{count}")
 ```
 
 ---
 
-## Escrita particionada
+## O mesmo word count no Spark
 
 ```python
-(silver_df
- .repartition("order_date")      # all rows of a day in the same task
- .write.mode("overwrite")
- .partitionBy("order_date")
- .parquet(SILVER))
-```
+# RDD: a API original, imita map/reduce
+(sc.textFile(CORPUS)
+   .flatMap(lambda line: re.findall(r"[a-z]+", line.lower()))
+   .map(lambda w: (w, 1))
+   .reduceByKey(lambda a, b: a + b))
 
-- Boas colunas de partição têm **baixa cardinalidade** e são **usadas em filtros**
-- Cada task escreve um arquivo por partição que encontrar: sem o `repartition`, surge o problema dos **arquivos pequenos**
+# DataFrame
+(spark.read.text(CORPUS)
+   .select(F.explode(F.split(F.lower("value"), " ")).alias("word"))
+   .groupBy("word").count())
+```
 
 ---
 
-## Pruning no plano
+## Por que o Spark substituiu o MapReduce
 
-| Mecanismo | Campo no plano | Efeito |
-|---|---|---|
-| Partition pruning | `PartitionFilters` | Pula pastas inteiras |
-| Predicate pushdown | `PushedFilters` | Pula blocos dentro dos arquivos |
-| Column pruning | `ReadSchema` | Lê só as colunas usadas |
+```
+  MapReduce: HDFS ─▶ [job 1] ─▶ HDFS ─▶ [job 2] ─▶ HDFS ─▶ ...
+  Spark:     HDFS ─▶ [stage 1] ─shuffle─▶ [stage 2] ─▶ HDFS
+```
+
+| | MapReduce | Spark |
+|-|-----------|-------|
+| Entre etapas | Escreve no HDFS (disco + replicação) | Memória / disco local |
+| Algoritmos iterativos | Um job por iteração | Dados em cache entre iterações |
+| API | Só map e reduce | DataFrames, SQL, streaming, ML |
+| Otimizador | Nenhum | Catalyst + AQE |
 
 ---
 
-## Reprocessar e Gold
+## YARN: quem roda onde
 
-```python
-spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
-day3.repartition("order_date").write.mode("overwrite") \
-    .partitionBy("order_date").parquet(SILVER)
+| YARN | Spark |
+|------|-------|
+| ResourceManager | O "master" do cluster |
+| ApplicationMaster | No modo `cluster`, o driver roda dentro dele |
+| Container | Cada **executor** é um container |
+| Filas | Limitam quanto cada time pode usar |
+
+Do lado do Spark, a principal mudança é o `--master` (`local[*]`, `yarn`, `k8s://...`, `spark://...`):
+
+```bash
+spark-submit --master yarn --deploy-mode cluster \
+  --num-executors 10 --executor-cores 4 --executor-memory 8g \
+  --queue analytics pipeline_silver.py
 ```
 
-::: {.callout-warning}
-Com o modo padrão `static`, o mesmo comando **apagaria todos os outros dias**.
-:::
+---
+
+## Mão na massa: HDFS de um nó
+
+NameNode e DataNode em uma máquina: o mesmo software de um cluster de 1.000 nós.
+
+```bash
+hdfs namenode -format -force -nonInteractive
+hdfs --daemon start namenode
+hdfs --daemon start datanode
+
+hdfs dfs -mkdir -p /aula9/raw
+hdfs dfs -put -f corpus.txt /aula9/raw/corpus.txt
+hdfs dfs -D dfs.blocksize=4194304 -put -f corpus.txt /aula9/raw/corpus_4mb.txt
+hdfs dfs -ls -h /aula9/raw
+hdfs fsck /aula9/raw/corpus_4mb.txt -files -blocks -locations
+```
+
+Os blocos são arquivos `blk_<id>` comuns no disco do DataNode. O NameNode nunca vê o conteúdo.
+
+---
+
+## Spark e Pandas no HDFS
 
 ```python
-gold_daily = (sales.groupBy("order_date", "region", "category")
-    .agg(F.count("*").alias("orders"),
-         F.round(F.sum("revenue"), 2).alias("revenue")))
+# Spark: o HDFS é só mais um esquema de URL
+HDFS = "hdfs://localhost:9000"
+words = (spark.read.text(f"{HDFS}/aula9/raw/corpus.txt")
+         .select(F.explode(F.split("value", " ")).alias("word"))
+         .groupBy("word").count())
+words.write.mode("overwrite").parquet(f"{HDFS}/aula9/gold/wordcount")
+
+# Pandas via PyArrow (libhdfs)
+hdfs = pafs.HadoopFileSystem("localhost", 9000)
+wc = pq.read_table("/aula9/gold/wordcount", filesystem=hdfs).to_pandas()
+
+# Sem libhdfs: WebHDFS, a API REST
+requests.get("http://localhost:9870/webhdfs/v1/aula9/raw?op=LISTSTATUS").json()
 ```
+
+O marcador `_SUCCESS` indica que a saída está completa. O Spark também o escreve, herança do Hadoop.
+
+---
+
+## Hadoop hoje {.smaller}
+
+A maior mudança: **separar armazenamento e processamento**. Object storage barato o tempo todo; clusters que sobem e descem por job.
+
+| Componente | Situação |
+|-----------|--------|
+| **HDFS** | Ainda forte on-premise; na nuvem, substituído por object storage |
+| **MapReduce** | Praticamente só em sistemas legados |
+| **YARN** | Ainda muito usado (inclusive no AWS EMR); Kubernetes cresce rápido |
+| **API FileSystem** | **Onipresente**: é como Spark, Hive, Trino e Flink acessam S3/GCS/ADLS |
+| **Parquet/ORC** | O padrão de armazenamento analítico |
+
+---
+
+## Resumo {.smaller}
+
+| Conceito | Hadoop | No Spark |
+|---------|--------|----------|
+| Arquivos distribuídos | HDFS: blocos de 128 MB, 3 réplicas | `hdfs://` via API FileSystem |
+| Processamento | MapReduce: map, shuffle e sort, reduce | Stages separados por shuffles |
+| Recursos | YARN: ResourceManager, containers | `--master yarn`, executors = containers |
+| Código até os dados | Localidade de blocos | `Locality Level` na Spark UI |
+| Saída concluída | Marcador `_SUCCESS` | O mesmo marcador |
+| Configurações | `core-site.xml`, `hdfs-site.xml` | `spark.hadoop.*` |
+| Nuvem | Conectores S3A, GCS, ABFS | `s3a://`, `gs://`, `abfs://` |

@@ -8,16 +8,16 @@ nav_order: 8
 layout: default
 ---
 
-# Clase 8: Delta Lake
+# Clase 8: ETL con Arquitectura Medallion
 {: .no_toc }
 
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* El log de transacciones
->* MERGE y time travel
->* Schema enforcement y evolution
->* OPTIMIZE y VACUUM
+>* Data warehouse, data lake y lakehouse
+>* Capas Bronze, Silver y Gold
+>* Reglas de calidad y cuarentena
+>* Parquet particionado y pruning
 
 
 ### Slides

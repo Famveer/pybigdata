@@ -1,5 +1,5 @@
 ---
-title: "When Not to Use Spark"
+title: "Distributed Machine Learning with MLlib"
 subtitle: "BigData with PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: en
@@ -19,241 +19,124 @@ format:
 
 ## What you will learn
 
-- What makes Polars and DuckDB fast
-- The same query in five tools: time, memory and syntax
-- Pandas API on Spark to migrate Pandas code
-- Apache Arrow to exchange data between tools
-- Clear criteria for choosing
+- Transformer, Estimator and Pipeline
+- Feature preparation: nulls, categories and vectors
+- Train and evaluate a classifier (customer churn)
+- Choosing the decision threshold
+- Cross-validation, saving models, batch and streaming scoring
 
 ---
 
-## The tools {.smaller}
+## When to use MLlib
 
-| | Pandas | Polars | DuckDB | Pandas API on Spark | Spark |
-|-|--------|--------|--------|---------------------|-------|
-| Interface | Python | Python (expressions) | **SQL** | Pandas syntax | DataFrame + SQL |
-| Engine | NumPy/C | Rust | C++ | Spark | Spark (JVM) |
-| Execution | Eager | Eager **or lazy** | Lazy | Lazy | Lazy |
-| Cores used | **1** (most operations) | All | All | All / cluster | All / cluster |
-| Data larger than RAM | No | Yes (streaming) | Yes (spill) | Yes | Yes |
-| Many machines | No | No | No | **Yes** | **Yes** |
+| | scikit-learn | Spark MLlib |
+|-|-------------|-------------|
+| Data | Fits in one machine's memory | Distributed, no practical limit |
+| Input | NumPy / Pandas | Spark DataFrame |
+| Features | A matrix `X` | **One vector column** (`features`) |
+| Algorithms | Very broad | The main ones: linear, trees, ensembles, clustering, ALS |
 
----
-
-## Why Polars and DuckDB are fast
-
-| Technique | Idea |
-|---------|------|
-| **Columnar storage** (Arrow) | Values of a column sit together in memory |
-| **Vectorized execution** | Batches of thousands of values per instruction |
-| **Parallelism** | Work is split across all cores |
-| **Query optimization** | Pushes filters down, reads only the columns used |
-| **Out-of-core** | Uses disk when RAM runs out |
-
-The same ideas as Spark, **without the cost of coordinating a cluster**.
+Rule of thumb: if training data fits on one machine, scikit-learn is usually simpler.
 
 ---
 
-## Spark's fixed cost
+## Three core concepts
 
-```
-  Pandas / Polars / DuckDB        Spark
-  ┌──────────────────────┐        ┌───────────────────────────────┐
-  │ Python process       │        │ Python ─py4j─▶ JVM (driver)   │
-  │ └─ native library    │        │   ├─ planning (Catalyst)      │
-  │    reads, computes,  │        │   ├─ jobs, stages, tasks      │
-  │    returns           │        │   ├─ shuffle (disk)           │
-  └──────────────────────┘        │   └─ result ─▶ Python         │
-                                  └───────────────────────────────┘
-  ~ milliseconds                  ~ hundreds of ms to seconds
-```
+| Concept | What it is | Method |
+|---------|-----------|--------|
+| **Transformer** | Takes a DataFrame and returns one with new columns | `.transform(df)` |
+| **Estimator** | Learns from data and produces a Transformer | `.fit(df)` |
+| **Pipeline** | Sequence of stages; itself an Estimator | `.fit(df)` gives a `PipelineModel` |
 
-Irrelevant with 1 TB on 50 machines. With 2 GB on a laptop, it dominates.
+::: {.callout-important}
+Everything learned from data is fitted **on the training set only**. Otherwise, the evaluation is optimistic (*data leakage*). The Pipeline guarantees this.
+:::
 
 ---
 
-## The same query: Pandas and Polars
+## Feature preparation
+
+| Column | Problem | Stage |
+|--------|---------|-------|
+| `last_rating`, `monthly_spend` | Nulls | `Imputer` (median) |
+| `plan`, `region` | Text | `StringIndexer` + `OneHotEncoder` |
+| All | Many columns | `VectorAssembler` |
+| Numeric | Different scales | `StandardScaler` |
 
 ```python
-# Pandas: each step runs right away
-o = pd.read_parquet(ORDERS, columns=["customer_id", "product_id",
-                                     "quantity", "price", "order_date"])
-o = o[o["order_date"] >= CUTOFF]
-o = o.assign(revenue=o["price"] * o["quantity"])
-df = o.merge(c, on="customer_id").merge(p, on="product_id")
-df.groupby(["segment", "category"], as_index=False) \
-  .agg(orders=("revenue", "size"), revenue=("revenue", "sum"))
+train, test = customers.randomSplit([0.8, 0.2], seed=42)   # before any preparation
 
-# Polars: builds a plan, runs at collect()
-(pl.scan_parquet(ORDERS)
-   .filter(pl.col("order_date") >= pl.date(2024, 7, 1))
-   .with_columns(revenue=pl.col("price") * pl.col("quantity"))
-   .join(c, on="customer_id").join(p, on="product_id")
-   .group_by("segment", "category")
-   .agg(orders=pl.len(), revenue=pl.col("revenue").sum())
-   .collect())
+lr = LogisticRegression(featuresCol="features", labelCol="churn", maxIter=50)
+pipeline = Pipeline(stages=[imputer, indexer, encoder, assembler, scaler, lr])
+model = pipeline.fit(train)
+pred  = model.transform(test)
 ```
 
 ---
 
-## The same query: DuckDB and Spark
+## Evaluation {.smaller}
+
+| Metric | Question | When it matters |
+|--------|----------|-----------------|
+| **AUC-ROC** | Does the model rank customers well by risk? | Comparing models, regardless of threshold |
+| **AUC-PR** | Same, focused on the positive class | Imbalanced classes |
+| **Precision** | Of those flagged as churn, how many were? | Cost of contacting a customer needlessly |
+| **Recall** | Of the actual churners, how many did I find? | Cost of losing a customer |
+| **Accuracy** | How many did I get right overall? | Misleading with imbalanced classes |
+
+The 0.5 threshold is rarely ideal: choosing it is a **business decision**.
+
+---
+
+## Comparing models
+
+| | Logistic regression | Random Forest | Gradient-Boosted Trees |
+|-|---------------------|---------------|------------------------|
+| Relationships | Linear | Non-linear | Non-linear |
+| Interpretation | Coefficients | Feature importance | Feature importance |
+| Training | Fast | Parallel (independent trees) | Sequential (slower) |
+| Overfitting risk | Low | Medium | Higher, needs tuning |
+
+::: {.callout-tip}
+The most complex model is not automatically the best: always compare against a simple baseline.
+:::
+
+---
+
+## Cross-validation
+
+```
+  params 1:  [train ][train ][valid ]  -> AUC_1
+             [train ][valid ][train ]  -> AUC_2
+             [valid ][train ][train ]  -> AUC_3   => mean
+  params 2:  ...                                  => mean
+```
 
 ```python
-# DuckDB: plain SQL over the files, no read step
-duckdb.sql(f"""
-    SELECT c.segment, p.category, COUNT(*) AS orders,
-           SUM(o.price * o.quantity) AS revenue
-    FROM '{ORDERS}' o
-    JOIN '{CUSTOMERS}' c USING (customer_id)
-    JOIN '{PRODUCTS}'  p USING (product_id)
-    WHERE o.order_date >= DATE '{CUTOFF}'
-    GROUP BY ALL
-""").df()
-
-# Spark
-(spark.read.parquet(ORDERS)
-   .filter(F.col("order_date") >= CUTOFF)
-   .withColumn("revenue", F.col("price") * F.col("quantity"))
-   .join(c, "customer_id").join(p, "product_id")
-   .groupBy("segment", "category")
-   .agg(F.count("*").alias("orders"), F.sum("revenue").alias("revenue")))
+grid = (ParamGridBuilder()
+        .addGrid(lr.regParam, [0.0, 0.01, 0.1])
+        .addGrid(lr.elasticNetParam, [0.0, 1.0]).build())
+cv = CrossValidator(estimator=pipeline, estimatorParamMaps=grid,
+                    evaluator=BinaryClassificationEvaluator(labelCol="churn"),
+                    numFolds=3, parallelism=2, seed=42)
+best = cv.fit(train).bestModel
 ```
 
 ---
 
-## Reading the results
+## Save and serve
 
-Numbers vary by machine, but the order tends to repeat:
-
-- **Polars and DuckDB** are usually the fastest
-- **Pandas** joins on a single core and materializes every step
-- **Spark** pays its fixed cost: planning, tasks, transfer to Python
-- **Pandas API on Spark** adds the translation of Pandas semantics: built to scale, not for speed on one machine
-
-**Memory:** Pandas usually breaks from lack of RAM long before it gets too slow. Old rule of thumb: reserve 5 to 10 times the data size.
-
----
-
-## As the volume grows
-
-Same query with 1, 5 and 20 million rows:
-
-- Spark's fixed cost weighs most at small volumes; the relative gap shrinks as data grows
-- Pandas grows faster than the others and at some point no longer fits in memory
-- Polars and DuckDB grow slowly: all cores, no intermediate materialization
-
-**The curve a notebook cannot show:** Spark on a cluster. With 10 machines, the same code processes 10 times more data in the same time.
-
----
-
-## Pandas API on Spark {.smaller}
-
-Use case: **migration**. Working Pandas code whose data no longer fits on one machine.
+A saved `PipelineModel` contains **all stages**, so whoever loads it applies the same preparation. It also works on streaming DataFrames.
 
 ```python
-import pyspark.pandas as ps          # instead of: import pandas as pd
-df = ps.read_parquet(path)
-df.groupby("x")["y"].mean()          # same code
+best.write().overwrite().save(MODEL_PATH)
+loaded = PipelineModel.load(MODEL_PATH)
+
+stream = spark.readStream.schema(schema).json(STREAM_IN)
+q = (loaded.transform(stream)
+     .select("customer_id",
+             F.round(vector_to_array("probability")[1], 3).alias("p_churn"))
+     .filter("p_churn >= 0.5")
+     .writeStream.format("memory").queryName("at_risk")
+     .outputMode("append").start())
 ```
-
-| Topic | Pandas | Pandas API on Spark |
-|------|--------|---------------------|
-| Index | Always there | Must be **generated**; its type affects performance |
-| Row order | Guaranteed | Not guaranteed after distributed operations |
-| `iterrows`, `.to_numpy()` | Normal | Bring **everything** to the driver |
-| Spark 4 ANSI mode | — | Must be off |
-
----
-
-## The default index
-
-`compute.default_index_type`:
-
-| Type | How it is generated | Cost |
-|------|---------------|------|
-| `sequence` (default) | 0, 1, 2... **in a single partition** | Bottleneck: one task sees all the data |
-| `distributed-sequence` | 0, 1, 2... computed per partition | Medium: one extra job |
-| `distributed` | Increasing, **not consecutive** IDs | Low: use it when the index does not matter |
-
----
-
-## Polars: eager or lazy
-
-`pl.read_parquet` runs each step at once. `pl.scan_parquet` builds a plan that runs at `.collect()`.
-
-| PySpark | Polars |
-|---------|--------|
-| `F.col("x")` | `pl.col("x")` |
-| `df.withColumn("y", expr)` | `df.with_columns(y=expr)` |
-| `df.groupBy("k").agg(...)` | `df.group_by("k").agg(...)` |
-| `F.when(c, a).otherwise(b)` | `pl.when(c).then(a).otherwise(b)` |
-| `F.sum("x").over(Window.partitionBy("k"))` | `pl.col("x").sum().over("k")` |
-
-`lazy.explain()` shows predicate and column pruning. `collect(engine="streaming")` handles data larger than memory.
-
----
-
-## DuckDB: analytics inside your process
-
-No server, like SQLite, but optimized for analytical queries.
-
-```python
-# 1) SQL over files (Parquet, CSV, JSON, wildcards, S3)
-duckdb.sql(f"SELECT region, AVG(price) FROM '{ORDERS}' GROUP BY region")
-
-# 2) SQL over a DataFrame in memory: the variable name becomes a table
-regions_pd = pd.DataFrame({"region": REGIONS, "manager": managers})
-duckdb.sql(f"SELECT * FROM '{ORDERS}' JOIN regions_pd USING (region)").pl()
-
-# 3) Out-of-core: spills to disk instead of breaking
-con = duckdb.connect()
-con.sql("SET memory_limit = '300MB'")
-con.sql(f"SET temp_directory = '{BASE}/duckdb_tmp'")
-```
-
----
-
-## Apache Arrow: the common language
-
-```
-                  ┌───────────────┐
-  Pandas ◀──────▶ │               │ ◀──────▶ Polars
-                  │ Apache Arrow  │
-  DuckDB ◀──────▶ │ (columnar, in │ ◀──────▶ Spark
-                  │  memory)      │
- Parquet ◀──────▶ │               │ ◀──────▶ ML
-                  └───────────────┘
-```
-
-In PySpark 4.0, Arrow is **off by default** for `toPandas()` and `createDataFrame(pandas_df)`. Turn it on:
-
-```python
-.config("spark.sql.execution.arrow.pyspark.enabled", "true")
-```
-
----
-
-## How to decide
-
-| Situation | Tool |
-|----------|------------|
-| Tens of GB to TB, or data that will grow a lot | Spark |
-| Streaming, Delta Lake, MLlib, an existing cluster | Spark |
-| Pandas code that no longer fits in memory | Pandas API on Spark |
-| Up to tens of GB on one machine, SQL team | DuckDB |
-| Up to tens of GB on one machine, Python pipeline | Polars |
-| Quick exploration, a few MB | Pandas |
-
-Spark is not only speed: it brings **fault tolerance, horizontal scale and an ecosystem**.
-
----
-
-## Summary {.smaller}
-
-| | Pandas | Polars | DuckDB | Pandas API on Spark | Spark |
-|-|--------|--------|--------|---------------------|-------|
-| Best for | Exploration, small data | Python pipelines, 1 machine | Analytical SQL, 1 machine | Scaling Pandas code | Distributed data, ecosystem |
-| Read Parquet | `pd.read_parquet` | `pl.scan_parquet` | `FROM 'file.parquet'` | `ps.read_parquet` | `spark.read.parquet` |
-| Aggregate | `groupby().agg()` | `group_by().agg()` | `GROUP BY` | `groupby().agg()` | `groupBy().agg()` |
-| See the plan | — | `.explain()` | `EXPLAIN` | `.spark.explain()` | `.explain()` |
-| To Pandas | — | `.to_pandas()` | `.df()` | `.to_pandas()` | `.toPandas()` |

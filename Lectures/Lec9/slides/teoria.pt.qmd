@@ -1,5 +1,5 @@
 ---
-title: "Structured Streaming"
+title: "Delta Lake"
 subtitle: "Big Data com PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: pt
@@ -19,138 +19,118 @@ format:
 
 ## O que você vai aprender
 
-- O modelo de tabela ilimitada e o micro-batch
-- Sources, sinks, output modes e triggers
-- Agregar por **tempo do evento** com janelas
-- Tratar dados atrasados com **watermark**
-- Tolerância a falhas com **checkpoint**
+- Os limites do Parquet puro
+- O log de transações e as escritas ACID
+- `MERGE`, time travel e schema enforcement
+- `DELETE`, `UPDATE`, `RESTORE`, `OPTIMIZE` e `VACUUM`
 
 ---
 
-## Batch vs streaming
+## Os limites do Parquet puro
 
-| | Batch | Streaming |
-|-|-------|-----------|
-| Dados | Conjunto fechado | Fluxo sem fim |
-| Execução | Roda uma vez e termina | Roda continuamente |
-| Leitura | `spark.read` | `spark.readStream` |
-| Escrita | `df.write` | `df.writeStream` |
-| Latência típica | Minutos a horas | Segundos |
-
----
-
-## A tabela ilimitada
-
-O fluxo é uma **tabela que cresce sem parar**. Você escreve a consulta como se fosse sobre a tabela inteira; o Spark a executa **de forma incremental**.
-
-```
-   source     [e1 e2]        [e3 e4 e5]        [e6]
-                 │               │               │
-   query      groupBy        groupBy        groupBy
-                 │               │               │
-   result     [A:2]          [A:3 B:2]      [A:3 B:3]
-```
-
-```
-   SOURCE ──▶ TRANSFORMATIONS ──▶ SINK
-              CHECKPOINT: processed offsets + aggregation state
-              TRIGGER   : when each micro-batch runs
-```
+| Problema | Exemplo |
+|---------|---------|
+| **Sem atomicidade** | O job falha no meio do `overwrite`: a tabela fica pela metade |
+| **Sem UPDATE/MERGE** | Uma atualização de status obriga a reescrever a partição ou a tabela |
+| **Leituras inconsistentes** | Um leitor vê arquivos antigos e novos misturados durante a escrita |
+| **Sem histórico** | Não dá para ver como a tabela estava ontem |
+| **Schema sem proteção** | Um arquivo com colunas diferentes corrompe a tabela silenciosamente |
 
 ---
 
-## Modos de saída
+## O log de transações
 
-| Modo | O que é escrito em cada micro-batch | Uso típico |
-|------|-----------------------------|-------------|
-| `append` | Só linhas novas que **não mudarão mais** | Eventos sem agregação; janelas fechadas pelo watermark |
-| `update` | Só linhas do resultado que **mudaram** | Dashboards, upserts |
-| `complete` | O resultado **inteiro**, de novo | Agregações pequenas |
+```
+  silver_delta/
+  ├── _delta_log/
+  │   ├── 00000000000000000000.json   <- v0: add files A, B, C
+  │   ├── 00000000000000000001.json   <- v1: remove B, add D   (MERGE)
+  │   └── 00000000000000000002.json   <- v2: remove A          (DELETE)
+  ├── order_date=2024-07-01/part-....parquet
+  └── order_date=2024-07-02/part-....parquet
+```
 
-**Processing time:** quando o Spark recebeu o evento. **Event time:** quando ele aconteceu. Para métricas de negócio quase sempre queremos event time, o que exige lidar com dados atrasados.
+Os dados continuam em Parquet. O log diz **quais arquivos formam cada versão**. Escrever é atômico: ou o arquivo de log da nova versão existe, ou a versão não aconteceu.
 
 ---
 
-## Fontes de arquivos: dois cuidados
-
-- **O schema é obrigatório:** precisa ser estável durante toda a vida da consulta
-- **Os arquivos devem aparecer completos:** escreva em outra pasta e depois **mova** (atômico no mesmo sistema de arquivos)
+## MERGE (upsert)
 
 ```python
-orders_stream = (spark.readStream.schema(event_schema)
-                 .option("maxFilesPerTrigger", 1).json(INPUT))
-
-q = (orders_stream.groupBy("region").count()
-     .writeStream.format("memory").queryName("by_region")
-     .outputMode("complete").start())
+(orders_dt.alias("t")
+ .merge(updates.alias("s"), "t.order_id = s.order_id")
+ .whenMatchedUpdateAll(condition="s.updated_at > t.updated_at")
+ .whenNotMatchedInsertAll()
+ .execute())
 ```
+
+A condição `s.updated_at > t.updated_at` protege contra dados atrasados: um evento antigo que chega depois não sobrescreve um estado mais novo.
 
 ---
 
-## Janelas
+## Histórico e time travel
+
+Cada operação gera uma nova versão. As antigas continuam legíveis até serem removidas pelo `VACUUM`.
 
 ```python
-.groupBy(F.window("event_time", "5 minutes"))                # tumbling
-.groupBy(F.window("event_time", "10 minutes", "5 minutes"))  # sliding
-```
+orders_dt.history().select("version", "timestamp", "operation").show()
 
-```
-  Tumbling (5 min)                         Sliding (10 min, every 5 min)
-  |10:00-10:05|10:05-10:10|10:10-10:15|    |10:00-------10:10|
-                                                 |10:05-------10:15|
-  each event falls in 1 window             each event falls in 2 windows
+v0 = spark.read.format("delta").option("versionAsOf", 0).load(SILVER_DELTA)
+
+spark.sql(f"SELECT status, COUNT(*) FROM delta.`{SILVER_DELTA}` "
+          "VERSION AS OF 0 GROUP BY status")
 ```
 
 ---
 
-## Watermark
+## Schema enforcement & evolution
 
+O Delta **recusa** escritas com schema incompatível. Mudanças intencionais são explícitas:
+
+```python
+(with_coupon.write.format("delta")
+ .mode("append")
+ .option("mergeSchema", "true")     # old rows get null
+ .save(SILVER_DELTA))
 ```
-  watermark = latest event_time seen − tolerated delay
-
-  tolerated delay 5 min, latest event_time = 10:11  ->  watermark = 10:06
-
-  - window 10:00-10:05 -> end < watermark: closed, emitted, state released
-  - event at 10:07     -> window 10:05-10:10 still open: accepted
-  - event at 10:02     -> its window is closed: dropped
-```
-
-**Trade-off:** um atraso maior aceita mais eventos atrasados, mas segura mais estado em memória e atrasa os resultados.
 
 ---
 
-## Checkpoint
+## DELETE, UPDATE & RESTORE
 
-```
-  checkpoint/
-  ├── offsets/    <- what each micro-batch will read (written BEFORE processing)
-  ├── commits/    <- which micro-batches finished    (written AFTER the sink)
-  ├── sources/    <- files already seen by the source
-  └── state/      <- aggregation and window state
+```python
+orders_dt.restoreToVersion(merge_version)
+orders_dt.delete(F.col("customer_id") == customer)
+orders_dt.update(
+    condition="status = 'created' AND created_at < '2024-07-03'",
+    set={"status": F.lit("expired")},
+)
 ```
 
-Reiniciar com o **mesmo checkpoint** continua de onde parou. Com um sink transacional (arquivos do Spark, Delta), a garantia é **exactly-once**. Cada consulta precisa do seu próprio checkpoint.
+::: {.callout-warning}
+Depois de um `DELETE`, os dados ainda existem nos arquivos Parquet das versões antigas e o time travel consegue lê-los. Para a exclusão ser real (ex.: LGPD), é preciso rodar `VACUUM`.
+:::
 
 ---
 
-## Triggers
+## OPTIMIZE & VACUUM
 
-| Trigger | Comportamento | Uso |
-|---------|----------|-----|
-| (padrão) | Novo micro-batch assim que o anterior termina | Menor latência |
-| `processingTime="1 minute"` | Um micro-batch a cada intervalo | Controlar custo e tamanho dos arquivos |
-| `availableNow=True` | Processa **tudo que está disponível** e **para** | Ingestão incremental agendada |
-| `continuous="1 second"` | Contínuo, sem micro-batch (experimental) | Latência de milissegundos, operações simples |
+| Comando | O que faz | Quando |
+|---------|-------------|--------|
+| `OPTIMIZE` | Compacta arquivos pequenos em maiores | Após muitos MERGEs/appends |
+| `OPTIMIZE ... ZORDER BY (col)` | Também reorganiza os dados para pular mais blocos em filtros por `col` | Colunas muito filtradas, fora da partição |
+| `VACUUM` | Apaga arquivos que nenhuma versão recente usa | Periodicamente; o padrão mantém 7 dias |
 
 ---
 
-## Outras operações {.smaller}
+## Resumo
 
-| Operação | Suporte | Observação |
-|-----------|---------|------|
-| `select`, `filter`, `withColumn` | Sim | Iguais ao batch |
-| Join stream + estático | Sim | Enriquecimento com dimensões |
-| Join stream + stream | Sim | Watermark nos dois lados e condição de tempo |
-| `dropDuplicatesWithinWatermark` | Sim (3.5+) | Deduplicação com estado limitado |
-| `orderBy` | Só após agregação em `complete` | Ordenar um fluxo infinito não faz sentido |
-| `show()`, `collect()` | Não | Use um sink (memory, foreachBatch) |
+| Delta Lake | Comando |
+|------------|---------|
+| Upsert | `DeltaTable.merge(...).whenMatchedUpdateAll().whenNotMatchedInsertAll()` |
+| Histórico | `.history()` / `DESCRIBE HISTORY` |
+| Time travel | `.option("versionAsOf", n)` / `VERSION AS OF n` |
+| Desfazer | `.restoreToVersion(n)` |
+| Evoluir schema | `.option("mergeSchema", "true")` |
+| Compactar | `.optimize().executeCompaction()` / `.executeZOrderBy(col)` |
+| Limpar versões antigas | `.vacuum(horas)` |

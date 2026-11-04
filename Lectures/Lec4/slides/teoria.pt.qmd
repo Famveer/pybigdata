@@ -118,5 +118,3 @@ sdf.rdd.getNumPartitions()
 sdf.repartition(4, "category")     # full shuffle, evenly distributed
 sdf.coalesce(2)                    # no full shuffle, less balanced
 ```
-
-A próxima aula abre o que acontece por trás de cada um desses comandos.

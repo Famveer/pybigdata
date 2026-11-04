@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Delta Lake</title>
+  <title>Pipeline ETL com Arquitetura Medallion</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,7 +194,7 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Delta Lake</h1>
+  <h1 class="title">Pipeline ETL com Arquitetura Medallion</h1>
   <p class="subtitle">Big Data com PySpark</p>
 
 <div class="quarto-title-authors">
@@ -209,95 +209,260 @@ Felipe A. Moreno-Vera
 <section id="o-que-você-vai-aprender" class="slide level2">
 <h2>O que você vai aprender</h2>
 <ul>
-<li>Os limites do Parquet puro</li>
-<li>O log de transações e as escritas ACID</li>
-<li><code>MERGE</code>, time travel e schema enforcement</li>
-<li><code>DELETE</code>, <code>UPDATE</code>, <code>RESTORE</code>, <code>OPTIMIZE</code> e <code>VACUUM</code></li>
+<li>Data warehouse, data lake e lakehouse</li>
+<li>Arquitetura Medallion: Bronze, Silver e Gold</li>
+<li>Ingerir CSV e JSON com problemas reais</li>
+<li>Regras de qualidade e quarentena</li>
+<li>Parquet particionado e <em>partition pruning</em></li>
 </ul>
 </section>
-<section id="os-limites-do-parquet-puro" class="slide level2">
-<h2>Os limites do Parquet puro</h2>
+<section id="warehouse-lake-lakehouse" class="slide level2">
+<h2>Warehouse, lake &amp; lakehouse</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 50%">
-<col style="width: 50%">
+<col style="width: 2%">
+<col style="width: 41%">
+<col style="width: 28%">
+<col style="width: 28%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Problema</th>
-<th>Exemplo</th>
+<th></th>
+<th>Data Warehouse</th>
+<th>Data Lake</th>
+<th>Lakehouse</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Sem atomicidade</strong></td>
-<td>O job falha no meio do <code>overwrite</code>: a tabela fica pela metade</td>
+<td>Armazena</td>
+<td>Tabelas estruturadas</td>
+<td>Arquivos de qualquer tipo</td>
+<td>Arquivos abertos + camada de tabela</td>
 </tr>
 <tr class="even">
-<td><strong>Sem UPDATE/MERGE</strong></td>
-<td>Uma atualização de status obriga a reescrever a partição ou a tabela</td>
+<td>Formato</td>
+<td>Proprietário</td>
+<td>CSV, JSON, Parquet…</td>
+<td>Parquet + log de transações</td>
 </tr>
 <tr class="odd">
-<td><strong>Leituras inconsistentes</strong></td>
-<td>Um leitor vê arquivos antigos e novos misturados durante a escrita</td>
+<td>Custo</td>
+<td>Alto</td>
+<td>Baixo (object storage)</td>
+<td>Baixo</td>
 </tr>
 <tr class="even">
-<td><strong>Sem histórico</strong></td>
-<td>Não dá para ver como a tabela estava ontem</td>
+<td>Transações (ACID)</td>
+<td>Sim</td>
+<td>Não</td>
+<td>Sim</td>
 </tr>
 <tr class="odd">
-<td><strong>Schema sem proteção</strong></td>
-<td>Um arquivo com colunas diferentes corrompe a tabela silenciosamente</td>
+<td>UPDATE / DELETE</td>
+<td>Sim</td>
+<td>Difícil (reescrever arquivos)</td>
+<td>Sim</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="o-log-de-transações" class="slide level2">
-<h2>O log de transações</h2>
-<pre><code>  silver_delta/
-  ├── _delta_log/
-  │   ├── 00000000000000000000.json   &lt;- v0: add files A, B, C
-  │   ├── 00000000000000000001.json   &lt;- v1: remove B, add D   (MERGE)
-  │   └── 00000000000000000002.json   &lt;- v2: remove A          (DELETE)
-  ├── order_date=2024-07-01/part-....parquet
-  └── order_date=2024-07-02/part-....parquet</code></pre>
-<p>Os dados continuam em Parquet. O log diz <strong>quais arquivos formam cada versão</strong>. Escrever é atômico: ou o arquivo de log da nova versão existe, ou a versão não aconteceu.</p>
+<section id="arquitetura-medallion" class="slide level2">
+<h2>Arquitetura Medallion</h2>
+<pre><code>  SOURCES          BRONZE             SILVER              GOLD
+  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
+  APIs, CDC        + metadata         typed, validated    BI / ML / API
+                   all strings        no duplicates
+                                 └──▶ QUARANTINE (rejected)</code></pre>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 51%">
+<col style="width: 31%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Camada</th>
+<th>Pergunta que responde</th>
+<th>Regra de ouro</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Bronze</strong></td>
+<td>O que exatamente chegou?</td>
+<td>Nunca descartar nada. Permite reprocessar.</td>
+</tr>
+<tr class="even">
+<td><strong>Silver</strong></td>
+<td>Qual é a versão correta de cada registro?</td>
+<td>Tipos certos, uma linha por entidade, regras aplicadas.</td>
+</tr>
+<tr class="odd">
+<td><strong>Gold</strong></td>
+<td>O que o negócio precisa ver?</td>
+<td>Agregações e métricas, modeladas para o consumo.</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="merge-upsert" class="slide level2">
-<h2>MERGE (upsert)</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>(orders_dt.alias(<span class="st">"t"</span>)</span>
-<span id="cb2-2"><a href=""></a> .merge(updates.alias(<span class="st">"s"</span>), <span class="st">"t.order_id = s.order_id"</span>)</span>
-<span id="cb2-3"><a href=""></a> .whenMatchedUpdateAll(condition<span class="op">=</span><span class="st">"s.updated_at &gt; t.updated_at"</span>)</span>
-<span id="cb2-4"><a href=""></a> .whenNotMatchedInsertAll()</span>
-<span id="cb2-5"><a href=""></a> .execute())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>A condição <code>s.updated_at &gt; t.updated_at</code> protege contra dados atrasados: um evento antigo que chega depois não sobrescreve um estado mais novo.</p>
+<section id="por-que-parquet" class="slide level2">
+<h2>Por que Parquet</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 52%">
+<col style="width: 42%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>CSV / JSON</th>
+<th>Parquet</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Orientação</td>
+<td>Linha</td>
+<td><strong>Coluna</strong></td>
+</tr>
+<tr class="even">
+<td>Schema</td>
+<td>Inferido a cada leitura</td>
+<td>Gravado no arquivo</td>
+</tr>
+<tr class="odd">
+<td>Compressão</td>
+<td>Fraca</td>
+<td>Forte (por coluna)</td>
+</tr>
+<tr class="even">
+<td>Ler 2 de 20 colunas</td>
+<td>Lê tudo</td>
+<td>Lê só as 2 (<em>column pruning</em>)</td>
+</tr>
+<tr class="odd">
+<td>Filtrar <code>price &gt; 100</code></td>
+<td>Lê tudo</td>
+<td>Pula blocos via estatísticas min/max (<em>predicate pushdown</em>)</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="histórico-e-time-travel" class="slide level2">
-<h2>Histórico e time travel</h2>
-<p>Cada operação gera uma nova versão. As antigas continuam legíveis até serem removidas pelo <code>VACUUM</code>.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>orders_dt.history().select(<span class="st">"version"</span>, <span class="st">"timestamp"</span>, <span class="st">"operation"</span>).show()</span>
-<span id="cb3-2"><a href=""></a></span>
-<span id="cb3-3"><a href=""></a>v0 <span class="op">=</span> spark.read.<span class="bu">format</span>(<span class="st">"delta"</span>).option(<span class="st">"versionAsOf"</span>, <span class="dv">0</span>).load(SILVER_DELTA)</span>
-<span id="cb3-4"><a href=""></a></span>
-<span id="cb3-5"><a href=""></a>spark.sql(<span class="ss">f"SELECT status, COUNT(*) FROM delta.`</span><span class="sc">{</span>SILVER_DELTA<span class="sc">}</span><span class="ss">` "</span></span>
-<span id="cb3-6"><a href=""></a>          <span class="st">"VERSION AS OF 0 GROUP BY status"</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="bronze-ingerir-sem-perder-nada" class="slide level2">
+<h2>Bronze: ingerir sem perder nada</h2>
+<ul>
+<li>Ler <strong>tudo como string</strong>: um preço como <code>N/A</code> não pode falhar nem virar nulo silenciosamente</li>
+<li>Juntar as fontes preservando colunas que só existem em uma</li>
+<li>Adicionar <strong>metadados de linhagem</strong>: arquivo de origem e momento da ingestão</li>
+</ul>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>raw_csv <span class="op">=</span> (spark.read.option(<span class="st">"header"</span>, <span class="va">True</span>).csv(path)</span>
+<span id="cb2-2"><a href=""></a>    .select(<span class="st">"*"</span>, F.col(<span class="st">"_metadata.file_path"</span>).alias(<span class="st">"_source_file"</span>)))</span>
+<span id="cb2-3"><a href=""></a></span>
+<span id="cb2-4"><a href=""></a>bronze <span class="op">=</span> (raw_csv.unionByName(raw_json, allowMissingColumns<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb2-5"><a href=""></a>    .withColumn(<span class="st">"_ingested_at"</span>, F.current_timestamp()))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="schema-enforcement-evolution" class="slide level2">
-<h2>Schema enforcement &amp; evolution</h2>
-<p>O Delta <strong>recusa</strong> escritas com schema incompatível. Mudanças intencionais são explícitas:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>(with_coupon.write.<span class="bu">format</span>(<span class="st">"delta"</span>)</span>
-<span id="cb4-2"><a href=""></a> .mode(<span class="st">"append"</span>)</span>
-<span id="cb4-3"><a href=""></a> .option(<span class="st">"mergeSchema"</span>, <span class="st">"true"</span>)     <span class="co"># old rows get null</span></span>
-<span id="cb4-4"><a href=""></a> .save(SILVER_DELTA))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="silver-limpar-validar-e-deduplicar" class="slide level2">
+<h2>Silver: limpar, validar e deduplicar</h2>
+<pre><code>  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
+                                                   └──▶ QUARANTINE (+ reason)</code></pre>
+<p><strong>O modo ANSI vem ligado por padrão no Spark 4</strong>: um <code>cast</code> inválido gera erro em vez de retornar nulo.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 18%">
+<col style="width: 52%">
+<col style="width: 29%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operação</th>
+<th>Falha com valor inválido</th>
+<th>Retorna nulo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Conversão de tipo</td>
+<td><code>col.cast("int")</code></td>
+<td><code>col.try_cast("int")</code></td>
+</tr>
+<tr class="even">
+<td>Texto para timestamp</td>
+<td><code>F.to_timestamp(c, fmt)</code></td>
+<td><code>F.try_to_timestamp(c, F.lit(fmt))</code></td>
+</tr>
+<tr class="odd">
+<td>Divisão</td>
+<td><code>a / b</code></td>
+<td><code>F.try_divide(a, b)</code></td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="delete-update-restore" class="slide level2">
-<h2>DELETE, UPDATE &amp; RESTORE</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>orders_dt.restoreToVersion(merge_version)</span>
-<span id="cb5-2"><a href=""></a>orders_dt.delete(F.col(<span class="st">"customer_id"</span>) <span class="op">==</span> customer)</span>
-<span id="cb5-3"><a href=""></a>orders_dt.update(</span>
-<span id="cb5-4"><a href=""></a>    condition<span class="op">=</span><span class="st">"status = 'created' AND created_at &lt; '2024-07-03'"</span>,</span>
-<span id="cb5-5"><a href=""></a>    <span class="bu">set</span><span class="op">=</span>{<span class="st">"status"</span>: F.lit(<span class="st">"expired"</span>)},</span>
-<span id="cb5-6"><a href=""></a>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="regras-de-qualidade-e-quarentena" class="slide level2">
+<h2>Regras de qualidade e quarentena</h2>
+<p>Em vez de apagar registros ruins, guarde-os <strong>com o motivo</strong>: permite medir a qualidade da fonte, avisar o time de origem e reprocessar.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>RULES <span class="op">=</span> {</span>
+<span id="cb4-2"><a href=""></a>    <span class="st">"preco_invalido"</span>:      F.col(<span class="st">"price"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"price"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
+<span id="cb4-3"><a href=""></a>    <span class="st">"quantidade_invalida"</span>: F.col(<span class="st">"quantity"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"quantity"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
+<span id="cb4-4"><a href=""></a>}</span>
+<span id="cb4-5"><a href=""></a>errors <span class="op">=</span> F.array_compact(F.array(<span class="op">*</span>[F.when(c, F.lit(n)) <span class="cf">for</span> n, c <span class="kw">in</span> RULES.items()]))</span>
+<span id="cb4-6"><a href=""></a>df <span class="op">=</span> df.withColumn(<span class="st">"_errors"</span>, errors)</span>
+<span id="cb4-7"><a href=""></a>valid    <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">==</span> <span class="dv">0</span>).drop(<span class="st">"_errors"</span>)</span>
+<span id="cb4-8"><a href=""></a>rejected <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">&gt;</span> <span class="dv">0</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="escrita-particionada" class="slide level2">
+<h2>Escrita particionada</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>(silver_df</span>
+<span id="cb5-2"><a href=""></a> .repartition(<span class="st">"order_date"</span>)      <span class="co"># all rows of a day in the same task</span></span>
+<span id="cb5-3"><a href=""></a> .write.mode(<span class="st">"overwrite"</span>)</span>
+<span id="cb5-4"><a href=""></a> .partitionBy(<span class="st">"order_date"</span>)</span>
+<span id="cb5-5"><a href=""></a> .parquet(SILVER))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ul>
+<li>Boas colunas de partição têm <strong>baixa cardinalidade</strong> e são <strong>usadas em filtros</strong></li>
+<li>Cada task escreve um arquivo por partição que encontrar: sem o <code>repartition</code>, surge o problema dos <strong>arquivos pequenos</strong></li>
+</ul>
+</section>
+<section id="pruning-no-plano" class="slide level2">
+<h2>Pruning no plano</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Mecanismo</th>
+<th>Campo no plano</th>
+<th>Efeito</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Partition pruning</td>
+<td><code>PartitionFilters</code></td>
+<td>Pula pastas inteiras</td>
+</tr>
+<tr class="even">
+<td>Predicate pushdown</td>
+<td><code>PushedFilters</code></td>
+<td>Pula blocos dentro dos arquivos</td>
+</tr>
+<tr class="odd">
+<td>Column pruning</td>
+<td><code>ReadSchema</code></td>
+<td>Lê só as colunas usadas</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="reprocessar-e-gold" class="slide level2">
+<h2>Reprocessar e Gold</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>spark.conf.<span class="bu">set</span>(<span class="st">"spark.sql.sources.partitionOverwriteMode"</span>, <span class="st">"dynamic"</span>)</span>
+<span id="cb6-2"><a href=""></a>day3.repartition(<span class="st">"order_date"</span>).write.mode(<span class="st">"overwrite"</span>) <span class="op">\</span></span>
+<span id="cb6-3"><a href=""></a>    .partitionBy(<span class="st">"order_date"</span>).parquet(SILVER)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="callout callout-warning callout-titled callout-style-default">
 <div class="callout-body">
 <div class="callout-title">
@@ -307,89 +472,13 @@ Felipe A. Moreno-Vera
 <p><strong>Aviso</strong></p>
 </div>
 <div class="callout-content">
-<p>Depois de um <code>DELETE</code>, os dados ainda existem nos arquivos Parquet das versões antigas e o time travel consegue lê-los. Para a exclusão ser real (ex.: LGPD), é preciso rodar <code>VACUUM</code>.</p>
+<p>Com o modo padrão <code>static</code>, o mesmo comando <strong>apagaria todos os outros dias</strong>.</p>
 </div>
 </div>
 </div>
-</section>
-<section id="optimize-vacuum" class="slide level2">
-<h2>OPTIMIZE &amp; VACUUM</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 30%">
-<col style="width: 43%">
-<col style="width: 26%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Comando</th>
-<th>O que faz</th>
-<th>Quando</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>OPTIMIZE</code></td>
-<td>Compacta arquivos pequenos em maiores</td>
-<td>Após muitos MERGEs/appends</td>
-</tr>
-<tr class="even">
-<td><code>OPTIMIZE ... ZORDER BY (col)</code></td>
-<td>Também reorganiza os dados para pular mais blocos em filtros por <code>col</code></td>
-<td>Colunas muito filtradas, fora da partição</td>
-</tr>
-<tr class="odd">
-<td><code>VACUUM</code></td>
-<td>Apaga arquivos que nenhuma versão recente usa</td>
-<td>Periodicamente; o padrão mantém 7 dias</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="resumo" class="slide level2">
-<h2>Resumo</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 57%">
-<col style="width: 42%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Delta Lake</th>
-<th>Comando</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Upsert</td>
-<td><code>DeltaTable.merge(...).whenMatchedUpdateAll().whenNotMatchedInsertAll()</code></td>
-</tr>
-<tr class="even">
-<td>Histórico</td>
-<td><code>.history()</code> / <code>DESCRIBE HISTORY</code></td>
-</tr>
-<tr class="odd">
-<td>Time travel</td>
-<td><code>.option("versionAsOf", n)</code> / <code>VERSION AS OF n</code></td>
-</tr>
-<tr class="even">
-<td>Desfazer</td>
-<td><code>.restoreToVersion(n)</code></td>
-</tr>
-<tr class="odd">
-<td>Evoluir schema</td>
-<td><code>.option("mergeSchema", "true")</code></td>
-</tr>
-<tr class="even">
-<td>Compactar</td>
-<td><code>.optimize().executeCompaction()</code> / <code>.executeZOrderBy(col)</code></td>
-</tr>
-<tr class="odd">
-<td>Limpar versões antigas</td>
-<td><code>.vacuum(horas)</code></td>
-</tr>
-</tbody>
-</table>
+<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>gold_daily <span class="op">=</span> (sales.groupBy(<span class="st">"order_date"</span>, <span class="st">"region"</span>, <span class="st">"category"</span>)</span>
+<span id="cb7-2"><a href=""></a>    .agg(F.count(<span class="st">"*"</span>).alias(<span class="st">"orders"</span>),</span>
+<span id="cb7-3"><a href=""></a>         F.<span class="bu">round</span>(F.<span class="bu">sum</span>(<span class="st">"revenue"</span>), <span class="dv">2</span>).alias(<span class="st">"revenue"</span>)))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 </section>
     </div>

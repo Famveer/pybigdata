@@ -1,5 +1,5 @@
 ---
-title: "Hadoop: Lo que Hay Debajo de Spark"
+title: "Cuándo No Usar Spark"
 subtitle: "Big Data con PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: es
@@ -19,281 +19,241 @@ format:
 
 ## Lo que aprenderás
 
-- Los tres pilares de Hadoop: HDFS, MapReduce y YARN
-- MapReduce con scripts de Python, comparado con Spark
-- Cómo usa Spark la API FileSystem de Hadoop (y por qué funciona `s3a://`)
-- Un HDFS de un nodo con Spark y Pandas
-- Hadoop hoy y el paso a la nube
+- Qué hace rápidos a Polars y DuckDB
+- La misma consulta en cinco herramientas: tiempo, memoria y sintaxis
+- Pandas API on Spark para migrar código Pandas
+- Apache Arrow para intercambiar datos entre herramientas
+- Un criterio claro para decidir
 
 ---
 
-## De dónde viene Hadoop
+## Las herramientas {.smaller}
 
-| Año | Hito |
-|-----|-------|
-| 2003–04 | Google publica los artículos de **GFS** y **MapReduce** |
-| 2006 | Doug Cutting y Mike Cafarella crean **Hadoop**, open source |
-| 2012 | Hadoop 2 separa la gestión de recursos en **YARN** |
-| 2014 | **Spark** es proyecto principal de Apache: el mismo modelo, en memoria |
-| Hoy | En la nube, object storage y Kubernetes; on-premise, Hadoop sigue en producción |
-
-La idea central: **cientos de máquinas comunes en vez de un servidor gigante**, aceptando que algunas siempre estarán fallando.
-
----
-
-## Los tres pilares
-
-| Pilar | Papel | Equivalente moderno más común |
-|-------|------|------------------------------|
-| **HDFS** | Sistema de archivos distribuido | S3, GCS, ADLS |
-| **YARN** | Gestor de recursos del clúster | Kubernetes, gestores de Databricks/EMR |
-| **MapReduce** | Modelo y motor de procesamiento | Spark, Flink |
-
-A su alrededor, un ecosistema: **Hive** (su Metastore sigue siendo un catálogo común), **HBase**, **Sqoop** (retirado), **Oozie** (reemplazado por Airflow y similares) y **Parquet/ORC**, más usados que nunca.
+| | Pandas | Polars | DuckDB | Pandas API on Spark | Spark |
+|-|--------|--------|--------|---------------------|-------|
+| Interfaz | Python | Python (expresiones) | **SQL** | Sintaxis de Pandas | DataFrame + SQL |
+| Motor | NumPy/C | Rust | C++ | Spark | Spark (JVM) |
+| Ejecución | Eager | Eager **o lazy** | Lazy | Lazy | Lazy |
+| Núcleos | **1** (casi siempre) | Todos | Todos | Todos / clúster | Todos / clúster |
+| Datos mayores que la RAM | No | Sí (streaming) | Sí (spill) | Sí | Sí |
+| Varias máquinas | No | No | No | **Sí** | **Sí** |
 
 ---
 
-## HDFS: bloques y replicación
+## Por qué Polars y DuckDB son rápidos
+
+| Técnica | Idea |
+|---------|------|
+| **Almacenamiento columnar** (Arrow) | Los valores de una columna, contiguos en memoria |
+| **Ejecución vectorizada** | Lotes de miles de valores por instrucción |
+| **Paralelismo** | El trabajo se reparte entre todos los núcleos |
+| **Optimización de consultas** | Empuja filtros, lee solo las columnas usadas |
+| **Out-of-core** | Usa disco cuando se acaba la RAM |
+
+Las mismas ideas de Spark, **sin el costo de coordinar un clúster**.
+
+---
+
+## El costo fijo de Spark
 
 ```
-  ventas.csv (300 MB) -> bloque A (128) | bloque B (128) | bloque C (44)
-
-             NameNode ("ventas.csv = A, B, C; A está en 1, 2, 4...")
-                │
-     ┌──────────┼──────────┬──────────┬──────────┐
-  DataNode 1  DataNode 2  DataNode 3  DataNode 4  DataNode 5
-  [A] [C]     [A] [B]     [B] [C]     [A] [C]     [B]
+  Pandas / Polars / DuckDB        Spark
+  ┌──────────────────────┐        ┌───────────────────────────────┐
+  │ proceso Python       │        │ Python ─py4j─▶ JVM (driver)   │
+  │ └─ biblioteca nativa │        │   ├─ planificación (Catalyst) │
+  │    lee, calcula,     │        │   ├─ jobs, stages, tasks      │
+  │    devuelve          │        │   ├─ shuffle (disco)          │
+  └──────────────────────┘        │   └─ resultado ─▶ Python      │
+                                  └───────────────────────────────┘
+  ~ milisegundos                  ~ cientos de ms a segundos
 ```
 
-- Bloques de **128 MB** por defecto, **3 copias** en máquinas distintas
-- Si un DataNode muere, el NameNode manda recrear las copias que faltan
-- El cliente pregunta al NameNode dónde están los bloques y **lee directamente de los DataNodes**
+Irrelevante con 1 TB en 50 máquinas. Con 2 GB en un portátil, domina.
 
 ---
 
-## HDFS: límites que aún importan
-
-| Límite | Consecuencia |
-|-------|-------------|
-| Archivos **write-once** (solo append) | Sin UPDATE; de ahí Delta e Iceberg |
-| El NameNode guarda todo en memoria (~150 bytes por archivo o bloque) | El **problema de los archivos pequeños** |
-| Almacenamiento y cómputo en las mismas máquinas | Más disco implica comprar más CPU |
-
-**Localidad de datos: mover el código hacia los datos.** Mover 1 TB por la red es lento; mover un programa de 10 KB es instantáneo. Spark lo heredó: mira **Locality Level** en la Spark UI (`NODE_LOCAL`, `RACK_LOCAL`, `ANY`).
-
----
-
-## La API FileSystem de Hadoop
-
-Spark nunca habla directamente con el disco, HDFS o S3. El **esquema de la URL** elige la implementación.
-
-```
-     spark.read.parquet("<esquema>://ruta")
-                    │
-         API FileSystem de Hadoop
-                    │
-    ┌───────┬───────┼──────────┬──────────┐
-  file://  hdfs://  s3a://     gs://      abfs://
-  local    HDFS     Amazon S3  Google     Azure
-```
-
-`hdfs://` funciona de entrada: PySpark trae el cliente de Hadoop. `s3a://`, `gs://` y `abfs://` necesitan su conector. Toda configuración de Hadoop pasa por el prefijo `spark.hadoop.*`.
-
----
-
-## Bloques y particiones de Spark
-
-| API | Cómo divide la entrada |
-|-----|------------------------|
-| `sc.textFile` (RDD) | `InputFormat` de Hadoop: **una partición por bloque** |
-| `spark.read` (DataFrame) | Criterio propio (`spark.sql.files.maxPartitionBytes`); los bloques deciden **dónde** corre cada task |
+## La misma consulta: Pandas y Polars
 
 ```python
-print(sc.textFile(CORPUS).getNumPartitions())
-print(spark.read.text(CORPUS).rdd.getNumPartitions())
+# Pandas: cada paso corre al momento
+o = pd.read_parquet(ORDERS, columns=["customer_id", "product_id",
+                                     "quantity", "price", "order_date"])
+o = o[o["order_date"] >= CUTOFF]
+o = o.assign(revenue=o["price"] * o["quantity"])
+df = o.merge(c, on="customer_id").merge(p, on="product_id")
+df.groupby(["segment", "category"], as_index=False) \
+  .agg(orders=("revenue", "size"), revenue=("revenue", "sum"))
+
+# Polars: arma un plan, corre en collect()
+(pl.scan_parquet(ORDERS)
+   .filter(pl.col("order_date") >= pl.date(2024, 7, 1))
+   .with_columns(revenue=pl.col("price") * pl.col("quantity"))
+   .join(c, on="customer_id").join(p, on="product_id")
+   .group_by("segment", "category")
+   .agg(orders=pl.len(), revenue=pl.col("revenue").sum())
+   .collect())
 ```
 
 ---
 
-## MapReduce: el modelo
-
-```
-  MAP                     SHUFFLE & SORT           REDUCE
-  "spark hdfs" -> (spark,1)(hdfs,1)    hdfs  -> [1,1] -> (hdfs, 2)
-  "hdfs yarn"  -> (hdfs,1)(yarn,1) ──▶ spark -> [1,1] -> (spark, 2)
-  "spark"      -> (spark,1)            yarn  -> [1]   -> (yarn, 1)
-```
-
-| Etapa | Quién la escribe | Paralelismo |
-|-----|--------------|-------------|
-| Map | Tú | Una task por bloque de entrada |
-| Shuffle & Sort | El framework | `hash(clave) % R` elige el reducer |
-| Reduce | Tú | R tasks, con claves **ordenadas** |
-
-Lo mismo que un `groupBy` de Spark: map es el stage antes del `Exchange`, reduce el stage después.
-
----
-
-## Hadoop Streaming: MapReduce en Python
-
-Cualquier programa que lea stdin y escriba stdout. Puedes probar un job entero en la terminal:
-
-```bash
-cat input | python mapper.py | sort | python reducer.py
-```
+## La misma consulta: DuckDB y Spark
 
 ```python
-# mapper.py
-for line in sys.stdin:
-    for word in re.findall(r"[a-z]+", line.lower()):
-        print(f"{word}\t1")
+# DuckDB: SQL puro sobre los archivos, sin paso de lectura
+duckdb.sql(f"""
+    SELECT c.segment, p.category, COUNT(*) AS orders,
+           SUM(o.price * o.quantity) AS revenue
+    FROM '{ORDERS}' o
+    JOIN '{CUSTOMERS}' c USING (customer_id)
+    JOIN '{PRODUCTS}'  p USING (product_id)
+    WHERE o.order_date >= DATE '{CUTOFF}'
+    GROUP BY ALL
+""").df()
 
-# reducer.py: la entrada está ordenada, cada clave llega junta
-current, count = None, 0
-for line in sys.stdin:
-    word, n = line.rstrip("\n").split("\t")
-    if word != current:
-        if current is not None:
-            print(f"{current}\t{count}")
-        current, count = word, 0
-    count += int(n)
-if current is not None:
-    print(f"{current}\t{count}")
+# Spark
+(spark.read.parquet(ORDERS)
+   .filter(F.col("order_date") >= CUTOFF)
+   .withColumn("revenue", F.col("price") * F.col("quantity"))
+   .join(c, "customer_id").join(p, "product_id")
+   .groupBy("segment", "category")
+   .agg(F.count("*").alias("orders"), F.sum("revenue").alias("revenue")))
 ```
 
 ---
 
-## El mismo word count en Spark
+## Cómo leer los resultados
+
+Los números varían con la máquina, pero el orden suele repetirse:
+
+- **Polars y DuckDB** suelen ser los más rápidos
+- **Pandas** hace los joins en un núcleo y materializa cada paso
+- **Spark** paga su costo fijo: planificación, tasks, transferencia a Python
+- **Pandas API on Spark** suma la traducción de la semántica de Pandas: hecha para escalar, no para ser rápida en una máquina
+
+**Memoria:** Pandas suele romperse por falta de RAM mucho antes de ser demasiado lento. Regla antigua: reserva de 5 a 10 veces el tamaño de los datos.
+
+---
+
+## Cuando crece el volumen
+
+La misma consulta con 1, 5 y 20 millones de filas:
+
+- El costo fijo de Spark pesa más con poco volumen; la diferencia relativa baja al crecer
+- Pandas crece más rápido que los demás y en algún punto deja de caber en memoria
+- Polars y DuckDB crecen despacio: todos los núcleos, sin materializar pasos intermedios
+
+**La curva que un notebook no puede mostrar:** Spark en un clúster. Con 10 máquinas, el mismo código procesa 10 veces más datos en el mismo tiempo.
+
+---
+
+## Pandas API on Spark {.smaller}
+
+Caso de uso: **migración**. Código Pandas que funciona y cuyos datos ya no caben en una máquina.
 
 ```python
-# RDD: la API original, imita map/reduce
-(sc.textFile(CORPUS)
-   .flatMap(lambda line: re.findall(r"[a-z]+", line.lower()))
-   .map(lambda w: (w, 1))
-   .reduceByKey(lambda a, b: a + b))
-
-# DataFrame
-(spark.read.text(CORPUS)
-   .select(F.explode(F.split(F.lower("value"), " ")).alias("word"))
-   .groupBy("word").count())
+import pyspark.pandas as ps          # en vez de: import pandas as pd
+df = ps.read_parquet(path)
+df.groupby("x")["y"].mean()          # mismo código
 ```
+
+| Tema | Pandas | Pandas API on Spark |
+|------|--------|---------------------|
+| Índice | Siempre existe | Hay que **generarlo**; su tipo afecta el rendimiento |
+| Orden de filas | Garantizado | No garantizado tras operaciones distribuidas |
+| `iterrows`, `.to_numpy()` | Normales | Traen **todo** al driver |
+| Modo ANSI de Spark 4 | — | Debe estar apagado |
 
 ---
 
-## Por qué Spark reemplazó a MapReduce
+## El índice por defecto
 
-```
-  MapReduce: HDFS ─▶ [job 1] ─▶ HDFS ─▶ [job 2] ─▶ HDFS ─▶ ...
-  Spark:     HDFS ─▶ [stage 1] ─shuffle─▶ [stage 2] ─▶ HDFS
-```
+`compute.default_index_type`:
 
-| | MapReduce | Spark |
-|-|-----------|-------|
-| Entre etapas | Escribe en HDFS (disco + replicación) | Memoria / disco local |
-| Algoritmos iterativos | Un job por iteración | Datos en caché entre iteraciones |
-| API | Solo map y reduce | DataFrames, SQL, streaming, ML |
-| Optimizador | Ninguno | Catalyst + AQE |
+| Tipo | Cómo se genera | Costo |
+|------|---------------|------|
+| `sequence` (por defecto) | 0, 1, 2... **en una sola partición** | Cuello de botella: una task ve todos los datos |
+| `distributed-sequence` | 0, 1, 2... calculado por partición | Medio: un job extra |
+| `distributed` | IDs crecientes, **no consecutivos** | Bajo: úsalo si el índice no importa |
 
 ---
 
-## YARN: quién corre dónde
+## Polars: eager o lazy
 
-| YARN | Spark |
-|------|-------|
-| ResourceManager | El "master" del clúster |
-| ApplicationMaster | En modo `cluster`, el driver corre dentro de él |
-| Container | Cada **executor** es un container |
-| Colas | Limitan cuánto usa cada equipo |
+`pl.read_parquet` ejecuta cada paso al momento. `pl.scan_parquet` arma un plan que corre en `.collect()`.
 
-Del lado de Spark, el cambio principal es `--master` (`local[*]`, `yarn`, `k8s://...`, `spark://...`):
+| PySpark | Polars |
+|---------|--------|
+| `F.col("x")` | `pl.col("x")` |
+| `df.withColumn("y", expr)` | `df.with_columns(y=expr)` |
+| `df.groupBy("k").agg(...)` | `df.group_by("k").agg(...)` |
+| `F.when(c, a).otherwise(b)` | `pl.when(c).then(a).otherwise(b)` |
+| `F.sum("x").over(Window.partitionBy("k"))` | `pl.col("x").sum().over("k")` |
 
-```bash
-spark-submit --master yarn --deploy-mode cluster \
-  --num-executors 10 --executor-cores 4 --executor-memory 8g \
-  --queue analytics pipeline_silver.py
-```
+`lazy.explain()` muestra predicate y column pruning. `collect(engine="streaming")` procesa datos mayores que la memoria.
 
 ---
 
-## Práctica: HDFS de un nodo
+## DuckDB: analítica dentro de tu proceso
 
-NameNode y DataNode en una máquina: el mismo software que un clúster de 1.000 nodos.
-
-```bash
-hdfs namenode -format -force -nonInteractive
-hdfs --daemon start namenode
-hdfs --daemon start datanode
-
-hdfs dfs -mkdir -p /aula9/raw
-hdfs dfs -put -f corpus.txt /aula9/raw/corpus.txt
-hdfs dfs -D dfs.blocksize=4194304 -put -f corpus.txt /aula9/raw/corpus_4mb.txt
-hdfs dfs -ls -h /aula9/raw
-hdfs fsck /aula9/raw/corpus_4mb.txt -files -blocks -locations
-```
-
-Los bloques son archivos `blk_<id>` comunes en el disco del DataNode. El NameNode nunca ve su contenido.
-
----
-
-## Spark y Pandas sobre HDFS
+Sin servidor, como SQLite, pero optimizado para consultas analíticas.
 
 ```python
-# Spark: HDFS es solo otro esquema de URL
-HDFS = "hdfs://localhost:9000"
-words = (spark.read.text(f"{HDFS}/aula9/raw/corpus.txt")
-         .select(F.explode(F.split("value", " ")).alias("word"))
-         .groupBy("word").count())
-words.write.mode("overwrite").parquet(f"{HDFS}/aula9/gold/wordcount")
+# 1) SQL sobre archivos (Parquet, CSV, JSON, comodines, S3)
+duckdb.sql(f"SELECT region, AVG(price) FROM '{ORDERS}' GROUP BY region")
 
-# Pandas a través de PyArrow (libhdfs)
-hdfs = pafs.HadoopFileSystem("localhost", 9000)
-wc = pq.read_table("/aula9/gold/wordcount", filesystem=hdfs).to_pandas()
+# 2) SQL sobre un DataFrame en memoria: la variable se vuelve tabla
+regions_pd = pd.DataFrame({"region": REGIONS, "manager": managers})
+duckdb.sql(f"SELECT * FROM '{ORDERS}' JOIN regions_pd USING (region)").pl()
 
-# Sin libhdfs: WebHDFS, la API REST
-requests.get("http://localhost:9870/webhdfs/v1/aula9/raw?op=LISTSTATUS").json()
+# 3) Out-of-core: usa disco en vez de romperse
+con = duckdb.connect()
+con.sql("SET memory_limit = '300MB'")
+con.sql(f"SET temp_directory = '{BASE}/duckdb_tmp'")
 ```
 
-El marcador `_SUCCESS` indica que la salida está completa. Spark también lo escribe, herencia de Hadoop.
+---
+
+## Apache Arrow: el idioma común
+
+```
+                  ┌───────────────┐
+  Pandas ◀──────▶ │               │ ◀──────▶ Polars
+                  │ Apache Arrow  │
+  DuckDB ◀──────▶ │ (columnar, en │ ◀──────▶ Spark
+                  │  memoria)     │
+ Parquet ◀──────▶ │               │ ◀──────▶ ML
+                  └───────────────┘
+```
+
+En PySpark 4.0, Arrow viene **apagado por defecto** para `toPandas()` y `createDataFrame(pandas_df)`. Enciéndelo:
+
+```python
+.config("spark.sql.execution.arrow.pyspark.enabled", "true")
+```
 
 ---
 
-## Hadoop hoy {.smaller}
+## Cómo decidir
 
-El mayor cambio: **separar almacenamiento y cómputo**. Object storage barato todo el tiempo; clústeres que suben y bajan por job.
+| Situación | Herramienta |
+|----------|------------|
+| Decenas de GB a TB, o datos que crecerán mucho | Spark |
+| Streaming, Delta Lake, MLlib, ya hay un clúster | Spark |
+| Código Pandas que ya no cabe en memoria | Pandas API on Spark |
+| Hasta decenas de GB en una máquina, equipo de SQL | DuckDB |
+| Hasta decenas de GB en una máquina, pipeline en Python | Polars |
+| Exploración rápida, pocos MB | Pandas |
 
-| Componente | Situación |
-|-----------|--------|
-| **HDFS** | Aún fuerte on-premise; en la nube, reemplazado por object storage |
-| **MapReduce** | Casi solo en sistemas legados |
-| **YARN** | Aún muy usado (incluso en AWS EMR); Kubernetes crece rápido |
-| **API FileSystem** | **En todas partes**: así llegan Spark, Hive, Trino y Flink a S3/GCS/ADLS |
-| **Parquet/ORC** | El estándar de almacenamiento analítico |
-
----
-
-## El curso completo
-
-| Capa | Tema | Lec |
-|------|------|-----|
-| Consumo | BI, dashboards, APIs, modelos | 10 |
-| Procesamiento | Spark DataFrame / SQL | 3, 4 |
-| | Performance: shuffles, joins, skew, AQE | 5, 6 |
-| | Streaming | 9 |
-| | ¿Basta una máquina? Pandas, Polars, DuckDB | 2, 11 |
-| Tablas | Medallion + Delta Lake | 7, 8 |
-| Recursos | `local[*]`, YARN, Kubernetes | 12 |
-| Almacenamiento | API FileSystem: disco, HDFS, S3/GCS | 12 |
+Spark no es solo velocidad: trae **tolerancia a fallos, escala horizontal y un ecosistema**.
 
 ---
 
 ## Resumen {.smaller}
 
-| Concepto | Hadoop | En Spark |
-|---------|--------|----------|
-| Archivos distribuidos | HDFS: bloques de 128 MB, 3 réplicas | `hdfs://` vía API FileSystem |
-| Procesamiento | MapReduce: map, shuffle y sort, reduce | Stages separados por shuffles |
-| Recursos | YARN: ResourceManager, containers | `--master yarn`, executors = containers |
-| Código hacia los datos | Localidad de bloques | `Locality Level` en la Spark UI |
-| Salida completa | Marcador `_SUCCESS` | El mismo marcador |
-| Configuración | `core-site.xml`, `hdfs-site.xml` | `spark.hadoop.*` |
-| Nube | Conectores S3A, GCS, ABFS | `s3a://`, `gs://`, `abfs://` |
+| | Pandas | Polars | DuckDB | Pandas API on Spark | Spark |
+|-|--------|--------|--------|---------------------|-------|
+| Ideal para | Exploración, pocos datos | Pipelines Python, 1 máquina | SQL analítico, 1 máquina | Escalar código Pandas | Datos distribuidos, ecosistema |
+| Leer Parquet | `pd.read_parquet` | `pl.scan_parquet` | `FROM 'archivo.parquet'` | `ps.read_parquet` | `spark.read.parquet` |
+| Agregar | `groupby().agg()` | `group_by().agg()` | `GROUP BY` | `groupby().agg()` | `groupBy().agg()` |
+| Ver el plan | — | `.explain()` | `EXPLAIN` | `.spark.explain()` | `.explain()` |
+| A Pandas | — | `.to_pandas()` | `.df()` | `.to_pandas()` | `.toPandas()` |

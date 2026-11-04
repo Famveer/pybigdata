@@ -8,17 +8,16 @@ nav_order: 11
 layout: default
 ---
 
-# Aula 11: Quando Não Usar Spark
+# Aula 11: Machine Learning com MLlib
 {: .no_toc }
 
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* O que torna Polars e DuckDB rápidos
->* A mesma consulta em cinco ferramentas: tempo, memória e sintaxe
->* Pandas API on Spark para migrar código Pandas
->* Apache Arrow para trocar dados entre ferramentas
->* Critérios para escolher a ferramenta certa
+>* Transformers, Estimators e Pipelines
+>* Preparação de features
+>* Avaliação e limiar de decisão
+>* Validação cruzada, salvar modelos e scoring
 
 
 ### Slides

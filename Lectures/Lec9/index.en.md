@@ -8,16 +8,16 @@ nav_order: 9
 layout: default
 ---
 
-# Lecture 9: Structured Streaming
+# Lecture 9: Delta Lake
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* Unbounded tables and micro-batches
->* Output modes and triggers
->* Windows and watermarks
->* Checkpoints and exactly-once
+>* The transaction log
+>* MERGE and time travel
+>* Schema enforcement and evolution
+>* OPTIMIZE and VACUUM
 
 
 ### Slides

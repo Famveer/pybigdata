@@ -8,10 +8,10 @@ nav_order: 8
 layout: default
 ---
 
-# Laboratório 8: Structured Streaming
+# Laboratório 8: Delta Lake
 
-Processe dados que não param de chegar: janelas, watermark, checkpoints e triggers.
+Transforme a tabela Silver em Delta e use MERGE, time travel, OPTIMIZE e VACUUM. O notebook reconstrói o pipeline do Laboratório 7. A primeira execução baixa os jars do Delta, então precisa de internet.
 
 ### Arquivos
 
-* [Sources, sinks, janelas, watermark, checkpoint e exercícios](./files/01_structured_streaming.ipynb)
+* [Tabelas Delta, MERGE, time travel, schema, OPTIMIZE e VACUUM](./files/01_delta_lake.ipynb)

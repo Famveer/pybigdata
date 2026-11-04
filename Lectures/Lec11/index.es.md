@@ -8,17 +8,16 @@ nav_order: 11
 layout: default
 ---
 
-# Clase 11: Cuándo No Usar Spark
+# Clase 11: Machine Learning con MLlib
 {: .no_toc }
 
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Qué hace rápidos a Polars y DuckDB
->* La misma consulta en cinco herramientas: tiempo, memoria y sintaxis
->* Pandas API on Spark para migrar código Pandas
->* Apache Arrow para intercambiar datos entre herramientas
->* Criterios para elegir la herramienta adecuada
+>* Transformers, Estimators y Pipelines
+>* Preparación de features
+>* Evaluación y umbral de decisión
+>* Validación cruzada, guardar modelos y scoring
 
 
 ### Slides

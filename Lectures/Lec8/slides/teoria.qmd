@@ -1,5 +1,5 @@
 ---
-title: "Delta Lake"
+title: "ETL Pipeline with the Medallion Architecture"
 subtitle: "BigData with PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: en
@@ -19,118 +19,145 @@ format:
 
 ## What you will learn
 
-- The limits of plain Parquet
-- The transaction log and ACID writes
-- `MERGE`, time travel and schema enforcement
-- `DELETE`, `UPDATE`, `RESTORE`, `OPTIMIZE` and `VACUUM`
+- Data warehouse, data lake and lakehouse
+- Medallion architecture: Bronze, Silver and Gold
+- Ingest messy CSV and JSON
+- Quality rules and quarantine
+- Partitioned Parquet and *partition pruning*
 
 ---
 
-## The limits of plain Parquet
+## Warehouse, lake & lakehouse
 
-| Problem | Example |
-|---------|---------|
-| **No atomicity** | A job fails during `overwrite`: the table is left half-written |
-| **No UPDATE/MERGE** | A status update forces rewriting the partition or table |
-| **Inconsistent reads** | A reader sees old and new files mixed during a write |
-| **No history** | You cannot see what the table looked like yesterday |
-| **Unprotected schema** | A file with different columns silently corrupts the table |
+| | Data Warehouse | Data Lake | Lakehouse |
+|-|----------------|-----------|-----------|
+| Stores | Structured tables | Files of any type | Open files + table layer |
+| Format | Proprietary | CSV, JSON, Parquet... | Parquet + transaction log |
+| Cost | High | Low (object storage) | Low |
+| Transactions (ACID) | Yes | No | Yes |
+| UPDATE / DELETE | Yes | Hard (rewrite files) | Yes |
 
 ---
 
-## The transaction log
+## Medallion architecture
 
 ```
-  silver_delta/
-  ├── _delta_log/
-  │   ├── 00000000000000000000.json   <- v0: add files A, B, C
-  │   ├── 00000000000000000001.json   <- v1: remove B, add D   (MERGE)
-  │   └── 00000000000000000002.json   <- v2: remove A          (DELETE)
-  ├── order_date=2024-07-01/part-....parquet
-  └── order_date=2024-07-02/part-....parquet
+  SOURCES          BRONZE             SILVER              GOLD
+  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
+  APIs, CDC        + metadata         typed, validated    BI / ML / API
+                   all strings        no duplicates
+                                 └──▶ QUARANTINE (rejected)
 ```
 
-Data stays in Parquet. The log says **which files make up each version**. Writing is atomic: either the log file of the new version exists, or the version never happened.
+| Layer | Question it answers | Golden rule |
+|-------|---------------------|-------------|
+| **Bronze** | What exactly arrived? | Never discard anything. Allows reprocessing. |
+| **Silver** | What is the correct version of each record? | Right types, one row per entity, rules applied. |
+| **Gold** | What does the business need to see? | Aggregations and metrics, modeled for consumption. |
 
 ---
 
-## MERGE (upsert)
+## Why Parquet
+
+| | CSV / JSON | Parquet |
+|-|-----------|---------|
+| Orientation | Row | **Column** |
+| Schema | Inferred on every read | Stored in the file |
+| Compression | Weak | Strong (per column) |
+| Read 2 of 20 columns | Reads everything | Reads only 2 (*column pruning*) |
+| Filter `price > 100` | Reads everything | Skips blocks with min/max stats (*predicate pushdown*) |
+
+---
+
+## Bronze: ingest without losing anything
+
+- Read **everything as string**: a price like `N/A` must not fail or silently become null
+- Merge sources while keeping columns that exist in only one
+- Add **lineage metadata**: source file and ingestion time
 
 ```python
-(orders_dt.alias("t")
- .merge(updates.alias("s"), "t.order_id = s.order_id")
- .whenMatchedUpdateAll(condition="s.updated_at > t.updated_at")
- .whenNotMatchedInsertAll()
- .execute())
-```
+raw_csv = (spark.read.option("header", True).csv(path)
+    .select("*", F.col("_metadata.file_path").alias("_source_file")))
 
-The condition `s.updated_at > t.updated_at` protects against late data: an old event that arrives later does not overwrite a newer state.
-
----
-
-## History and time travel
-
-Each operation creates a new version. Old versions stay readable until `VACUUM` removes them.
-
-```python
-orders_dt.history().select("version", "timestamp", "operation").show()
-
-v0 = spark.read.format("delta").option("versionAsOf", 0).load(SILVER_DELTA)
-
-spark.sql(f"SELECT status, COUNT(*) FROM delta.`{SILVER_DELTA}` "
-          "VERSION AS OF 0 GROUP BY status")
+bronze = (raw_csv.unionByName(raw_json, allowMissingColumns=True)
+    .withColumn("_ingested_at", F.current_timestamp()))
 ```
 
 ---
 
-## Schema enforcement & evolution
+## Silver: clean, validate, deduplicate
 
-Delta **refuses** writes with an incompatible schema. Intentional changes are explicit:
+```
+  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
+                                                   └──▶ QUARANTINE (+ reason)
+```
+
+**ANSI mode is on by default in Spark 4**: an invalid `cast` raises an error instead of returning null.
+
+| Operation | Fails on invalid value | Returns null |
+|---------|-------------------------|--------------|
+| Type conversion | `col.cast("int")` | `col.try_cast("int")` |
+| Text to timestamp | `F.to_timestamp(c, fmt)` | `F.try_to_timestamp(c, F.lit(fmt))` |
+| Division | `a / b` | `F.try_divide(a, b)` |
+
+---
+
+## Quality rules and quarantine
+
+Instead of deleting bad records, keep them **with the reason**: you can measure source quality, warn the source team and reprocess.
 
 ```python
-(with_coupon.write.format("delta")
- .mode("append")
- .option("mergeSchema", "true")     # old rows get null
- .save(SILVER_DELTA))
+RULES = {
+    "preco_invalido":      F.col("price").isNull() | (F.col("price") <= 0),
+    "quantidade_invalida": F.col("quantity").isNull() | (F.col("quantity") <= 0),
+}
+errors = F.array_compact(F.array(*[F.when(c, F.lit(n)) for n, c in RULES.items()]))
+df = df.withColumn("_errors", errors)
+valid    = df.filter(F.size("_errors") == 0).drop("_errors")
+rejected = df.filter(F.size("_errors") > 0)
 ```
 
 ---
 
-## DELETE, UPDATE & RESTORE
+## Partitioned writes
 
 ```python
-orders_dt.restoreToVersion(merge_version)
-orders_dt.delete(F.col("customer_id") == customer)
-orders_dt.update(
-    condition="status = 'created' AND created_at < '2024-07-03'",
-    set={"status": F.lit("expired")},
-)
+(silver_df
+ .repartition("order_date")      # all rows of a day in the same task
+ .write.mode("overwrite")
+ .partitionBy("order_date")
+ .parquet(SILVER))
+```
+
+- Good partition columns have **low cardinality** and are **used in filters**
+- Each task writes one file per partition it finds: without the `repartition`, you get the **small files** problem
+
+---
+
+## Pruning in the plan
+
+| Mechanism | Field in the plan | Effect |
+|---|---|---|
+| Partition pruning | `PartitionFilters` | Skips whole folders |
+| Predicate pushdown | `PushedFilters` | Skips blocks inside files |
+| Column pruning | `ReadSchema` | Reads only the columns used |
+
+---
+
+## Reprocessing and Gold
+
+```python
+spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+day3.repartition("order_date").write.mode("overwrite") \
+    .partitionBy("order_date").parquet(SILVER)
 ```
 
 ::: {.callout-warning}
-After a `DELETE`, the data still exists in the Parquet files of old versions and time travel can read it. For a real deletion (e.g. LGPD), you must run `VACUUM`.
+With the default `static` mode, the same command would **delete every other day**.
 :::
 
----
-
-## OPTIMIZE & VACUUM
-
-| Command | What it does | When |
-|---------|-------------|--------|
-| `OPTIMIZE` | Compacts small files into larger ones | After many MERGEs/appends |
-| `OPTIMIZE ... ZORDER BY (col)` | Also reorganizes data to skip more blocks when filtering on `col` | Heavily filtered columns outside the partition |
-| `VACUUM` | Deletes files that no recent version uses | Periodically; the default keeps 7 days |
-
----
-
-## Summary
-
-| Delta Lake | Command |
-|------------|---------|
-| Upsert | `DeltaTable.merge(...).whenMatchedUpdateAll().whenNotMatchedInsertAll()` |
-| History | `.history()` / `DESCRIBE HISTORY` |
-| Time travel | `.option("versionAsOf", n)` / `VERSION AS OF n` |
-| Undo | `.restoreToVersion(n)` |
-| Evolve schema | `.option("mergeSchema", "true")` |
-| Compact | `.optimize().executeCompaction()` / `.executeZOrderBy(col)` |
-| Clean old versions | `.vacuum(hours)` |
+```python
+gold_daily = (sales.groupBy("order_date", "region", "category")
+    .agg(F.count("*").alias("orders"),
+         F.round(F.sum("revenue"), 2).alias("revenue")))
+```

@@ -8,16 +8,17 @@ nav_order: 7
 layout: default
 ---
 
-# Clase 7: ETL con Arquitectura Medallion
+# Clase 7: Hadoop: Lo que Hay Debajo de Spark
 {: .no_toc }
 
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Data warehouse, data lake y lakehouse
->* Capas Bronze, Silver y Gold
->* Reglas de calidad y cuarentena
->* Parquet particionado y pruning
+>* Los tres pilares de Hadoop: HDFS, MapReduce y YARN
+>* MapReduce con scripts de Python, comparado con Spark
+>* La API FileSystem de Hadoop y por qué funciona `s3a://`
+>* HDFS de un nodo con Spark y Pandas
+>* Hadoop hoy y el paso a la nube
 
 
 ### Slides

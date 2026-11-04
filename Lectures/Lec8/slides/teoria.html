@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Delta Lake</title>
+  <title>ETL Pipeline with the Medallion Architecture</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,7 +194,7 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Delta Lake</h1>
+  <h1 class="title">ETL Pipeline with the Medallion Architecture</h1>
   <p class="subtitle">BigData with PySpark</p>
 
 <div class="quarto-title-authors">
@@ -209,95 +209,255 @@ Felipe A. Moreno-Vera
 <section id="what-you-will-learn" class="slide level2">
 <h2>What you will learn</h2>
 <ul>
-<li>The limits of plain Parquet</li>
-<li>The transaction log and ACID writes</li>
-<li><code>MERGE</code>, time travel and schema enforcement</li>
-<li><code>DELETE</code>, <code>UPDATE</code>, <code>RESTORE</code>, <code>OPTIMIZE</code> and <code>VACUUM</code></li>
+<li>Data warehouse, data lake and lakehouse</li>
+<li>Medallion architecture: Bronze, Silver and Gold</li>
+<li>Ingest messy CSV and JSON</li>
+<li>Quality rules and quarantine</li>
+<li>Partitioned Parquet and <em>partition pruning</em></li>
 </ul>
 </section>
-<section id="the-limits-of-plain-parquet" class="slide level2">
-<h2>The limits of plain Parquet</h2>
+<section id="warehouse-lake-lakehouse" class="slide level2">
+<h2>Warehouse, lake &amp; lakehouse</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 50%">
-<col style="width: 50%">
+<col style="width: 2%">
+<col style="width: 41%">
+<col style="width: 28%">
+<col style="width: 28%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Problem</th>
-<th>Example</th>
+<th></th>
+<th>Data Warehouse</th>
+<th>Data Lake</th>
+<th>Lakehouse</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>No atomicity</strong></td>
-<td>A job fails during <code>overwrite</code>: the table is left half-written</td>
+<td>Stores</td>
+<td>Structured tables</td>
+<td>Files of any type</td>
+<td>Open files + table layer</td>
 </tr>
 <tr class="even">
-<td><strong>No UPDATE/MERGE</strong></td>
-<td>A status update forces rewriting the partition or table</td>
+<td>Format</td>
+<td>Proprietary</td>
+<td>CSV, JSON, Parquet…</td>
+<td>Parquet + transaction log</td>
 </tr>
 <tr class="odd">
-<td><strong>Inconsistent reads</strong></td>
-<td>A reader sees old and new files mixed during a write</td>
+<td>Cost</td>
+<td>High</td>
+<td>Low (object storage)</td>
+<td>Low</td>
 </tr>
 <tr class="even">
-<td><strong>No history</strong></td>
-<td>You cannot see what the table looked like yesterday</td>
+<td>Transactions (ACID)</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
 </tr>
 <tr class="odd">
-<td><strong>Unprotected schema</strong></td>
-<td>A file with different columns silently corrupts the table</td>
+<td>UPDATE / DELETE</td>
+<td>Yes</td>
+<td>Hard (rewrite files)</td>
+<td>Yes</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="the-transaction-log" class="slide level2">
-<h2>The transaction log</h2>
-<pre><code>  silver_delta/
-  ├── _delta_log/
-  │   ├── 00000000000000000000.json   &lt;- v0: add files A, B, C
-  │   ├── 00000000000000000001.json   &lt;- v1: remove B, add D   (MERGE)
-  │   └── 00000000000000000002.json   &lt;- v2: remove A          (DELETE)
-  ├── order_date=2024-07-01/part-....parquet
-  └── order_date=2024-07-02/part-....parquet</code></pre>
-<p>Data stays in Parquet. The log says <strong>which files make up each version</strong>. Writing is atomic: either the log file of the new version exists, or the version never happened.</p>
+<section id="medallion-architecture" class="slide level2">
+<h2>Medallion architecture</h2>
+<pre><code>  SOURCES          BRONZE             SILVER              GOLD
+  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
+  APIs, CDC        + metadata         typed, validated    BI / ML / API
+                   all strings        no duplicates
+                                 └──▶ QUARANTINE (rejected)</code></pre>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 51%">
+<col style="width: 31%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Layer</th>
+<th>Question it answers</th>
+<th>Golden rule</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Bronze</strong></td>
+<td>What exactly arrived?</td>
+<td>Never discard anything. Allows reprocessing.</td>
+</tr>
+<tr class="even">
+<td><strong>Silver</strong></td>
+<td>What is the correct version of each record?</td>
+<td>Right types, one row per entity, rules applied.</td>
+</tr>
+<tr class="odd">
+<td><strong>Gold</strong></td>
+<td>What does the business need to see?</td>
+<td>Aggregations and metrics, modeled for consumption.</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="merge-upsert" class="slide level2">
-<h2>MERGE (upsert)</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>(orders_dt.alias(<span class="st">"t"</span>)</span>
-<span id="cb2-2"><a href=""></a> .merge(updates.alias(<span class="st">"s"</span>), <span class="st">"t.order_id = s.order_id"</span>)</span>
-<span id="cb2-3"><a href=""></a> .whenMatchedUpdateAll(condition<span class="op">=</span><span class="st">"s.updated_at &gt; t.updated_at"</span>)</span>
-<span id="cb2-4"><a href=""></a> .whenNotMatchedInsertAll()</span>
-<span id="cb2-5"><a href=""></a> .execute())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>The condition <code>s.updated_at &gt; t.updated_at</code> protects against late data: an old event that arrives later does not overwrite a newer state.</p>
+<section id="why-parquet" class="slide level2">
+<h2>Why Parquet</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 52%">
+<col style="width: 42%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>CSV / JSON</th>
+<th>Parquet</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Orientation</td>
+<td>Row</td>
+<td><strong>Column</strong></td>
+</tr>
+<tr class="even">
+<td>Schema</td>
+<td>Inferred on every read</td>
+<td>Stored in the file</td>
+</tr>
+<tr class="odd">
+<td>Compression</td>
+<td>Weak</td>
+<td>Strong (per column)</td>
+</tr>
+<tr class="even">
+<td>Read 2 of 20 columns</td>
+<td>Reads everything</td>
+<td>Reads only 2 (<em>column pruning</em>)</td>
+</tr>
+<tr class="odd">
+<td>Filter <code>price &gt; 100</code></td>
+<td>Reads everything</td>
+<td>Skips blocks with min/max stats (<em>predicate pushdown</em>)</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="history-and-time-travel" class="slide level2">
-<h2>History and time travel</h2>
-<p>Each operation creates a new version. Old versions stay readable until <code>VACUUM</code> removes them.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>orders_dt.history().select(<span class="st">"version"</span>, <span class="st">"timestamp"</span>, <span class="st">"operation"</span>).show()</span>
-<span id="cb3-2"><a href=""></a></span>
-<span id="cb3-3"><a href=""></a>v0 <span class="op">=</span> spark.read.<span class="bu">format</span>(<span class="st">"delta"</span>).option(<span class="st">"versionAsOf"</span>, <span class="dv">0</span>).load(SILVER_DELTA)</span>
-<span id="cb3-4"><a href=""></a></span>
-<span id="cb3-5"><a href=""></a>spark.sql(<span class="ss">f"SELECT status, COUNT(*) FROM delta.`</span><span class="sc">{</span>SILVER_DELTA<span class="sc">}</span><span class="ss">` "</span></span>
-<span id="cb3-6"><a href=""></a>          <span class="st">"VERSION AS OF 0 GROUP BY status"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="bronze-ingest-without-losing-anything" class="slide level2">
+<h2>Bronze: ingest without losing anything</h2>
+<ul>
+<li>Read <strong>everything as string</strong>: a price like <code>N/A</code> must not fail or silently become null</li>
+<li>Merge sources while keeping columns that exist in only one</li>
+<li>Add <strong>lineage metadata</strong>: source file and ingestion time</li>
+</ul>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>raw_csv <span class="op">=</span> (spark.read.option(<span class="st">"header"</span>, <span class="va">True</span>).csv(path)</span>
+<span id="cb2-2"><a href=""></a>    .select(<span class="st">"*"</span>, F.col(<span class="st">"_metadata.file_path"</span>).alias(<span class="st">"_source_file"</span>)))</span>
+<span id="cb2-3"><a href=""></a></span>
+<span id="cb2-4"><a href=""></a>bronze <span class="op">=</span> (raw_csv.unionByName(raw_json, allowMissingColumns<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb2-5"><a href=""></a>    .withColumn(<span class="st">"_ingested_at"</span>, F.current_timestamp()))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="schema-enforcement-evolution" class="slide level2">
-<h2>Schema enforcement &amp; evolution</h2>
-<p>Delta <strong>refuses</strong> writes with an incompatible schema. Intentional changes are explicit:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>(with_coupon.write.<span class="bu">format</span>(<span class="st">"delta"</span>)</span>
-<span id="cb4-2"><a href=""></a> .mode(<span class="st">"append"</span>)</span>
-<span id="cb4-3"><a href=""></a> .option(<span class="st">"mergeSchema"</span>, <span class="st">"true"</span>)     <span class="co"># old rows get null</span></span>
-<span id="cb4-4"><a href=""></a> .save(SILVER_DELTA))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="silver-clean-validate-deduplicate" class="slide level2">
+<h2>Silver: clean, validate, deduplicate</h2>
+<pre><code>  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
+                                                   └──▶ QUARANTINE (+ reason)</code></pre>
+<p><strong>ANSI mode is on by default in Spark 4</strong>: an invalid <code>cast</code> raises an error instead of returning null.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 18%">
+<col style="width: 52%">
+<col style="width: 29%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th>Fails on invalid value</th>
+<th>Returns null</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Type conversion</td>
+<td><code>col.cast("int")</code></td>
+<td><code>col.try_cast("int")</code></td>
+</tr>
+<tr class="even">
+<td>Text to timestamp</td>
+<td><code>F.to_timestamp(c, fmt)</code></td>
+<td><code>F.try_to_timestamp(c, F.lit(fmt))</code></td>
+</tr>
+<tr class="odd">
+<td>Division</td>
+<td><code>a / b</code></td>
+<td><code>F.try_divide(a, b)</code></td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="delete-update-restore" class="slide level2">
-<h2>DELETE, UPDATE &amp; RESTORE</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>orders_dt.restoreToVersion(merge_version)</span>
-<span id="cb5-2"><a href=""></a>orders_dt.delete(F.col(<span class="st">"customer_id"</span>) <span class="op">==</span> customer)</span>
-<span id="cb5-3"><a href=""></a>orders_dt.update(</span>
-<span id="cb5-4"><a href=""></a>    condition<span class="op">=</span><span class="st">"status = 'created' AND created_at &lt; '2024-07-03'"</span>,</span>
-<span id="cb5-5"><a href=""></a>    <span class="bu">set</span><span class="op">=</span>{<span class="st">"status"</span>: F.lit(<span class="st">"expired"</span>)},</span>
-<span id="cb5-6"><a href=""></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="quality-rules-and-quarantine" class="slide level2">
+<h2>Quality rules and quarantine</h2>
+<p>Instead of deleting bad records, keep them <strong>with the reason</strong>: you can measure source quality, warn the source team and reprocess.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>RULES <span class="op">=</span> {</span>
+<span id="cb4-2"><a href=""></a>    <span class="st">"preco_invalido"</span>:      F.col(<span class="st">"price"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"price"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
+<span id="cb4-3"><a href=""></a>    <span class="st">"quantidade_invalida"</span>: F.col(<span class="st">"quantity"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"quantity"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
+<span id="cb4-4"><a href=""></a>}</span>
+<span id="cb4-5"><a href=""></a>errors <span class="op">=</span> F.array_compact(F.array(<span class="op">*</span>[F.when(c, F.lit(n)) <span class="cf">for</span> n, c <span class="kw">in</span> RULES.items()]))</span>
+<span id="cb4-6"><a href=""></a>df <span class="op">=</span> df.withColumn(<span class="st">"_errors"</span>, errors)</span>
+<span id="cb4-7"><a href=""></a>valid    <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">==</span> <span class="dv">0</span>).drop(<span class="st">"_errors"</span>)</span>
+<span id="cb4-8"><a href=""></a>rejected <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">&gt;</span> <span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="partitioned-writes" class="slide level2">
+<h2>Partitioned writes</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>(silver_df</span>
+<span id="cb5-2"><a href=""></a> .repartition(<span class="st">"order_date"</span>)      <span class="co"># all rows of a day in the same task</span></span>
+<span id="cb5-3"><a href=""></a> .write.mode(<span class="st">"overwrite"</span>)</span>
+<span id="cb5-4"><a href=""></a> .partitionBy(<span class="st">"order_date"</span>)</span>
+<span id="cb5-5"><a href=""></a> .parquet(SILVER))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ul>
+<li>Good partition columns have <strong>low cardinality</strong> and are <strong>used in filters</strong></li>
+<li>Each task writes one file per partition it finds: without the <code>repartition</code>, you get the <strong>small files</strong> problem</li>
+</ul>
+</section>
+<section id="pruning-in-the-plan" class="slide level2">
+<h2>Pruning in the plan</h2>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Mechanism</th>
+<th>Field in the plan</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Partition pruning</td>
+<td><code>PartitionFilters</code></td>
+<td>Skips whole folders</td>
+</tr>
+<tr class="even">
+<td>Predicate pushdown</td>
+<td><code>PushedFilters</code></td>
+<td>Skips blocks inside files</td>
+</tr>
+<tr class="odd">
+<td>Column pruning</td>
+<td><code>ReadSchema</code></td>
+<td>Reads only the columns used</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="reprocessing-and-gold" class="slide level2">
+<h2>Reprocessing and Gold</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>spark.conf.<span class="bu">set</span>(<span class="st">"spark.sql.sources.partitionOverwriteMode"</span>, <span class="st">"dynamic"</span>)</span>
+<span id="cb6-2"><a href=""></a>day3.repartition(<span class="st">"order_date"</span>).write.mode(<span class="st">"overwrite"</span>) <span class="op">\</span></span>
+<span id="cb6-3"><a href=""></a>    .partitionBy(<span class="st">"order_date"</span>).parquet(SILVER)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="callout callout-warning callout-titled callout-style-default">
 <div class="callout-body">
 <div class="callout-title">
@@ -307,89 +467,13 @@ Felipe A. Moreno-Vera
 <p><strong>Warning</strong></p>
 </div>
 <div class="callout-content">
-<p>After a <code>DELETE</code>, the data still exists in the Parquet files of old versions and time travel can read it. For a real deletion (e.g.&nbsp;LGPD), you must run <code>VACUUM</code>.</p>
+<p>With the default <code>static</code> mode, the same command would <strong>delete every other day</strong>.</p>
 </div>
 </div>
 </div>
-</section>
-<section id="optimize-vacuum" class="slide level2">
-<h2>OPTIMIZE &amp; VACUUM</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 30%">
-<col style="width: 43%">
-<col style="width: 26%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Command</th>
-<th>What it does</th>
-<th>When</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>OPTIMIZE</code></td>
-<td>Compacts small files into larger ones</td>
-<td>After many MERGEs/appends</td>
-</tr>
-<tr class="even">
-<td><code>OPTIMIZE ... ZORDER BY (col)</code></td>
-<td>Also reorganizes data to skip more blocks when filtering on <code>col</code></td>
-<td>Heavily filtered columns outside the partition</td>
-</tr>
-<tr class="odd">
-<td><code>VACUUM</code></td>
-<td>Deletes files that no recent version uses</td>
-<td>Periodically; the default keeps 7 days</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="summary" class="slide level2">
-<h2>Summary</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 57%">
-<col style="width: 42%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Delta Lake</th>
-<th>Command</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Upsert</td>
-<td><code>DeltaTable.merge(...).whenMatchedUpdateAll().whenNotMatchedInsertAll()</code></td>
-</tr>
-<tr class="even">
-<td>History</td>
-<td><code>.history()</code> / <code>DESCRIBE HISTORY</code></td>
-</tr>
-<tr class="odd">
-<td>Time travel</td>
-<td><code>.option("versionAsOf", n)</code> / <code>VERSION AS OF n</code></td>
-</tr>
-<tr class="even">
-<td>Undo</td>
-<td><code>.restoreToVersion(n)</code></td>
-</tr>
-<tr class="odd">
-<td>Evolve schema</td>
-<td><code>.option("mergeSchema", "true")</code></td>
-</tr>
-<tr class="even">
-<td>Compact</td>
-<td><code>.optimize().executeCompaction()</code> / <code>.executeZOrderBy(col)</code></td>
-</tr>
-<tr class="odd">
-<td>Clean old versions</td>
-<td><code>.vacuum(hours)</code></td>
-</tr>
-</tbody>
-</table>
+<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>gold_daily <span class="op">=</span> (sales.groupBy(<span class="st">"order_date"</span>, <span class="st">"region"</span>, <span class="st">"category"</span>)</span>
+<span id="cb7-2"><a href=""></a>    .agg(F.count(<span class="st">"*"</span>).alias(<span class="st">"orders"</span>),</span>
+<span id="cb7-3"><a href=""></a>         F.<span class="bu">round</span>(F.<span class="bu">sum</span>(<span class="st">"revenue"</span>), <span class="dv">2</span>).alias(<span class="st">"revenue"</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 </section>
     </div>

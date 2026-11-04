@@ -20,6 +20,7 @@ format:
 ## What you will learn
 
 - Python essentials: types, collections, control flow and functions
+- Why Pandas: origin and motivation
 - Pandas: **Series** and **DataFrame**
 - Explore, filter, transform and clean data
 - Aggregations, joins and method chaining
@@ -58,6 +59,35 @@ desconto = lambda preco, pct: preco * (1 - pct)
 ---
 
 ## Why Pandas?
+
+Python had no good way of working with **tabular data**:
+
+| Alternative | Limitation |
+|-------------|-----------|
+| Excel | About 1 million rows, manual work, hard to reproduce |
+| Python lists and dicts | Verbose loops, slow on large volumes |
+| NumPy | Fast, but one type per array, with no labels or missing values |
+| R | Had `data.frame`, but outside the Python ecosystem |
+
+**2008:** Wes McKinney, then at the fund AQR Capital, starts Pandas to analyze financial data. It goes open source in 2009, built on NumPy.
+
+---
+
+## The same total, with less code
+
+```python
+# Pure Python
+totals = {}
+for row in rows:
+    totals[row["cat"]] = totals.get(row["cat"], 0) + row["price"]
+
+# Pandas
+df.groupby("cat")["price"].sum()
+```
+
+---
+
+## What carries over to Spark
 
 | Pandas | Apache Spark |
 |--------|--------------|

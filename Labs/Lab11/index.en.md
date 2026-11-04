@@ -8,10 +8,10 @@ nav_order: 11
 layout: default
 ---
 
-# Lab 11: When Not to Use Spark
+# Lab 11: MLlib: Tuning and Deployment
 
-Compare Pandas, Polars, DuckDB, Pandas API on Spark and Spark on the same query, and practice choosing between them. The benchmark goes up to 20 million rows: the notebook explains how to reduce it on smaller machines. Runs on Linux or Colab, since the memory measurement reads `/proc`.
+Tune the model with cross-validation, save it and score customers in batch and streaming. The notebook retrains the Lab 10 pipeline.
 
 ### Files
 
-* [Benchmarks, Pandas API on Spark, Polars, DuckDB, Arrow and exercises](./files/01_when_not_to_use_spark.ipynb)
+* [Cross-validation, saving models and streaming scoring](./files/01_mllib_tuning_deployment.ipynb)

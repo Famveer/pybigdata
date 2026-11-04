@@ -19,11 +19,55 @@ format:
 
 ## What you will learn
 
+- Why Hadoop and why Spark: origin and motivation
 - How Spark works: driver, executors and partitions
 - Create a `SparkSession` in local mode
 - Create and read DataFrames, with explicit schemas
 - Explore, select, filter and transform: Pandas vs Spark
 - UDFs and why to avoid them when possible
+
+---
+
+## The problem: one machine is not enough
+
+Pandas needs the data to fit in the memory of one machine. In the 2000s, indexing the web went far beyond that.
+
+| | Scale up | Scale out |
+|-|----------|-----------|
+| Idea | A bigger server | More ordinary machines |
+| Limit | Physical, and the price rises sharply | No practical limit |
+| Cost | Hardware | Coordination: network, failures, splitting the work |
+
+Scaling out is the only way past that limit, but writing a program that survives machine failures is very hard.
+
+---
+
+## Why Hadoop?
+
+**2003–04:** Google publishes the GFS and MapReduce papers. **2006:** Doug Cutting and Mike Cafarella create Hadoop, an open source implementation.
+
+| Idea | What it solved |
+|------|----------------|
+| Ordinary machines, failures are expected | Data is replicated and failed work is redone automatically |
+| Move the code to the data | Avoids sending terabytes over the network |
+| Only `map` and `reduce` | The framework handles distribution, not you |
+
+For the first time, any company could process data at that scale.
+
+---
+
+## Why Spark? {.smaller}
+
+MapReduce writes to disk at every step, so multi-step and iterative work was slow and hard to express.
+
+| | Hadoop MapReduce | Spark |
+|-|------------------|-------|
+| Between steps | Disk | Memory when possible |
+| Iterative work (ML) | One job per iteration | Data stays in cache |
+| API | `map` and `reduce`, in Java | DataFrames, SQL, streaming, ML |
+| Optimizer | None | Catalyst + AQE |
+
+**2009:** Matei Zaharia starts Spark at UC Berkeley. **2014:** it becomes a top-level Apache project. Spark did not replace all of Hadoop: it still reads from HDFS and runs on YARN.
 
 ---
 

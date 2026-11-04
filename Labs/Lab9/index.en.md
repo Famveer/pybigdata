@@ -8,10 +8,10 @@ nav_order: 9
 layout: default
 ---
 
-# Lab 9: MLlib: Pipelines and Models
+# Lab 9: Structured Streaming
 
-Predict customer churn: prepare features, train models and choose a decision threshold.
+Process data that keeps arriving: windows, watermarks, checkpoints and triggers.
 
 ### Files
 
-* [Features, logistic regression, Random Forest and exercises](./files/01_mllib_pipelines_models.ipynb)
+* [Sources, sinks, windows, watermark, checkpoint and exercises](./files/01_structured_streaming.ipynb)

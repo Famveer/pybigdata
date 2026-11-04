@@ -3,12 +3,12 @@
 # Instalar con: pip install -r requirements.txt
 
 pyspark==4.0.1
-delta-spark==4.0.0   # Lab 7 (Delta Lake); baja los jars en la primera ejecución
-pandas>=2.2,<3       # pandas 3 no es soportado por PySpark 4.0 (Pandas API on Spark, Lab 11)
+delta-spark==4.0.0   # Lab 8 (Delta Lake); baja los jars en la primera ejecución
+pandas>=2.2,<3       # pandas 3 no es soportado por PySpark 4.0 (Pandas API on Spark, Lab 12)
 numpy>=1.26          # primera con wheel para 3.12
 pyarrow>=14          # primera con wheel para 3.12; pandas_udf / toPandas
-polars>=1.25         # Lab 11; collect(engine="streaming")
-duckdb               # Lab 11
-matplotlib           # Lab 11
-requests             # Lab 12 (WebHDFS)
+polars>=1.25         # Lab 12; collect(engine="streaming")
+duckdb               # Lab 12
+matplotlib           # Lab 12
+requests             # Lab 6 (WebHDFS)
 jupyter

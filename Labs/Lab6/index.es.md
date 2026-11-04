@@ -8,10 +8,11 @@ nav_order: 6
 layout: default
 ---
 
-# Laboratorio 6: ETL con Arquitectura Medallion
+# Laboratorio 6: Hadoop: MapReduce y HDFS
 
-Construye un pipeline Bronze, Silver y Gold a partir de archivos sucios, con Parquet.
+El primer notebook solo necesita PySpark. El segundo instala Hadoop y levanta un HDFS real: está pensado para Colab o Linux con permiso de escritura en `/opt`, descarga unos 500 MB y tarda algunos minutos.
 
 ### Archivos
 
-* [Datos brutos, Bronze, Silver, cuarentena, Gold y ejercicios](./files/01_etl_medallion_parquet.ipynb)
+* [API FileSystem, MapReduce, Hadoop Streaming y ejercicios](./files/01_hadoop_filesystem_mapreduce.ipynb)
+* [HDFS de un nodo: `hdfs dfs`, Spark, un job MapReduce y Pandas](./files/02_hdfs_single_node.ipynb)

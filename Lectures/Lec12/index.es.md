@@ -8,17 +8,17 @@ nav_order: 12
 layout: default
 ---
 
-# Clase 12: Hadoop: Lo que Hay Debajo de Spark
+# Clase 12: Cuándo No Usar Spark
 {: .no_toc }
 
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Los tres pilares de Hadoop: HDFS, MapReduce y YARN
->* MapReduce con scripts de Python, comparado con Spark
->* La API FileSystem de Hadoop y por qué funciona `s3a://`
->* HDFS de un nodo con Spark y Pandas
->* Hadoop hoy y el paso a la nube
+>* Qué hace rápidos a Polars y DuckDB
+>* La misma consulta en cinco herramientas: tiempo, memoria y sintaxis
+>* Pandas API on Spark para migrar código Pandas
+>* Apache Arrow para intercambiar datos entre herramientas
+>* Criterios para elegir la herramienta adecuada
 
 
 ### Slides

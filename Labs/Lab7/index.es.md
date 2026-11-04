@@ -8,10 +8,10 @@ nav_order: 7
 layout: default
 ---
 
-# Laboratorio 7: Delta Lake
+# Laboratorio 7: ETL con Arquitectura Medallion
 
-Convierte la tabla Silver a Delta y usa MERGE, time travel, OPTIMIZE y VACUUM. El notebook reconstruye el pipeline del Laboratorio 6. La primera ejecución descarga los jars de Delta, así que necesita internet.
+Construye un pipeline Bronze, Silver y Gold a partir de archivos sucios, con Parquet.
 
 ### Archivos
 
-* [Tablas Delta, MERGE, time travel, schema, OPTIMIZE y VACUUM](./files/01_delta_lake.ipynb)
+* [Datos brutos, Bronze, Silver, cuarentena, Gold y ejercicios](./files/01_etl_medallion_parquet.ipynb)

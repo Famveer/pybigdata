@@ -14,6 +14,7 @@ layout: default
 {: .summary}
 >Nesta aula, vamos aprender:
 >
+>* Por que Hadoop e por que Spark: origem e motivação
 >* Driver, executors e partições
 >* SparkSession, schemas e leitura de arquivos
 >* Seleção, filtragem, transformações e UDFs

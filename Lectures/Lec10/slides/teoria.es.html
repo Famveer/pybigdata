@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Machine Learning Distribuido con MLlib</title>
+  <title>Structured Streaming</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,7 +194,7 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Machine Learning Distribuido con MLlib</h1>
+  <h1 class="title">Structured Streaming</h1>
   <p class="subtitle">Big Data con PySpark</p>
 
 <div class="quarto-title-authors">
@@ -209,281 +209,228 @@ Felipe A. Moreno-Vera
 <section id="lo-que-aprenderás" class="slide level2">
 <h2>Lo que aprenderás</h2>
 <ul>
-<li>Transformer, Estimator y Pipeline</li>
-<li>Preparación de features: nulos, categorías y vectores</li>
-<li>Entrenar y evaluar un clasificador (churn de clientes)</li>
-<li>Elegir el umbral de decisión</li>
-<li>Validación cruzada, guardar modelos, scoring en batch y streaming</li>
+<li>El modelo de tabla ilimitada y el micro-batch</li>
+<li>Sources, sinks, output modes y triggers</li>
+<li>Agregar por <strong>tiempo del evento</strong> con ventanas</li>
+<li>Tratar datos atrasados con <strong>watermark</strong></li>
+<li>Tolerancia a fallos con <strong>checkpoint</strong></li>
 </ul>
 </section>
-<section id="cuándo-usar-mllib" class="slide level2">
-<h2>Cuándo usar MLlib</h2>
+<section id="batch-vs-streaming" class="slide level2">
+<h2>Batch vs streaming</h2>
 <table class="caption-top">
-<colgroup>
-<col style="width: 3%">
-<col style="width: 48%">
-<col style="width: 48%">
-</colgroup>
 <thead>
 <tr class="header">
 <th></th>
-<th>scikit-learn</th>
-<th>Spark MLlib</th>
+<th>Batch</th>
+<th>Streaming</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td>Datos</td>
-<td>Caben en la memoria de una máquina</td>
-<td>Distribuidos, sin límite práctico</td>
+<td>Conjunto cerrado</td>
+<td>Flujo sin fin</td>
 </tr>
 <tr class="even">
-<td>Entrada</td>
-<td>NumPy / Pandas</td>
-<td>Spark DataFrame</td>
+<td>Ejecución</td>
+<td>Corre una vez y termina</td>
+<td>Corre continuamente</td>
 </tr>
 <tr class="odd">
-<td>Features</td>
-<td>Una matriz <code>X</code></td>
-<td><strong>Una columna de tipo vector</strong> (<code>features</code>)</td>
+<td>Lectura</td>
+<td><code>spark.read</code></td>
+<td><code>spark.readStream</code></td>
 </tr>
 <tr class="even">
-<td>Algoritmos</td>
-<td>Muy amplio</td>
-<td>Los principales: lineales, árboles, ensembles, clustering, ALS</td>
+<td>Escritura</td>
+<td><code>df.write</code></td>
+<td><code>df.writeStream</code></td>
+</tr>
+<tr class="odd">
+<td>Latencia típica</td>
+<td>Minutos a horas</td>
+<td>Segundos</td>
 </tr>
 </tbody>
 </table>
-<p>Regla práctica: si los datos de entrenamiento caben en una máquina, scikit-learn suele ser más simple.</p>
 </section>
-<section id="tres-conceptos-centrales" class="slide level2">
-<h2>Tres conceptos centrales</h2>
+<section id="la-tabla-ilimitada" class="slide level2">
+<h2>La tabla ilimitada</h2>
+<p>El flujo es una <strong>tabla que crece sin parar</strong>. Escribes la consulta como si fuera sobre toda la tabla; Spark la ejecuta <strong>de forma incremental</strong>.</p>
+<pre><code>   source     [e1 e2]        [e3 e4 e5]        [e6]
+                 │               │               │
+   query      groupBy        groupBy        groupBy
+                 │               │               │
+   result     [A:2]          [A:3 B:2]      [A:3 B:3]</code></pre>
+<pre><code>   SOURCE ──▶ TRANSFORMATIONS ──▶ SINK
+              CHECKPOINT: processed offsets + aggregation state
+              TRIGGER   : when each micro-batch runs</code></pre>
+</section>
+<section id="modos-de-salida" class="slide level2">
+<h2>Modos de salida</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 32%">
-<col style="width: 39%">
-<col style="width: 28%">
+<col style="width: 12%">
+<col style="width: 60%">
+<col style="width: 27%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Concepto</th>
-<th>Qué es</th>
-<th>Método</th>
+<th>Modo</th>
+<th>Qué se escribe en cada micro-batch</th>
+<th>Uso típico</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Transformer</strong></td>
-<td>Recibe un DataFrame y devuelve otro con columnas nuevas</td>
-<td><code>.transform(df)</code></td>
+<td><code>append</code></td>
+<td>Solo filas nuevas que <strong>ya no cambiarán</strong></td>
+<td>Eventos sin agregación; ventanas cerradas por el watermark</td>
 </tr>
 <tr class="even">
-<td><strong>Estimator</strong></td>
-<td>Aprende de los datos y produce un Transformer</td>
-<td><code>.fit(df)</code></td>
+<td><code>update</code></td>
+<td>Solo filas del resultado que <strong>cambiaron</strong></td>
+<td>Dashboards, upserts</td>
 </tr>
 <tr class="odd">
-<td><strong>Pipeline</strong></td>
-<td>Secuencia de etapas; es a su vez un Estimator</td>
-<td><code>.fit(df)</code> genera un <code>PipelineModel</code></td>
+<td><code>complete</code></td>
+<td>El resultado <strong>completo</strong>, de nuevo</td>
+<td>Agregaciones pequeñas</td>
 </tr>
 </tbody>
 </table>
-<div class="callout callout-important callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Importante</strong></p>
-</div>
-<div class="callout-content">
-<p>Todo lo que se aprende de los datos se ajusta <strong>solo con el entrenamiento</strong>. Si no, la evaluación es optimista (<em>data leakage</em>). El Pipeline lo garantiza.</p>
-</div>
-</div>
-</div>
+<p><strong>Processing time:</strong> cuándo Spark recibió el evento. <strong>Event time:</strong> cuándo ocurrió. Para métricas de negocio casi siempre queremos event time, lo que exige tratar datos atrasados.</p>
 </section>
-<section id="preparación-de-features" class="slide level2">
-<h2>Preparación de features</h2>
-<table class="caption-top">
-<thead>
-<tr class="header">
-<th>Columna</th>
-<th>Problema</th>
-<th>Etapa</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>last_rating</code>, <code>monthly_spend</code></td>
-<td>Nulos</td>
-<td><code>Imputer</code> (mediana)</td>
-</tr>
-<tr class="even">
-<td><code>plan</code>, <code>region</code></td>
-<td>Texto</td>
-<td><code>StringIndexer</code> + <code>OneHotEncoder</code></td>
-</tr>
-<tr class="odd">
-<td>Todas</td>
-<td>Varias columnas</td>
-<td><code>VectorAssembler</code></td>
-</tr>
-<tr class="even">
-<td>Numéricas</td>
-<td>Escalas distintas</td>
-<td><code>StandardScaler</code></td>
-</tr>
-</tbody>
-</table>
-<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>train, test <span class="op">=</span> customers.randomSplit([<span class="fl">0.8</span>, <span class="fl">0.2</span>], seed<span class="op">=</span><span class="dv">42</span>)   <span class="co"># before any preparation</span></span>
-<span id="cb1-2"><a href=""></a></span>
-<span id="cb1-3"><a href=""></a>lr <span class="op">=</span> LogisticRegression(featuresCol<span class="op">=</span><span class="st">"features"</span>, labelCol<span class="op">=</span><span class="st">"churn"</span>, maxIter<span class="op">=</span><span class="dv">50</span>)</span>
-<span id="cb1-4"><a href=""></a>pipeline <span class="op">=</span> Pipeline(stages<span class="op">=</span>[imputer, indexer, encoder, assembler, scaler, lr])</span>
-<span id="cb1-5"><a href=""></a>model <span class="op">=</span> pipeline.fit(train)</span>
-<span id="cb1-6"><a href=""></a>pred  <span class="op">=</span> model.transform(test)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="evaluación" class="slide level2 smaller">
-<h2>Evaluación</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 22%">
-<col style="width: 28%">
-<col style="width: 48%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Métrica</th>
-<th>Pregunta</th>
-<th>Cuándo importa</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><strong>AUC-ROC</strong></td>
-<td>¿El modelo ordena bien a los clientes por riesgo?</td>
-<td>Comparar modelos, sin depender del umbral</td>
-</tr>
-<tr class="even">
-<td><strong>AUC-PR</strong></td>
-<td>Igual, enfocado en la clase positiva</td>
-<td>Clases desbalanceadas</td>
-</tr>
-<tr class="odd">
-<td><strong>Precision</strong></td>
-<td>De los marcados como churn, ¿cuántos lo eran?</td>
-<td>Costo de contactar a un cliente sin necesidad</td>
-</tr>
-<tr class="even">
-<td><strong>Recall</strong></td>
-<td>De los que eran churn, ¿cuántos encontré?</td>
-<td>Costo de perder un cliente</td>
-</tr>
-<tr class="odd">
-<td><strong>Accuracy</strong></td>
-<td>¿Cuántos acerté en total?</td>
-<td>Engañosa con clases desbalanceadas</td>
-</tr>
-</tbody>
-</table>
-<p>El umbral de 0.5 rara vez es el ideal: elegirlo es una <strong>decisión de negocio</strong>.</p>
-</section>
-<section id="comparar-modelos" class="slide level2">
-<h2>Comparar modelos</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 1%">
-<col style="width: 34%">
-<col style="width: 24%">
-<col style="width: 39%">
-</colgroup>
-<thead>
-<tr class="header">
-<th></th>
-<th>Regresión logística</th>
-<th>Random Forest</th>
-<th>Gradient-Boosted Trees</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Relaciones</td>
-<td>Lineales</td>
-<td>No lineales</td>
-<td>No lineales</td>
-</tr>
-<tr class="even">
-<td>Interpretación</td>
-<td>Coeficientes</td>
-<td>Importancia de features</td>
-<td>Importancia de features</td>
-</tr>
-<tr class="odd">
-<td>Entrenamiento</td>
-<td>Rápido</td>
-<td>Paralelo (árboles independientes)</td>
-<td>Secuencial (más lento)</td>
-</tr>
-<tr class="even">
-<td>Riesgo de overfitting</td>
-<td>Bajo</td>
-<td>Medio</td>
-<td>Mayor, exige ajuste</td>
-</tr>
-</tbody>
-</table>
-<div class="callout callout-tip callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Tip</strong></p>
-</div>
-<div class="callout-content">
-<p>El modelo más complejo no es automáticamente el mejor: compara siempre con una base simple.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="validación-cruzada" class="slide level2">
-<h2>Validación cruzada</h2>
-<pre><code>  params 1:  [train ][train ][valid ]  -&gt; AUC_1
-             [train ][valid ][train ]  -&gt; AUC_2
-             [valid ][train ][train ]  -&gt; AUC_3   =&gt; mean
-  params 2:  ...                                  =&gt; mean</code></pre>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>grid <span class="op">=</span> (ParamGridBuilder()</span>
-<span id="cb3-2"><a href=""></a>        .addGrid(lr.regParam, [<span class="fl">0.0</span>, <span class="fl">0.01</span>, <span class="fl">0.1</span>])</span>
-<span id="cb3-3"><a href=""></a>        .addGrid(lr.elasticNetParam, [<span class="fl">0.0</span>, <span class="fl">1.0</span>]).build())</span>
-<span id="cb3-4"><a href=""></a>cv <span class="op">=</span> CrossValidator(estimator<span class="op">=</span>pipeline, estimatorParamMaps<span class="op">=</span>grid,</span>
-<span id="cb3-5"><a href=""></a>                    evaluator<span class="op">=</span>BinaryClassificationEvaluator(labelCol<span class="op">=</span><span class="st">"churn"</span>),</span>
-<span id="cb3-6"><a href=""></a>                    numFolds<span class="op">=</span><span class="dv">3</span>, parallelism<span class="op">=</span><span class="dv">2</span>, seed<span class="op">=</span><span class="dv">42</span>)</span>
-<span id="cb3-7"><a href=""></a>best <span class="op">=</span> cv.fit(train).bestModel</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="guardar-y-servir" class="slide level2">
-<h2>Guardar y servir</h2>
-<p>Un <code>PipelineModel</code> guardado contiene <strong>todas las etapas</strong>: quien lo carga aplica la misma preparación. También funciona en DataFrames de streaming.</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>best.write().overwrite().save(MODEL_PATH)</span>
-<span id="cb4-2"><a href=""></a>loaded <span class="op">=</span> PipelineModel.load(MODEL_PATH)</span>
-<span id="cb4-3"><a href=""></a></span>
-<span id="cb4-4"><a href=""></a>stream <span class="op">=</span> spark.readStream.schema(schema).json(STREAM_IN)</span>
-<span id="cb4-5"><a href=""></a>q <span class="op">=</span> (loaded.transform(stream)</span>
-<span id="cb4-6"><a href=""></a>     .select(<span class="st">"customer_id"</span>,</span>
-<span id="cb4-7"><a href=""></a>             F.<span class="bu">round</span>(vector_to_array(<span class="st">"probability"</span>)[<span class="dv">1</span>], <span class="dv">3</span>).alias(<span class="st">"p_churn"</span>))</span>
-<span id="cb4-8"><a href=""></a>     .<span class="bu">filter</span>(<span class="st">"p_churn &gt;= 0.5"</span>)</span>
-<span id="cb4-9"><a href=""></a>     .writeStream.<span class="bu">format</span>(<span class="st">"memory"</span>).queryName(<span class="st">"at_risk"</span>)</span>
-<span id="cb4-10"><a href=""></a>     .outputMode(<span class="st">"append"</span>).start())</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="el-recorrido-completo" class="slide level2">
-<h2>El recorrido completo</h2>
-<pre><code>  raw files ─▶ Bronze ─▶ Silver ─▶ Gold ─▶ model ─▶ batch and streaming predictions</code></pre>
+<section id="fuentes-de-archivos-dos-cuidados" class="slide level2">
+<h2>Fuentes de archivos: dos cuidados</h2>
 <ul>
-<li><strong>API de DataFrames:</strong> Pandas vs Spark</li>
-<li><strong>Performance:</strong> shuffles, joins, skew, AQE, cache</li>
-<li><strong>ETL Medallion + Delta Lake</strong></li>
-<li><strong>Structured Streaming</strong></li>
-<li><strong>MLlib</strong></li>
+<li><strong>El schema es obligatorio:</strong> debe ser estable durante toda la vida de la consulta</li>
+<li><strong>Los archivos deben aparecer completos:</strong> escribe en otra carpeta y luego <strong>mueve</strong> (atómico en el mismo sistema de archivos)</li>
 </ul>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>orders_stream <span class="op">=</span> (spark.readStream.schema(event_schema)</span>
+<span id="cb3-2"><a href=""></a>                 .option(<span class="st">"maxFilesPerTrigger"</span>, <span class="dv">1</span>).json(INPUT))</span>
+<span id="cb3-3"><a href=""></a></span>
+<span id="cb3-4"><a href=""></a>q <span class="op">=</span> (orders_stream.groupBy(<span class="st">"region"</span>).count()</span>
+<span id="cb3-5"><a href=""></a>     .writeStream.<span class="bu">format</span>(<span class="st">"memory"</span>).queryName(<span class="st">"by_region"</span>)</span>
+<span id="cb3-6"><a href=""></a>     .outputMode(<span class="st">"complete"</span>).start())</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="ventanas" class="slide level2">
+<h2>Ventanas</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>.groupBy(F.window(<span class="st">"event_time"</span>, <span class="st">"5 minutes"</span>))                <span class="co"># tumbling</span></span>
+<span id="cb4-2"><a href=""></a>.groupBy(F.window(<span class="st">"event_time"</span>, <span class="st">"10 minutes"</span>, <span class="st">"5 minutes"</span>))  <span class="co"># sliding</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<pre><code>  Tumbling (5 min)                         Sliding (10 min, every 5 min)
+  |10:00-10:05|10:05-10:10|10:10-10:15|    |10:00-------10:10|
+                                                 |10:05-------10:15|
+  each event falls in 1 window             each event falls in 2 windows</code></pre>
+</section>
+<section id="watermark" class="slide level2">
+<h2>Watermark</h2>
+<pre><code>  watermark = latest event_time seen − tolerated delay
+
+  tolerated delay 5 min, latest event_time = 10:11  -&gt;  watermark = 10:06
+
+  - window 10:00-10:05 -&gt; end &lt; watermark: closed, emitted, state released
+  - event at 10:07     -&gt; window 10:05-10:10 still open: accepted
+  - event at 10:02     -&gt; its window is closed: dropped</code></pre>
+<p><strong>Compromiso:</strong> un atraso mayor acepta más eventos atrasados, pero retiene más estado en memoria y retrasa los resultados.</p>
+</section>
+<section id="checkpoint" class="slide level2">
+<h2>Checkpoint</h2>
+<pre><code>  checkpoint/
+  ├── offsets/    &lt;- what each micro-batch will read (written BEFORE processing)
+  ├── commits/    &lt;- which micro-batches finished    (written AFTER the sink)
+  ├── sources/    &lt;- files already seen by the source
+  └── state/      &lt;- aggregation and window state</code></pre>
+<p>Reiniciar con el <strong>mismo checkpoint</strong> continúa donde se detuvo. Con un sink transaccional (archivos de Spark, Delta), la garantía es <strong>exactly-once</strong>. Cada consulta necesita su propio checkpoint.</p>
+</section>
+<section id="triggers" class="slide level2">
+<h2>Triggers</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 41%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Trigger</th>
+<th>Comportamiento</th>
+<th>Uso</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>(por defecto)</td>
+<td>Nuevo micro-batch al terminar el anterior</td>
+<td>Menor latencia</td>
+</tr>
+<tr class="even">
+<td><code>processingTime="1 minute"</code></td>
+<td>Un micro-batch por intervalo</td>
+<td>Controlar costo y tamaño de archivos</td>
+</tr>
+<tr class="odd">
+<td><code>availableNow=True</code></td>
+<td>Procesa <strong>todo lo disponible</strong> y <strong>se detiene</strong></td>
+<td>Ingesta incremental programada</td>
+</tr>
+<tr class="even">
+<td><code>continuous="1 second"</code></td>
+<td>Continuo, sin micro-batch (experimental)</td>
+<td>Latencia de milisegundos, operaciones simples</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="otras-operaciones" class="slide level2 smaller">
+<h2>Otras operaciones</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 42%">
+<col style="width: 34%">
+<col style="width: 23%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operación</th>
+<th>Soporte</th>
+<th>Observación</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>select</code>, <code>filter</code>, <code>withColumn</code></td>
+<td>Sí</td>
+<td>Igual que en batch</td>
+</tr>
+<tr class="even">
+<td>Join stream + estático</td>
+<td>Sí</td>
+<td>Enriquecer con dimensiones</td>
+</tr>
+<tr class="odd">
+<td>Join stream + stream</td>
+<td>Sí</td>
+<td>Watermark en ambos lados y condición de tiempo</td>
+</tr>
+<tr class="even">
+<td><code>dropDuplicatesWithinWatermark</code></td>
+<td>Sí (3.5+)</td>
+<td>Deduplicación con estado limitado</td>
+</tr>
+<tr class="odd">
+<td><code>orderBy</code></td>
+<td>Solo tras agregación en <code>complete</code></td>
+<td>Ordenar un flujo infinito no tiene sentido</td>
+</tr>
+<tr class="even">
+<td><code>show()</code>, <code>collect()</code></td>
+<td>No</td>
+<td>Usa un sink (memory, foreachBatch)</td>
+</tr>
+</tbody>
+</table>
 
 </section>
     </div>

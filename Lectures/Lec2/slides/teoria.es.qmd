@@ -20,6 +20,7 @@ format:
 ## Lo que aprenderás
 
 - Python esencial: tipos, colecciones, control de flujo y funciones
+- Por qué Pandas: origen y motivación
 - Pandas: **Series** y **DataFrame**
 - Explorar, filtrar, transformar y limpiar datos
 - Agregaciones, joins y method chaining
@@ -58,6 +59,35 @@ desconto = lambda preco, pct: preco * (1 - pct)
 ---
 
 ## ¿Por qué Pandas?
+
+Python no tenía una buena forma de trabajar con **datos tabulares**:
+
+| Alternativa | Limitación |
+|-------------|-----------|
+| Excel | Cerca de 1 millón de filas, trabajo manual, difícil de reproducir |
+| Listas y dicts de Python | Bucles largos, lentos con mucho volumen |
+| NumPy | Rápido, pero un solo tipo por array, sin etiquetas ni nulos |
+| R | Tenía `data.frame`, pero fuera del ecosistema de Python |
+
+**2008:** Wes McKinney, entonces en el fondo AQR Capital, empieza Pandas para analizar datos financieros. Se abre como open source en 2009, sobre NumPy.
+
+---
+
+## El mismo total, con menos código
+
+```python
+# Python puro
+totales = {}
+for row in rows:
+    totales[row["cat"]] = totales.get(row["cat"], 0) + row["price"]
+
+# Pandas
+df.groupby("cat")["price"].sum()
+```
+
+---
+
+## Lo que se transfiere a Spark
 
 | Pandas | Apache Spark |
 |--------|--------------|

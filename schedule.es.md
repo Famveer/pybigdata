@@ -36,6 +36,7 @@ nav_order: 2
 
 {: .lecture}
 >Clase 3: [De Pandas a Spark](./Lectures/Lec3/)
+>
 
 {: .lab}
 >Laboratorio 2: [La API de DataFrames de Spark](./Labs/Lab2/)
@@ -48,6 +49,7 @@ nav_order: 2
 
 {: .lecture}
 >Clase 4: [Agregaciones, Joins y Spark SQL](./Lectures/Lec4/)
+>
 
 {: .lab}
 >Laboratorio 3: [Agregaciones, Joins y Spark SQL](./Labs/Lab3/)
@@ -60,6 +62,7 @@ nav_order: 2
 
 {: .lecture}
 >Clase 5: [Cómo Ejecuta Spark: Particiones y Joins](./Lectures/Lec5/)
+>
 
 {: .lab}
 >Laboratorio 4: [Ejecución, Particiones y Joins](./Labs/Lab4/)
@@ -72,6 +75,7 @@ nav_order: 2
 
 {: .lecture}
 >Clase 6: [Skew, Cache, AQE y UDFs](./Lectures/Lec6/)
+>
 
 {: .lab}
 >Laboratorio 5: [Skew, Cache, AQE y UDFs](./Labs/Lab5/)
@@ -83,10 +87,11 @@ nav_order: 2
 ### Semana 7
 
 {: .lecture}
->Clase 7: [ETL con Arquitectura Medallion](./Lectures/Lec7/)
+>Clase 7: [Hadoop: Lo que Hay Debajo de Spark](./Lectures/Lec7/)
+>
 
 {: .lab}
->Laboratorio 6: [ETL con Arquitectura Medallion](./Labs/Lab6/)
+>Laboratorio 6: [Hadoop: MapReduce y HDFS](./Labs/Lab6/)
 >
 
 --- 
@@ -95,10 +100,11 @@ nav_order: 2
 ### Semana 8
 
 {: .lecture}
->Clase 8: [Delta Lake](./Lectures/Lec8/)
+>Clase 8: [ETL con Arquitectura Medallion](./Lectures/Lec8/)
+>
 
 {: .lab}
->Laboratorio 7: [Delta Lake](./Labs/Lab7/)
+>Laboratorio 7: [ETL con Arquitectura Medallion](./Labs/Lab7/)
 >
 
 --- 
@@ -107,10 +113,11 @@ nav_order: 2
 ### Semana 9
 
 {: .lecture}
->Clase 9: [Structured Streaming](./Lectures/Lec9/)
+>Clase 9: [Delta Lake](./Lectures/Lec9/)
+>
 
 {: .lab}
->Laboratorio 8: [Structured Streaming](./Labs/Lab8/)
+>Laboratorio 8: [Delta Lake](./Labs/Lab8/)
 >
 
 --- 
@@ -119,10 +126,11 @@ nav_order: 2
 ### Semana 10
 
 {: .lecture}
->Clase 10: [Machine Learning con MLlib](./Lectures/Lec10/)
+>Clase 10: [Structured Streaming](./Lectures/Lec10/)
+>
 
 {: .lab}
->Laboratorio 9: [MLlib: Pipelines y Modelos](./Labs/Lab9/)
+>Laboratorio 9: [Structured Streaming](./Labs/Lab9/)
 >
 
 --- 
@@ -130,20 +138,21 @@ nav_order: 2
 
 ### Semana 11
 
-{: .lab}
->Laboratorio 10: [MLlib: Ajuste y Despliegue](./Labs/Lab10/)
+{: .lecture}
+>Clase 11: [Machine Learning con MLlib](./Lectures/Lec11/)
 >
 
----
+{: .lab}
+>Laboratorio 10: [MLlib: Pipelines y Modelos](./Labs/Lab10/)
+>
+
+--- 
 
 
 ### Semana 12
 
-{: .lecture}
->Clase 11: [Cuándo No Usar Spark](./Lectures/Lec11/)
-
 {: .lab}
->Laboratorio 11: [Cuándo No Usar Spark](./Labs/Lab11/)
+>Laboratorio 11: [MLlib: Ajuste y Despliegue](./Labs/Lab11/)
 >
 
 --- 
@@ -152,10 +161,11 @@ nav_order: 2
 ### Semana 13
 
 {: .lecture}
->Clase 12: [Hadoop: Lo que Hay Debajo de Spark](./Lectures/Lec12/)
-
-{: .lab}
->Laboratorio 12: [Hadoop: MapReduce y HDFS](./Labs/Lab12/)
+>Clase 12: [Cuándo No Usar Spark](./Lectures/Lec12/)
 >
 
---- 
+{: .lab}
+>Laboratorio 12: [Cuándo No Usar Spark](./Labs/Lab12/)
+>
+
+---

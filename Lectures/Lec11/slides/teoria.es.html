@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Cuándo No Usar Spark</title>
+  <title>Machine Learning Distribuido con MLlib</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,7 +194,7 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Cuándo No Usar Spark</h1>
+  <h1 class="title">Machine Learning Distribuido con MLlib</h1>
   <p class="subtitle">Big Data con PySpark</p>
 
 <div class="quarto-title-authors">
@@ -209,445 +209,270 @@ Felipe A. Moreno-Vera
 <section id="lo-que-aprenderás" class="slide level2">
 <h2>Lo que aprenderás</h2>
 <ul>
-<li>Qué hace rápidos a Polars y DuckDB</li>
-<li>La misma consulta en cinco herramientas: tiempo, memoria y sintaxis</li>
-<li>Pandas API on Spark para migrar código Pandas</li>
-<li>Apache Arrow para intercambiar datos entre herramientas</li>
-<li>Un criterio claro para decidir</li>
+<li>Transformer, Estimator y Pipeline</li>
+<li>Preparación de features: nulos, categorías y vectores</li>
+<li>Entrenar y evaluar un clasificador (churn de clientes)</li>
+<li>Elegir el umbral de decisión</li>
+<li>Validación cruzada, guardar modelos, scoring en batch y streaming</li>
 </ul>
 </section>
-<section id="las-herramientas" class="slide level2 smaller">
-<h2>Las herramientas</h2>
+<section id="cuándo-usar-mllib" class="slide level2">
+<h2>Cuándo usar MLlib</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 1%">
-<col style="width: 15%">
-<col style="width: 15%">
-<col style="width: 15%">
-<col style="width: 39%">
-<col style="width: 13%">
+<col style="width: 3%">
+<col style="width: 48%">
+<col style="width: 48%">
 </colgroup>
 <thead>
 <tr class="header">
 <th></th>
-<th>Pandas</th>
-<th>Polars</th>
-<th>DuckDB</th>
-<th>Pandas API on Spark</th>
-<th>Spark</th>
+<th>scikit-learn</th>
+<th>Spark MLlib</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Interfaz</td>
-<td>Python</td>
-<td>Python (expresiones)</td>
-<td><strong>SQL</strong></td>
-<td>Sintaxis de Pandas</td>
-<td>DataFrame + SQL</td>
+<td>Datos</td>
+<td>Caben en la memoria de una máquina</td>
+<td>Distribuidos, sin límite práctico</td>
 </tr>
 <tr class="even">
-<td>Motor</td>
-<td>NumPy/C</td>
-<td>Rust</td>
-<td>C++</td>
-<td>Spark</td>
-<td>Spark (JVM)</td>
+<td>Entrada</td>
+<td>NumPy / Pandas</td>
+<td>Spark DataFrame</td>
 </tr>
 <tr class="odd">
-<td>Ejecución</td>
-<td>Eager</td>
-<td>Eager <strong>o lazy</strong></td>
-<td>Lazy</td>
-<td>Lazy</td>
-<td>Lazy</td>
+<td>Features</td>
+<td>Una matriz <code>X</code></td>
+<td><strong>Una columna de tipo vector</strong> (<code>features</code>)</td>
 </tr>
 <tr class="even">
-<td>Núcleos</td>
-<td><strong>1</strong> (casi siempre)</td>
-<td>Todos</td>
-<td>Todos</td>
-<td>Todos / clúster</td>
-<td>Todos / clúster</td>
-</tr>
-<tr class="odd">
-<td>Datos mayores que la RAM</td>
-<td>No</td>
-<td>Sí (streaming)</td>
-<td>Sí (spill)</td>
-<td>Sí</td>
-<td>Sí</td>
-</tr>
-<tr class="even">
-<td>Varias máquinas</td>
-<td>No</td>
-<td>No</td>
-<td>No</td>
-<td><strong>Sí</strong></td>
-<td><strong>Sí</strong></td>
+<td>Algoritmos</td>
+<td>Muy amplio</td>
+<td>Los principales: lineales, árboles, ensembles, clustering, ALS</td>
 </tr>
 </tbody>
 </table>
+<p>Regla práctica: si los datos de entrenamiento caben en una máquina, scikit-learn suele ser más simple.</p>
 </section>
-<section id="por-qué-polars-y-duckdb-son-rápidos" class="slide level2">
-<h2>Por qué Polars y DuckDB son rápidos</h2>
+<section id="tres-conceptos-centrales" class="slide level2">
+<h2>Tres conceptos centrales</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 60%">
-<col style="width: 40%">
+<col style="width: 32%">
+<col style="width: 39%">
+<col style="width: 28%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Técnica</th>
-<th>Idea</th>
+<th>Concepto</th>
+<th>Qué es</th>
+<th>Método</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Almacenamiento columnar</strong> (Arrow)</td>
-<td>Los valores de una columna, contiguos en memoria</td>
+<td><strong>Transformer</strong></td>
+<td>Recibe un DataFrame y devuelve otro con columnas nuevas</td>
+<td><code>.transform(df)</code></td>
 </tr>
 <tr class="even">
-<td><strong>Ejecución vectorizada</strong></td>
-<td>Lotes de miles de valores por instrucción</td>
+<td><strong>Estimator</strong></td>
+<td>Aprende de los datos y produce un Transformer</td>
+<td><code>.fit(df)</code></td>
 </tr>
 <tr class="odd">
-<td><strong>Paralelismo</strong></td>
-<td>El trabajo se reparte entre todos los núcleos</td>
-</tr>
-<tr class="even">
-<td><strong>Optimización de consultas</strong></td>
-<td>Empuja filtros, lee solo las columnas usadas</td>
-</tr>
-<tr class="odd">
-<td><strong>Out-of-core</strong></td>
-<td>Usa disco cuando se acaba la RAM</td>
+<td><strong>Pipeline</strong></td>
+<td>Secuencia de etapas; es a su vez un Estimator</td>
+<td><code>.fit(df)</code> genera un <code>PipelineModel</code></td>
 </tr>
 </tbody>
 </table>
-<p>Las mismas ideas de Spark, <strong>sin el costo de coordinar un clúster</strong>.</p>
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Importante</strong></p>
+</div>
+<div class="callout-content">
+<p>Todo lo que se aprende de los datos se ajusta <strong>solo con el entrenamiento</strong>. Si no, la evaluación es optimista (<em>data leakage</em>). El Pipeline lo garantiza.</p>
+</div>
+</div>
+</div>
 </section>
-<section id="el-costo-fijo-de-spark" class="slide level2">
-<h2>El costo fijo de Spark</h2>
-<pre><code>  Pandas / Polars / DuckDB        Spark
-  ┌──────────────────────┐        ┌───────────────────────────────┐
-  │ proceso Python       │        │ Python ─py4j─▶ JVM (driver)   │
-  │ └─ biblioteca nativa │        │   ├─ planificación (Catalyst) │
-  │    lee, calcula,     │        │   ├─ jobs, stages, tasks      │
-  │    devuelve          │        │   ├─ shuffle (disco)          │
-  └──────────────────────┘        │   └─ resultado ─▶ Python      │
-                                  └───────────────────────────────┘
-  ~ milisegundos                  ~ cientos de ms a segundos</code></pre>
-<p>Irrelevante con 1 TB en 50 máquinas. Con 2 GB en un portátil, domina.</p>
-</section>
-<section id="la-misma-consulta-pandas-y-polars" class="slide level2">
-<h2>La misma consulta: Pandas y Polars</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a><span class="co"># Pandas: cada paso corre al momento</span></span>
-<span id="cb2-2"><a href=""></a>o <span class="op">=</span> pd.read_parquet(ORDERS, columns<span class="op">=</span>[<span class="st">"customer_id"</span>, <span class="st">"product_id"</span>,</span>
-<span id="cb2-3"><a href=""></a>                                     <span class="st">"quantity"</span>, <span class="st">"price"</span>, <span class="st">"order_date"</span>])</span>
-<span id="cb2-4"><a href=""></a>o <span class="op">=</span> o[o[<span class="st">"order_date"</span>] <span class="op">&gt;=</span> CUTOFF]</span>
-<span id="cb2-5"><a href=""></a>o <span class="op">=</span> o.assign(revenue<span class="op">=</span>o[<span class="st">"price"</span>] <span class="op">*</span> o[<span class="st">"quantity"</span>])</span>
-<span id="cb2-6"><a href=""></a>df <span class="op">=</span> o.merge(c, on<span class="op">=</span><span class="st">"customer_id"</span>).merge(p, on<span class="op">=</span><span class="st">"product_id"</span>)</span>
-<span id="cb2-7"><a href=""></a>df.groupby([<span class="st">"segment"</span>, <span class="st">"category"</span>], as_index<span class="op">=</span><span class="va">False</span>) <span class="op">\</span></span>
-<span id="cb2-8"><a href=""></a>  .agg(orders<span class="op">=</span>(<span class="st">"revenue"</span>, <span class="st">"size"</span>), revenue<span class="op">=</span>(<span class="st">"revenue"</span>, <span class="st">"sum"</span>))</span>
-<span id="cb2-9"><a href=""></a></span>
-<span id="cb2-10"><a href=""></a><span class="co"># Polars: arma un plan, corre en collect()</span></span>
-<span id="cb2-11"><a href=""></a>(pl.scan_parquet(ORDERS)</span>
-<span id="cb2-12"><a href=""></a>   .<span class="bu">filter</span>(pl.col(<span class="st">"order_date"</span>) <span class="op">&gt;=</span> pl.date(<span class="dv">2024</span>, <span class="dv">7</span>, <span class="dv">1</span>))</span>
-<span id="cb2-13"><a href=""></a>   .with_columns(revenue<span class="op">=</span>pl.col(<span class="st">"price"</span>) <span class="op">*</span> pl.col(<span class="st">"quantity"</span>))</span>
-<span id="cb2-14"><a href=""></a>   .join(c, on<span class="op">=</span><span class="st">"customer_id"</span>).join(p, on<span class="op">=</span><span class="st">"product_id"</span>)</span>
-<span id="cb2-15"><a href=""></a>   .group_by(<span class="st">"segment"</span>, <span class="st">"category"</span>)</span>
-<span id="cb2-16"><a href=""></a>   .agg(orders<span class="op">=</span>pl.<span class="bu">len</span>(), revenue<span class="op">=</span>pl.col(<span class="st">"revenue"</span>).<span class="bu">sum</span>())</span>
-<span id="cb2-17"><a href=""></a>   .collect())</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="la-misma-consulta-duckdb-y-spark" class="slide level2">
-<h2>La misma consulta: DuckDB y Spark</h2>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="co"># DuckDB: SQL puro sobre los archivos, sin paso de lectura</span></span>
-<span id="cb3-2"><a href=""></a>duckdb.sql(<span class="ss">f"""</span></span>
-<span id="cb3-3"><a href=""></a><span class="ss">    SELECT c.segment, p.category, COUNT(*) AS orders,</span></span>
-<span id="cb3-4"><a href=""></a><span class="ss">           SUM(o.price * o.quantity) AS revenue</span></span>
-<span id="cb3-5"><a href=""></a><span class="ss">    FROM '</span><span class="sc">{</span>ORDERS<span class="sc">}</span><span class="ss">' o</span></span>
-<span id="cb3-6"><a href=""></a><span class="ss">    JOIN '</span><span class="sc">{</span>CUSTOMERS<span class="sc">}</span><span class="ss">' c USING (customer_id)</span></span>
-<span id="cb3-7"><a href=""></a><span class="ss">    JOIN '</span><span class="sc">{</span>PRODUCTS<span class="sc">}</span><span class="ss">'  p USING (product_id)</span></span>
-<span id="cb3-8"><a href=""></a><span class="ss">    WHERE o.order_date &gt;= DATE '</span><span class="sc">{</span>CUTOFF<span class="sc">}</span><span class="ss">'</span></span>
-<span id="cb3-9"><a href=""></a><span class="ss">    GROUP BY ALL</span></span>
-<span id="cb3-10"><a href=""></a><span class="ss">"""</span>).df()</span>
-<span id="cb3-11"><a href=""></a></span>
-<span id="cb3-12"><a href=""></a><span class="co"># Spark</span></span>
-<span id="cb3-13"><a href=""></a>(spark.read.parquet(ORDERS)</span>
-<span id="cb3-14"><a href=""></a>   .<span class="bu">filter</span>(F.col(<span class="st">"order_date"</span>) <span class="op">&gt;=</span> CUTOFF)</span>
-<span id="cb3-15"><a href=""></a>   .withColumn(<span class="st">"revenue"</span>, F.col(<span class="st">"price"</span>) <span class="op">*</span> F.col(<span class="st">"quantity"</span>))</span>
-<span id="cb3-16"><a href=""></a>   .join(c, <span class="st">"customer_id"</span>).join(p, <span class="st">"product_id"</span>)</span>
-<span id="cb3-17"><a href=""></a>   .groupBy(<span class="st">"segment"</span>, <span class="st">"category"</span>)</span>
-<span id="cb3-18"><a href=""></a>   .agg(F.count(<span class="st">"*"</span>).alias(<span class="st">"orders"</span>), F.<span class="bu">sum</span>(<span class="st">"revenue"</span>).alias(<span class="st">"revenue"</span>)))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="cómo-leer-los-resultados" class="slide level2">
-<h2>Cómo leer los resultados</h2>
-<p>Los números varían con la máquina, pero el orden suele repetirse:</p>
-<ul>
-<li><strong>Polars y DuckDB</strong> suelen ser los más rápidos</li>
-<li><strong>Pandas</strong> hace los joins en un núcleo y materializa cada paso</li>
-<li><strong>Spark</strong> paga su costo fijo: planificación, tasks, transferencia a Python</li>
-<li><strong>Pandas API on Spark</strong> suma la traducción de la semántica de Pandas: hecha para escalar, no para ser rápida en una máquina</li>
-</ul>
-<p><strong>Memoria:</strong> Pandas suele romperse por falta de RAM mucho antes de ser demasiado lento. Regla antigua: reserva de 5 a 10 veces el tamaño de los datos.</p>
-</section>
-<section id="cuando-crece-el-volumen" class="slide level2">
-<h2>Cuando crece el volumen</h2>
-<p>La misma consulta con 1, 5 y 20 millones de filas:</p>
-<ul>
-<li>El costo fijo de Spark pesa más con poco volumen; la diferencia relativa baja al crecer</li>
-<li>Pandas crece más rápido que los demás y en algún punto deja de caber en memoria</li>
-<li>Polars y DuckDB crecen despacio: todos los núcleos, sin materializar pasos intermedios</li>
-</ul>
-<p><strong>La curva que un notebook no puede mostrar:</strong> Spark en un clúster. Con 10 máquinas, el mismo código procesa 10 veces más datos en el mismo tiempo.</p>
-</section>
-<section id="pandas-api-on-spark" class="slide level2 smaller">
-<h2>Pandas API on Spark</h2>
-<p>Caso de uso: <strong>migración</strong>. Código Pandas que funciona y cuyos datos ya no caben en una máquina.</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a><span class="im">import</span> pyspark.pandas <span class="im">as</span> ps          <span class="co"># en vez de: import pandas as pd</span></span>
-<span id="cb4-2"><a href=""></a>df <span class="op">=</span> ps.read_parquet(path)</span>
-<span id="cb4-3"><a href=""></a>df.groupby(<span class="st">"x"</span>)[<span class="st">"y"</span>].mean()          <span class="co"># mismo código</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="preparación-de-features" class="slide level2">
+<h2>Preparación de features</h2>
 <table class="caption-top">
-<colgroup>
-<col style="width: 17%">
-<col style="width: 22%">
-<col style="width: 60%">
-</colgroup>
 <thead>
 <tr class="header">
-<th>Tema</th>
-<th>Pandas</th>
-<th>Pandas API on Spark</th>
+<th>Columna</th>
+<th>Problema</th>
+<th>Etapa</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Índice</td>
-<td>Siempre existe</td>
-<td>Hay que <strong>generarlo</strong>; su tipo afecta el rendimiento</td>
+<td><code>last_rating</code>, <code>monthly_spend</code></td>
+<td>Nulos</td>
+<td><code>Imputer</code> (mediana)</td>
 </tr>
 <tr class="even">
-<td>Orden de filas</td>
-<td>Garantizado</td>
-<td>No garantizado tras operaciones distribuidas</td>
+<td><code>plan</code>, <code>region</code></td>
+<td>Texto</td>
+<td><code>StringIndexer</code> + <code>OneHotEncoder</code></td>
 </tr>
 <tr class="odd">
-<td><code>iterrows</code>, <code>.to_numpy()</code></td>
-<td>Normales</td>
-<td>Traen <strong>todo</strong> al driver</td>
+<td>Todas</td>
+<td>Varias columnas</td>
+<td><code>VectorAssembler</code></td>
 </tr>
 <tr class="even">
-<td>Modo ANSI de Spark 4</td>
-<td>—</td>
-<td>Debe estar apagado</td>
+<td>Numéricas</td>
+<td>Escalas distintas</td>
+<td><code>StandardScaler</code></td>
 </tr>
 </tbody>
 </table>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>train, test <span class="op">=</span> customers.randomSplit([<span class="fl">0.8</span>, <span class="fl">0.2</span>], seed<span class="op">=</span><span class="dv">42</span>)   <span class="co"># before any preparation</span></span>
+<span id="cb1-2"><a href=""></a></span>
+<span id="cb1-3"><a href=""></a>lr <span class="op">=</span> LogisticRegression(featuresCol<span class="op">=</span><span class="st">"features"</span>, labelCol<span class="op">=</span><span class="st">"churn"</span>, maxIter<span class="op">=</span><span class="dv">50</span>)</span>
+<span id="cb1-4"><a href=""></a>pipeline <span class="op">=</span> Pipeline(stages<span class="op">=</span>[imputer, indexer, encoder, assembler, scaler, lr])</span>
+<span id="cb1-5"><a href=""></a>model <span class="op">=</span> pipeline.fit(train)</span>
+<span id="cb1-6"><a href=""></a>pred  <span class="op">=</span> model.transform(test)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="el-índice-por-defecto" class="slide level2">
-<h2>El índice por defecto</h2>
-<p><code>compute.default_index_type</code>:</p>
+<section id="evaluación" class="slide level2 smaller">
+<h2>Evaluación</h2>
 <table class="caption-top">
 <colgroup>
 <col style="width: 22%">
-<col style="width: 55%">
-<col style="width: 22%">
+<col style="width: 28%">
+<col style="width: 48%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Tipo</th>
-<th>Cómo se genera</th>
-<th>Costo</th>
+<th>Métrica</th>
+<th>Pregunta</th>
+<th>Cuándo importa</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>sequence</code> (por defecto)</td>
-<td>0, 1, 2… <strong>en una sola partición</strong></td>
-<td>Cuello de botella: una task ve todos los datos</td>
+<td><strong>AUC-ROC</strong></td>
+<td>¿El modelo ordena bien a los clientes por riesgo?</td>
+<td>Comparar modelos, sin depender del umbral</td>
 </tr>
 <tr class="even">
-<td><code>distributed-sequence</code></td>
-<td>0, 1, 2… calculado por partición</td>
-<td>Medio: un job extra</td>
+<td><strong>AUC-PR</strong></td>
+<td>Igual, enfocado en la clase positiva</td>
+<td>Clases desbalanceadas</td>
 </tr>
 <tr class="odd">
-<td><code>distributed</code></td>
-<td>IDs crecientes, <strong>no consecutivos</strong></td>
-<td>Bajo: úsalo si el índice no importa</td>
+<td><strong>Precision</strong></td>
+<td>De los marcados como churn, ¿cuántos lo eran?</td>
+<td>Costo de contactar a un cliente sin necesidad</td>
+</tr>
+<tr class="even">
+<td><strong>Recall</strong></td>
+<td>De los que eran churn, ¿cuántos encontré?</td>
+<td>Costo de perder un cliente</td>
+</tr>
+<tr class="odd">
+<td><strong>Accuracy</strong></td>
+<td>¿Cuántos acerté en total?</td>
+<td>Engañosa con clases desbalanceadas</td>
 </tr>
 </tbody>
 </table>
+<p>El umbral de 0.5 rara vez es el ideal: elegirlo es una <strong>decisión de negocio</strong>.</p>
 </section>
-<section id="polars-eager-o-lazy" class="slide level2">
-<h2>Polars: eager o lazy</h2>
-<p><code>pl.read_parquet</code> ejecuta cada paso al momento. <code>pl.scan_parquet</code> arma un plan que corre en <code>.collect()</code>.</p>
-<table class="caption-top">
-<colgroup>
-<col style="width: 52%">
-<col style="width: 47%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>PySpark</th>
-<th>Polars</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>F.col("x")</code></td>
-<td><code>pl.col("x")</code></td>
-</tr>
-<tr class="even">
-<td><code>df.withColumn("y", expr)</code></td>
-<td><code>df.with_columns(y=expr)</code></td>
-</tr>
-<tr class="odd">
-<td><code>df.groupBy("k").agg(...)</code></td>
-<td><code>df.group_by("k").agg(...)</code></td>
-</tr>
-<tr class="even">
-<td><code>F.when(c, a).otherwise(b)</code></td>
-<td><code>pl.when(c).then(a).otherwise(b)</code></td>
-</tr>
-<tr class="odd">
-<td><code>F.sum("x").over(Window.partitionBy("k"))</code></td>
-<td><code>pl.col("x").sum().over("k")</code></td>
-</tr>
-</tbody>
-</table>
-<p><code>lazy.explain()</code> muestra predicate y column pruning. <code>collect(engine="streaming")</code> procesa datos mayores que la memoria.</p>
-</section>
-<section id="duckdb-analítica-dentro-de-tu-proceso" class="slide level2">
-<h2>DuckDB: analítica dentro de tu proceso</h2>
-<p>Sin servidor, como SQLite, pero optimizado para consultas analíticas.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="co"># 1) SQL sobre archivos (Parquet, CSV, JSON, comodines, S3)</span></span>
-<span id="cb5-2"><a href=""></a>duckdb.sql(<span class="ss">f"SELECT region, AVG(price) FROM '</span><span class="sc">{</span>ORDERS<span class="sc">}</span><span class="ss">' GROUP BY region"</span>)</span>
-<span id="cb5-3"><a href=""></a></span>
-<span id="cb5-4"><a href=""></a><span class="co"># 2) SQL sobre un DataFrame en memoria: la variable se vuelve tabla</span></span>
-<span id="cb5-5"><a href=""></a>regions_pd <span class="op">=</span> pd.DataFrame({<span class="st">"region"</span>: REGIONS, <span class="st">"manager"</span>: managers})</span>
-<span id="cb5-6"><a href=""></a>duckdb.sql(<span class="ss">f"SELECT * FROM '</span><span class="sc">{</span>ORDERS<span class="sc">}</span><span class="ss">' JOIN regions_pd USING (region)"</span>).pl()</span>
-<span id="cb5-7"><a href=""></a></span>
-<span id="cb5-8"><a href=""></a><span class="co"># 3) Out-of-core: usa disco en vez de romperse</span></span>
-<span id="cb5-9"><a href=""></a>con <span class="op">=</span> duckdb.<span class="ex">connect</span>()</span>
-<span id="cb5-10"><a href=""></a>con.sql(<span class="st">"SET memory_limit = '300MB'"</span>)</span>
-<span id="cb5-11"><a href=""></a>con.sql(<span class="ss">f"SET temp_directory = '</span><span class="sc">{</span>BASE<span class="sc">}</span><span class="ss">/duckdb_tmp'"</span>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="apache-arrow-el-idioma-común" class="slide level2">
-<h2>Apache Arrow: el idioma común</h2>
-<pre><code>                  ┌───────────────┐
-  Pandas ◀──────▶ │               │ ◀──────▶ Polars
-                  │ Apache Arrow  │
-  DuckDB ◀──────▶ │ (columnar, en │ ◀──────▶ Spark
-                  │  memoria)     │
- Parquet ◀──────▶ │               │ ◀──────▶ ML
-                  └───────────────┘</code></pre>
-<p>En PySpark 4.0, Arrow viene <strong>apagado por defecto</strong> para <code>toPandas()</code> y <code>createDataFrame(pandas_df)</code>. Enciéndelo:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>.config(<span class="st">"spark.sql.execution.arrow.pyspark.enabled"</span>, <span class="st">"true"</span>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="cómo-decidir" class="slide level2">
-<h2>Cómo decidir</h2>
-<table class="caption-top">
-<thead>
-<tr class="header">
-<th>Situación</th>
-<th>Herramienta</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Decenas de GB a TB, o datos que crecerán mucho</td>
-<td>Spark</td>
-</tr>
-<tr class="even">
-<td>Streaming, Delta Lake, MLlib, ya hay un clúster</td>
-<td>Spark</td>
-</tr>
-<tr class="odd">
-<td>Código Pandas que ya no cabe en memoria</td>
-<td>Pandas API on Spark</td>
-</tr>
-<tr class="even">
-<td>Hasta decenas de GB en una máquina, equipo de SQL</td>
-<td>DuckDB</td>
-</tr>
-<tr class="odd">
-<td>Hasta decenas de GB en una máquina, pipeline en Python</td>
-<td>Polars</td>
-</tr>
-<tr class="even">
-<td>Exploración rápida, pocos MB</td>
-<td>Pandas</td>
-</tr>
-</tbody>
-</table>
-<p>Spark no es solo velocidad: trae <strong>tolerancia a fallos, escala horizontal y un ecosistema</strong>.</p>
-</section>
-<section id="resumen" class="slide level2 smaller">
-<h2>Resumen</h2>
+<section id="comparar-modelos" class="slide level2">
+<h2>Comparar modelos</h2>
 <table class="caption-top">
 <colgroup>
 <col style="width: 1%">
-<col style="width: 15%">
-<col style="width: 15%">
-<col style="width: 15%">
+<col style="width: 34%">
+<col style="width: 24%">
 <col style="width: 39%">
-<col style="width: 13%">
 </colgroup>
 <thead>
 <tr class="header">
 <th></th>
-<th>Pandas</th>
-<th>Polars</th>
-<th>DuckDB</th>
-<th>Pandas API on Spark</th>
-<th>Spark</th>
+<th>Regresión logística</th>
+<th>Random Forest</th>
+<th>Gradient-Boosted Trees</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Ideal para</td>
-<td>Exploración, pocos datos</td>
-<td>Pipelines Python, 1 máquina</td>
-<td>SQL analítico, 1 máquina</td>
-<td>Escalar código Pandas</td>
-<td>Datos distribuidos, ecosistema</td>
+<td>Relaciones</td>
+<td>Lineales</td>
+<td>No lineales</td>
+<td>No lineales</td>
 </tr>
 <tr class="even">
-<td>Leer Parquet</td>
-<td><code>pd.read_parquet</code></td>
-<td><code>pl.scan_parquet</code></td>
-<td><code>FROM 'archivo.parquet'</code></td>
-<td><code>ps.read_parquet</code></td>
-<td><code>spark.read.parquet</code></td>
+<td>Interpretación</td>
+<td>Coeficientes</td>
+<td>Importancia de features</td>
+<td>Importancia de features</td>
 </tr>
 <tr class="odd">
-<td>Agregar</td>
-<td><code>groupby().agg()</code></td>
-<td><code>group_by().agg()</code></td>
-<td><code>GROUP BY</code></td>
-<td><code>groupby().agg()</code></td>
-<td><code>groupBy().agg()</code></td>
+<td>Entrenamiento</td>
+<td>Rápido</td>
+<td>Paralelo (árboles independientes)</td>
+<td>Secuencial (más lento)</td>
 </tr>
 <tr class="even">
-<td>Ver el plan</td>
-<td>—</td>
-<td><code>.explain()</code></td>
-<td><code>EXPLAIN</code></td>
-<td><code>.spark.explain()</code></td>
-<td><code>.explain()</code></td>
-</tr>
-<tr class="odd">
-<td>A Pandas</td>
-<td>—</td>
-<td><code>.to_pandas()</code></td>
-<td><code>.df()</code></td>
-<td><code>.to_pandas()</code></td>
-<td><code>.toPandas()</code></td>
+<td>Riesgo de overfitting</td>
+<td>Bajo</td>
+<td>Medio</td>
+<td>Mayor, exige ajuste</td>
 </tr>
 </tbody>
 </table>
+<div class="callout callout-tip callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Tip</strong></p>
+</div>
+<div class="callout-content">
+<p>El modelo más complejo no es automáticamente el mejor: compara siempre con una base simple.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="validación-cruzada" class="slide level2">
+<h2>Validación cruzada</h2>
+<pre><code>  params 1:  [train ][train ][valid ]  -&gt; AUC_1
+             [train ][valid ][train ]  -&gt; AUC_2
+             [valid ][train ][train ]  -&gt; AUC_3   =&gt; mean
+  params 2:  ...                                  =&gt; mean</code></pre>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>grid <span class="op">=</span> (ParamGridBuilder()</span>
+<span id="cb3-2"><a href=""></a>        .addGrid(lr.regParam, [<span class="fl">0.0</span>, <span class="fl">0.01</span>, <span class="fl">0.1</span>])</span>
+<span id="cb3-3"><a href=""></a>        .addGrid(lr.elasticNetParam, [<span class="fl">0.0</span>, <span class="fl">1.0</span>]).build())</span>
+<span id="cb3-4"><a href=""></a>cv <span class="op">=</span> CrossValidator(estimator<span class="op">=</span>pipeline, estimatorParamMaps<span class="op">=</span>grid,</span>
+<span id="cb3-5"><a href=""></a>                    evaluator<span class="op">=</span>BinaryClassificationEvaluator(labelCol<span class="op">=</span><span class="st">"churn"</span>),</span>
+<span id="cb3-6"><a href=""></a>                    numFolds<span class="op">=</span><span class="dv">3</span>, parallelism<span class="op">=</span><span class="dv">2</span>, seed<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb3-7"><a href=""></a>best <span class="op">=</span> cv.fit(train).bestModel</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="guardar-y-servir" class="slide level2">
+<h2>Guardar y servir</h2>
+<p>Un <code>PipelineModel</code> guardado contiene <strong>todas las etapas</strong>: quien lo carga aplica la misma preparación. También funciona en DataFrames de streaming.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>best.write().overwrite().save(MODEL_PATH)</span>
+<span id="cb4-2"><a href=""></a>loaded <span class="op">=</span> PipelineModel.load(MODEL_PATH)</span>
+<span id="cb4-3"><a href=""></a></span>
+<span id="cb4-4"><a href=""></a>stream <span class="op">=</span> spark.readStream.schema(schema).json(STREAM_IN)</span>
+<span id="cb4-5"><a href=""></a>q <span class="op">=</span> (loaded.transform(stream)</span>
+<span id="cb4-6"><a href=""></a>     .select(<span class="st">"customer_id"</span>,</span>
+<span id="cb4-7"><a href=""></a>             F.<span class="bu">round</span>(vector_to_array(<span class="st">"probability"</span>)[<span class="dv">1</span>], <span class="dv">3</span>).alias(<span class="st">"p_churn"</span>))</span>
+<span id="cb4-8"><a href=""></a>     .<span class="bu">filter</span>(<span class="st">"p_churn &gt;= 0.5"</span>)</span>
+<span id="cb4-9"><a href=""></a>     .writeStream.<span class="bu">format</span>(<span class="st">"memory"</span>).queryName(<span class="st">"at_risk"</span>)</span>
+<span id="cb4-10"><a href=""></a>     .outputMode(<span class="st">"append"</span>).start())</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 </section>
     </div>

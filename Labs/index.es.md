@@ -39,22 +39,22 @@ Descarga el archivo de requirements [aquí](./../requirements.txt).
 **Laboratorio 5**: [Skew, Cache, AQE y UDFs](./Lab5)
 
 
-**Laboratorio 6**: [ETL con Arquitectura Medallion](./Lab6)
+**Laboratorio 6**: [Hadoop: MapReduce y HDFS](./Lab6)
 
 
-**Laboratorio 7**: [Delta Lake](./Lab7)
+**Laboratorio 7**: [ETL con Arquitectura Medallion](./Lab7)
 
 
-**Laboratorio 8**: [Structured Streaming](./Lab8)
+**Laboratorio 8**: [Delta Lake](./Lab8)
 
 
-**Laboratorio 9**: [MLlib: Pipelines y Modelos](./Lab9)
+**Laboratorio 9**: [Structured Streaming](./Lab9)
 
 
-**Laboratorio 10**: [MLlib: Ajuste y Despliegue](./Lab10)
+**Laboratorio 10**: [MLlib: Pipelines y Modelos](./Lab10)
 
 
-**Laboratorio 11**: [Cuándo No Usar Spark](./Lab11)
+**Laboratorio 11**: [MLlib: Ajuste y Despliegue](./Lab11)
 
 
-**Laboratorio 12**: [Hadoop: MapReduce y HDFS](./Lab12)
+**Laboratorio 12**: [Cuándo No Usar Spark](./Lab12)

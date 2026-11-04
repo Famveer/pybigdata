@@ -31,19 +31,19 @@ As aulas vão ajudar você a entender a teoria e os conceitos por trás do proce
 **Aula 6**: [Skew, Cache, AQE e UDFs](./Lec6)
 
 
-**Aula 7**: [ETL com Arquitetura Medallion](./Lec7)
+**Aula 7**: [Hadoop: O que Está por Baixo do Spark](./Lec7)
 
 
-**Aula 8**: [Delta Lake](./Lec8)
+**Aula 8**: [ETL com Arquitetura Medallion](./Lec8)
 
 
-**Aula 9**: [Structured Streaming](./Lec9)
+**Aula 9**: [Delta Lake](./Lec9)
 
 
-**Aula 10**: [Machine Learning com MLlib](./Lec10)
+**Aula 10**: [Structured Streaming](./Lec10)
 
 
-**Aula 11**: [Quando Não Usar Spark](./Lec11)
+**Aula 11**: [Machine Learning com MLlib](./Lec11)
 
 
-**Aula 12**: [Hadoop: O que Está por Baixo do Spark](./Lec12)
+**Aula 12**: [Quando Não Usar Spark](./Lec12)

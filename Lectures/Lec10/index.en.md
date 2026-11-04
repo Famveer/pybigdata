@@ -8,16 +8,16 @@ nav_order: 10
 layout: default
 ---
 
-# Lecture 10: Machine Learning with MLlib
+# Lecture 10: Structured Streaming
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* Transformers, Estimators and Pipelines
->* Feature preparation
->* Evaluation and decision threshold
->* Cross-validation, saving models and scoring
+>* Unbounded tables and micro-batches
+>* Output modes and triggers
+>* Windows and watermarks
+>* Checkpoints and exactly-once
 
 
 ### Slides
