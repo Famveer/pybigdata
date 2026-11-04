@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Scenes, Audio, and Tilemaps</title>
+  <title>ETL Pipeline with the Medallion Architecture</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,8 +194,8 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Scenes, Audio, and Tilemaps</h1>
-  <p class="subtitle">Pygame Game Development Course</p>
+  <h1 class="title">ETL Pipeline with the Medallion Architecture</h1>
+  <p class="subtitle">BigData with PySpark</p>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
@@ -206,156 +206,276 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section>
-<section id="audio" class="title-slide slide level1 center">
-<h1>🔊 Audio</h1>
-
-</section>
-<section id="pygame.mixer-architecture" class="slide level2">
-<h2>pygame.mixer Architecture</h2>
-<p>Pygame’s audio system has two main components:</p>
-<pre><code>┌─────────────────────────────────────────────────────┐
-│                  pygame.mixer                       │
-│                                                     │
-│  pygame.mixer.music      pygame.mixer.Sound         │
-│  ─────────────────       ─────────────────          │
-│  • Streaming playback    • Loaded fully in RAM      │
-│  • One track at a time   • Multiple instances       │
-│  • MP3 / OGG / WAV       • Short clips only         │
-│  • For background music  • For sound effects        │
-│                                                     │
-│  Channels: 0 ──── 1 ──── 2 ──── ... ──── N-1       │
-│  Each Sound plays on one channel at a time          │
-└─────────────────────────────────────────────────────┘</code></pre>
-</section>
-<section id="pygame.mixer-architecture-1" class="slide level2">
-<h2>pygame.mixer Architecture</h2>
-<p>Pygame’s audio system has two main components:</p>
-<pre><code>┌─────────────────────────────────────────────────────┐
-│                  pygame.mixer                       │
-│                                                     │
-│  pygame.mixer.music      pygame.mixer.Sound         │
-│  ─────────────────       ─────────────────          │
-│  • Streaming playback    • Loaded fully in RAM      │
-│  • One track at a time   • Multiple instances       │
-│  • MP3 / OGG / WAV       • Short clips only         │
-│  • For background music  • For sound effects        │
-│                                                     │
-│  Channels: 0 ──── 1 ──── 2 ──── ... ──── N-1       │
-│  Each Sound plays on one channel at a time          │
-└─────────────────────────────────────────────────────┘</code></pre>
-<h3 id="initialization">Initialization</h3>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="co"># MUST be called before pygame.init()</span></span>
-<span id="cb3-2"><a href=""></a>pygame.mixer.pre_init(</span>
-<span id="cb3-3"><a href=""></a>    frequency <span class="op">=</span> <span class="dv">44100</span>,   <span class="co"># Sample rate (Hz). 44100 = CD quality</span></span>
-<span id="cb3-4"><a href=""></a>    size      <span class="op">=</span> <span class="op">-</span><span class="dv">16</span>,     <span class="co"># Bit depth. -16 = 16-bit signed</span></span>
-<span id="cb3-5"><a href=""></a>    channels  <span class="op">=</span> <span class="dv">2</span>,       <span class="co"># 1 = mono, 2 = stereo</span></span>
-<span id="cb3-6"><a href=""></a>    <span class="bu">buffer</span>    <span class="op">=</span> <span class="dv">512</span>      <span class="co"># Smaller = less latency, more CPU</span></span>
-<span id="cb3-7"><a href=""></a>)</span>
-<span id="cb3-8"><a href=""></a>pygame.init()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="background-music" class="slide level2">
-<h2>Background Music</h2>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a><span class="co"># Load and stream (file stays on disk, not loaded into RAM)</span></span>
-<span id="cb4-2"><a href=""></a>pygame.mixer.music.load(<span class="st">"music/background.ogg"</span>)</span>
-<span id="cb4-3"><a href=""></a>pygame.mixer.music.set_volume(<span class="fl">0.7</span>)    <span class="co"># 0.0 to 1.0</span></span>
-<span id="cb4-4"><a href=""></a>pygame.mixer.music.play(loops<span class="op">=-</span><span class="dv">1</span>)     <span class="co"># -1 = infinite loop</span></span>
-<span id="cb4-5"><a href=""></a>pygame.mixer.music.play(loops<span class="op">=</span><span class="dv">3</span>)      <span class="co"># Play 3 times</span></span>
-<span id="cb4-6"><a href=""></a></span>
-<span id="cb4-7"><a href=""></a><span class="co"># Control</span></span>
-<span id="cb4-8"><a href=""></a>pygame.mixer.music.pause()</span>
-<span id="cb4-9"><a href=""></a>pygame.mixer.music.unpause()</span>
-<span id="cb4-10"><a href=""></a>pygame.mixer.music.stop()</span>
-<span id="cb4-11"><a href=""></a>pygame.mixer.music.fadeout(<span class="dv">2000</span>)      <span class="co"># Fade out over 2000ms</span></span>
-<span id="cb4-12"><a href=""></a></span>
-<span id="cb4-13"><a href=""></a><span class="co"># Query state</span></span>
-<span id="cb4-14"><a href=""></a>pos_ms <span class="op">=</span> pygame.mixer.music.get_pos()   <span class="co"># Current position in ms</span></span>
-<span id="cb4-15"><a href=""></a>is_playing <span class="op">=</span> pygame.mixer.music.get_busy()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="sound-effects" class="slide level2">
-<h2>Sound Effects</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="co"># Load fully into memory (use for short clips)</span></span>
-<span id="cb5-2"><a href=""></a>jump_sfx <span class="op">=</span> pygame.mixer.Sound(<span class="st">"sfx/jump.wav"</span>)</span>
-<span id="cb5-3"><a href=""></a>jump_sfx.set_volume(<span class="fl">0.8</span>)</span>
-<span id="cb5-4"><a href=""></a></span>
-<span id="cb5-5"><a href=""></a><span class="co"># Play — returns the Channel it plays on</span></span>
-<span id="cb5-6"><a href=""></a>channel <span class="op">=</span> jump_sfx.play()             <span class="co"># Any free channel</span></span>
-<span id="cb5-7"><a href=""></a>channel <span class="op">=</span> jump_sfx.play(loops<span class="op">=</span><span class="dv">2</span>)      <span class="co"># Play 3 times total</span></span>
-<span id="cb5-8"><a href=""></a>channel <span class="op">=</span> jump_sfx.play(maxtime<span class="op">=</span><span class="dv">500</span>)  <span class="co"># Stop after 500ms</span></span>
-<span id="cb5-9"><a href=""></a></span>
-<span id="cb5-10"><a href=""></a><span class="co"># If no free channel is available, returns None</span></span>
-<span id="cb5-11"><a href=""></a><span class="cf">if</span> channel <span class="kw">is</span> <span class="va">None</span>:</span>
-<span id="cb5-12"><a href=""></a>    <span class="bu">print</span>(<span class="st">"No free channel!"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="channels" class="slide level2">
-<h2>Channels</h2>
-<p>Pygame has N mixer channels (default 8). Each Sound plays on one channel at a time.</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>pygame.mixer.set_num_channels(<span class="dv">16</span>)</span>
-<span id="cb6-2"><a href=""></a></span>
-<span id="cb6-3"><a href=""></a><span class="co"># Reserve a specific channel for a category</span></span>
-<span id="cb6-4"><a href=""></a>music_ch <span class="op">=</span> pygame.mixer.Channel(<span class="dv">7</span>)</span>
-<span id="cb6-5"><a href=""></a>music_ch.play(bg_sound, loops<span class="op">=-</span><span class="dv">1</span>)</span>
-<span id="cb6-6"><a href=""></a>music_ch.set_volume(<span class="fl">0.5</span>)</span>
-<span id="cb6-7"><a href=""></a></span>
-<span id="cb6-8"><a href=""></a><span class="co"># Stereo panning: set_volume(left, right)</span></span>
-<span id="cb6-9"><a href=""></a>music_ch.set_volume(<span class="fl">0.8</span>, <span class="fl">0.2</span>)   <span class="co"># Panned left</span></span>
-<span id="cb6-10"><a href=""></a></span>
-<span id="cb6-11"><a href=""></a><span class="co"># Query</span></span>
-<span id="cb6-12"><a href=""></a>music_ch.get_busy()             <span class="co"># Is something playing?</span></span>
-<span id="cb6-13"><a href=""></a>music_ch.stop()</span>
-<span id="cb6-14"><a href=""></a>music_ch.pause()</span>
-<span id="cb6-15"><a href=""></a>music_ch.fadeout(<span class="dv">1000</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="channels-1" class="slide level2">
-<h2>Channels</h2>
-<div id="a4cf93c8" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-stdout">
-<pre><code>Spatial audio — stereo pan by position
-=============================================
-  x position     pan      left vol     right vol
-  --------------------------------------------
-  x=0             -1.00    1.0           0.0
-  x=150           -0.67    1.0           0.33
-  x=300           -0.33    1.0           0.67
-  x=450           +0.00    1.0           1.0
-  x=600           +0.33    0.67          1.0
-  x=750           +0.67    0.33          1.0
-  x=900           +1.00    0.0           1.0</code></pre>
-</div>
-</div>
-</section>
-<section id="volume-hierarchy" class="slide level2">
-<h2>Volume Hierarchy</h2>
-<div class="sourceCode" id="cb8"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href=""></a><span class="co"># Three independent volume levels that multiply together</span></span>
-<span id="cb8-2"><a href=""></a><span class="co"># Final volume = master * category * sound</span></span>
-<span id="cb8-3"><a href=""></a></span>
-<span id="cb8-4"><a href=""></a><span class="co"># 1. Per-sound volume</span></span>
-<span id="cb8-5"><a href=""></a>sfx.set_volume(<span class="fl">0.8</span>)</span>
-<span id="cb8-6"><a href=""></a></span>
-<span id="cb8-7"><a href=""></a><span class="co"># 2. Per-channel volume</span></span>
-<span id="cb8-8"><a href=""></a>channel.set_volume(<span class="fl">0.7</span>)</span>
-<span id="cb8-9"><a href=""></a></span>
-<span id="cb8-10"><a href=""></a><span class="co"># 3. No true "master" in pygame — simulate with a multiplier</span></span>
-<span id="cb8-11"><a href=""></a>master_volume <span class="op">=</span> <span class="fl">0.5</span></span>
-<span id="cb8-12"><a href=""></a></span>
-<span id="cb8-13"><a href=""></a><span class="kw">def</span> play_sfx(sound, master<span class="op">=</span><span class="fl">1.0</span>):</span>
-<span id="cb8-14"><a href=""></a>    ch <span class="op">=</span> sound.play()</span>
-<span id="cb8-15"><a href=""></a>    <span class="cf">if</span> ch:</span>
-<span id="cb8-16"><a href=""></a>        current <span class="op">=</span> sound.get_volume()</span>
-<span id="cb8-17"><a href=""></a>        ch.set_volume(current <span class="op">*</span> master)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="audios-summary" class="slide level2">
-<h2>Audios — Summary</h2>
+<section id="what-you-will-learn" class="slide level2">
+<h2>What you will learn</h2>
 <ul>
-<li><code>pygame.mixer.pre_init()</code> must be called <strong>before</strong> <code>pygame.init()</code></li>
-<li><code>music</code> streams from disk — use for long background tracks</li>
-<li><code>Sound</code> loads fully into RAM — use for short SFX only</li>
-<li>Each <code>Sound</code> plays on a <code>Channel</code>; reserve channels for categories</li>
-<li>Stereo panning: <code>channel.set_volume(left, right)</code></li>
-<li>Distance attenuation: <code>volume = max(0, 1 - distance / max_dist)</code></li>
+<li>Data warehouse, data lake and lakehouse</li>
+<li>Medallion architecture: Bronze, Silver and Gold</li>
+<li>Ingest messy CSV and JSON</li>
+<li>Quality rules and quarantine</li>
+<li>Partitioned Parquet and <em>partition pruning</em></li>
 </ul>
+</section>
+<section id="warehouse-lake-lakehouse" class="slide level2">
+<h2>Warehouse, lake &amp; lakehouse</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 2%">
+<col style="width: 41%">
+<col style="width: 28%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Data Warehouse</th>
+<th>Data Lake</th>
+<th>Lakehouse</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Stores</td>
+<td>Structured tables</td>
+<td>Files of any type</td>
+<td>Open files + table layer</td>
+</tr>
+<tr class="even">
+<td>Format</td>
+<td>Proprietary</td>
+<td>CSV, JSON, Parquet…</td>
+<td>Parquet + transaction log</td>
+</tr>
+<tr class="odd">
+<td>Cost</td>
+<td>High</td>
+<td>Low (object storage)</td>
+<td>Low</td>
+</tr>
+<tr class="even">
+<td>Transactions (ACID)</td>
+<td>Yes</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr class="odd">
+<td>UPDATE / DELETE</td>
+<td>Yes</td>
+<td>Hard (rewrite files)</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="medallion-architecture" class="slide level2">
+<h2>Medallion architecture</h2>
+<pre><code>  SOURCES          BRONZE             SILVER              GOLD
+  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
+  APIs, CDC        + metadata         typed, validated    BI / ML / API
+                   all strings        no duplicates
+                                 └──▶ QUARANTINE (rejected)</code></pre>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 51%">
+<col style="width: 31%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Layer</th>
+<th>Question it answers</th>
+<th>Golden rule</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Bronze</strong></td>
+<td>What exactly arrived?</td>
+<td>Never discard anything. Allows reprocessing.</td>
+</tr>
+<tr class="even">
+<td><strong>Silver</strong></td>
+<td>What is the correct version of each record?</td>
+<td>Right types, one row per entity, rules applied.</td>
+</tr>
+<tr class="odd">
+<td><strong>Gold</strong></td>
+<td>What does the business need to see?</td>
+<td>Aggregations and metrics, modeled for consumption.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="why-parquet" class="slide level2">
+<h2>Why Parquet</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 52%">
+<col style="width: 42%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>CSV / JSON</th>
+<th>Parquet</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Orientation</td>
+<td>Row</td>
+<td><strong>Column</strong></td>
+</tr>
+<tr class="even">
+<td>Schema</td>
+<td>Inferred on every read</td>
+<td>Stored in the file</td>
+</tr>
+<tr class="odd">
+<td>Compression</td>
+<td>Weak</td>
+<td>Strong (per column)</td>
+</tr>
+<tr class="even">
+<td>Read 2 of 20 columns</td>
+<td>Reads everything</td>
+<td>Reads only 2 (<em>column pruning</em>)</td>
+</tr>
+<tr class="odd">
+<td>Filter <code>price &gt; 100</code></td>
+<td>Reads everything</td>
+<td>Skips blocks with min/max stats (<em>predicate pushdown</em>)</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="bronze-ingest-without-losing-anything" class="slide level2">
+<h2>Bronze: ingest without losing anything</h2>
+<ul>
+<li>Read <strong>everything as string</strong>: a price like <code>N/A</code> must not fail or silently become null</li>
+<li>Merge sources while keeping columns that exist in only one</li>
+<li>Add <strong>lineage metadata</strong>: source file and ingestion time</li>
+</ul>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>raw_csv <span class="op">=</span> (spark.read.option(<span class="st">"header"</span>, <span class="va">True</span>).csv(path)</span>
+<span id="cb2-2"><a href=""></a>    .select(<span class="st">"*"</span>, F.col(<span class="st">"_metadata.file_path"</span>).alias(<span class="st">"_source_file"</span>)))</span>
+<span id="cb2-3"><a href=""></a></span>
+<span id="cb2-4"><a href=""></a>bronze <span class="op">=</span> (raw_csv.unionByName(raw_json, allowMissingColumns<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb2-5"><a href=""></a>    .withColumn(<span class="st">"_ingested_at"</span>, F.current_timestamp()))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="silver-clean-validate-deduplicate" class="slide level2">
+<h2>Silver: clean, validate, deduplicate</h2>
+<pre><code>  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
+                                                   └──▶ QUARANTINE (+ reason)</code></pre>
+<p><strong>ANSI mode is on by default in Spark 4</strong>: an invalid <code>cast</code> raises an error instead of returning null.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 18%">
+<col style="width: 52%">
+<col style="width: 29%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th>Fails on invalid value</th>
+<th>Returns null</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Type conversion</td>
+<td><code>col.cast("int")</code></td>
+<td><code>col.try_cast("int")</code></td>
+</tr>
+<tr class="even">
+<td>Text to timestamp</td>
+<td><code>F.to_timestamp(c, fmt)</code></td>
+<td><code>F.try_to_timestamp(c, F.lit(fmt))</code></td>
+</tr>
+<tr class="odd">
+<td>Division</td>
+<td><code>a / b</code></td>
+<td><code>F.try_divide(a, b)</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="quality-rules-and-quarantine" class="slide level2">
+<h2>Quality rules and quarantine</h2>
+<p>Instead of deleting bad records, keep them <strong>with the reason</strong>: you can measure source quality, warn the source team and reprocess.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>RULES <span class="op">=</span> {</span>
+<span id="cb4-2"><a href=""></a>    <span class="st">"preco_invalido"</span>:      F.col(<span class="st">"price"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"price"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
+<span id="cb4-3"><a href=""></a>    <span class="st">"quantidade_invalida"</span>: F.col(<span class="st">"quantity"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"quantity"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
+<span id="cb4-4"><a href=""></a>}</span>
+<span id="cb4-5"><a href=""></a>errors <span class="op">=</span> F.array_compact(F.array(<span class="op">*</span>[F.when(c, F.lit(n)) <span class="cf">for</span> n, c <span class="kw">in</span> RULES.items()]))</span>
+<span id="cb4-6"><a href=""></a>df <span class="op">=</span> df.withColumn(<span class="st">"_errors"</span>, errors)</span>
+<span id="cb4-7"><a href=""></a>valid    <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">==</span> <span class="dv">0</span>).drop(<span class="st">"_errors"</span>)</span>
+<span id="cb4-8"><a href=""></a>rejected <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">&gt;</span> <span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="partitioned-writes" class="slide level2">
+<h2>Partitioned writes</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>(silver_df</span>
+<span id="cb5-2"><a href=""></a> .repartition(<span class="st">"order_date"</span>)      <span class="co"># all rows of a day in the same task</span></span>
+<span id="cb5-3"><a href=""></a> .write.mode(<span class="st">"overwrite"</span>)</span>
+<span id="cb5-4"><a href=""></a> .partitionBy(<span class="st">"order_date"</span>)</span>
+<span id="cb5-5"><a href=""></a> .parquet(SILVER))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ul>
+<li>Good partition columns have <strong>low cardinality</strong> and are <strong>used in filters</strong></li>
+<li>Each task writes one file per partition it finds: without the <code>repartition</code>, you get the <strong>small files</strong> problem</li>
+</ul>
+</section>
+<section id="pruning-in-the-plan" class="slide level2">
+<h2>Pruning in the plan</h2>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Mechanism</th>
+<th>Field in the plan</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Partition pruning</td>
+<td><code>PartitionFilters</code></td>
+<td>Skips whole folders</td>
+</tr>
+<tr class="even">
+<td>Predicate pushdown</td>
+<td><code>PushedFilters</code></td>
+<td>Skips blocks inside files</td>
+</tr>
+<tr class="odd">
+<td>Column pruning</td>
+<td><code>ReadSchema</code></td>
+<td>Reads only the columns used</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="reprocessing-and-gold" class="slide level2">
+<h2>Reprocessing and Gold</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>spark.conf.<span class="bu">set</span>(<span class="st">"spark.sql.sources.partitionOverwriteMode"</span>, <span class="st">"dynamic"</span>)</span>
+<span id="cb6-2"><a href=""></a>day3.repartition(<span class="st">"order_date"</span>).write.mode(<span class="st">"overwrite"</span>) <span class="op">\</span></span>
+<span id="cb6-3"><a href=""></a>    .partitionBy(<span class="st">"order_date"</span>).parquet(SILVER)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-warning callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Warning</strong></p>
+</div>
+<div class="callout-content">
+<p>With the default <code>static</code> mode, the same command would <strong>delete every other day</strong>.</p>
+</div>
+</div>
+</div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>gold_daily <span class="op">=</span> (sales.groupBy(<span class="st">"order_date"</span>, <span class="st">"region"</span>, <span class="st">"category"</span>)</span>
+<span id="cb7-2"><a href=""></a>    .agg(F.count(<span class="st">"*"</span>).alias(<span class="st">"orders"</span>),</span>
+<span id="cb7-3"><a href=""></a>         F.<span class="bu">round</span>(F.<span class="bu">sum</span>(<span class="st">"revenue"</span>), <span class="dv">2</span>).alias(<span class="st">"revenue"</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
-</section></section>
+</section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

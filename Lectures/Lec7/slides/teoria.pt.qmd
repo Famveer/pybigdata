@@ -1,6 +1,6 @@
 ---
-title: "Scenes, Audio, e Tilemaps"
-subtitle: "Curso de Desenvolvimento de Jogos com Pygame"
+title: "Pipeline ETL com Arquitetura Medallion"
+subtitle: "Big Data com PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: pt
 format:
@@ -15,181 +15,149 @@ format:
     fontsize: 30px
   html:
     allow-html: true
-jupyter: python3
 ---
 
+## O que você vai aprender
 
-# 🔊 Audio
+- Data warehouse, data lake e lakehouse
+- Arquitetura Medallion: Bronze, Silver e Gold
+- Ingerir CSV e JSON com problemas reais
+- Regras de qualidade e quarentena
+- Parquet particionado e *partition pruning*
 
-## Arquitetura do pygame.mixer
+---
 
-O sistema de áudio do Pygame tem dois componentes principais:
+## Warehouse, lake & lakehouse
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  pygame.mixer                       │
-│                                                     │
-│  pygame.mixer.music      pygame.mixer.Sound         │
-│  ─────────────────       ─────────────────          │
-│  • Streaming playback    • Loaded fully in RAM      │
-│  • One track at a time   • Multiple instances       │
-│  • MP3 / OGG / WAV       • Short clips only         │
-│  • For background music  • For sound effects        │
-│                                                     │
-│  Channels: 0 ──── 1 ──── 2 ──── ... ──── N-1       │
-│  Each Sound plays on one channel at a time          │
-└─────────────────────────────────────────────────────┘
-```
+| | Data Warehouse | Data Lake | Lakehouse |
+|-|----------------|-----------|-----------|
+| Armazena | Tabelas estruturadas | Arquivos de qualquer tipo | Arquivos abertos + camada de tabela |
+| Formato | Proprietário | CSV, JSON, Parquet... | Parquet + log de transações |
+| Custo | Alto | Baixo (object storage) | Baixo |
+| Transações (ACID) | Sim | Não | Sim |
+| UPDATE / DELETE | Sim | Difícil (reescrever arquivos) | Sim |
 
-## Arquitetura do pygame.mixer
+---
 
-O sistema de áudio do Pygame tem dois componentes principais:
+## Arquitetura Medallion
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  pygame.mixer                       │
-│                                                     │
-│  pygame.mixer.music      pygame.mixer.Sound         │
-│  ─────────────────       ─────────────────          │
-│  • Streaming playback    • Loaded fully in RAM      │
-│  • One track at a time   • Multiple instances       │
-│  • MP3 / OGG / WAV       • Short clips only         │
-│  • For background music  • For sound effects        │
-│                                                     │
-│  Channels: 0 ──── 1 ──── 2 ──── ... ──── N-1       │
-│  Each Sound plays on one channel at a time          │
-└─────────────────────────────────────────────────────┘
+  SOURCES          BRONZE             SILVER              GOLD
+  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
+  APIs, CDC        + metadata         typed, validated    BI / ML / API
+                   all strings        no duplicates
+                                 └──▶ QUARANTINE (rejected)
 ```
 
-### Inicialização
+| Camada | Pergunta que responde | Regra de ouro |
+|-------|---------------------|-------------|
+| **Bronze** | O que exatamente chegou? | Nunca descartar nada. Permite reprocessar. |
+| **Silver** | Qual é a versão correta de cada registro? | Tipos certos, uma linha por entidade, regras aplicadas. |
+| **Gold** | O que o negócio precisa ver? | Agregações e métricas, modeladas para o consumo. |
+
+---
+
+## Por que Parquet
+
+| | CSV / JSON | Parquet |
+|-|-----------|---------|
+| Orientação | Linha | **Coluna** |
+| Schema | Inferido a cada leitura | Gravado no arquivo |
+| Compressão | Fraca | Forte (por coluna) |
+| Ler 2 de 20 colunas | Lê tudo | Lê só as 2 (*column pruning*) |
+| Filtrar `price > 100` | Lê tudo | Pula blocos via estatísticas min/max (*predicate pushdown*) |
+
+---
+
+## Bronze: ingerir sem perder nada
+
+- Ler **tudo como string**: um preço como `N/A` não pode falhar nem virar nulo silenciosamente
+- Juntar as fontes preservando colunas que só existem em uma
+- Adicionar **metadados de linhagem**: arquivo de origem e momento da ingestão
 
 ```python
-# MUST be called before pygame.init()
-pygame.mixer.pre_init(
-    frequency = 44100,   # Sample rate (Hz). 44100 = CD quality
-    size      = -16,     # Bit depth. -16 = 16-bit signed
-    channels  = 2,       # 1 = mono, 2 = stereo
-    buffer    = 512      # Smaller = less latency, more CPU
-)
-pygame.init()
+raw_csv = (spark.read.option("header", True).csv(path)
+    .select("*", F.col("_metadata.file_path").alias("_source_file")))
+
+bronze = (raw_csv.unionByName(raw_json, allowMissingColumns=True)
+    .withColumn("_ingested_at", F.current_timestamp()))
 ```
 
-## Música de Fundo
+---
+
+## Silver: limpar, validar e deduplicar
+
+```
+  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
+                                                   └──▶ QUARANTINE (+ reason)
+```
+
+**O modo ANSI vem ligado por padrão no Spark 4**: um `cast` inválido gera erro em vez de retornar nulo.
+
+| Operação | Falha com valor inválido | Retorna nulo |
+|---------|-------------------------|--------------|
+| Conversão de tipo | `col.cast("int")` | `col.try_cast("int")` |
+| Texto para timestamp | `F.to_timestamp(c, fmt)` | `F.try_to_timestamp(c, F.lit(fmt))` |
+| Divisão | `a / b` | `F.try_divide(a, b)` |
+
+---
+
+## Regras de qualidade e quarentena
+
+Em vez de apagar registros ruins, guarde-os **com o motivo**: permite medir a qualidade da fonte, avisar o time de origem e reprocessar.
 
 ```python
-# Load and stream (file stays on disk, not loaded into RAM)
-pygame.mixer.music.load("music/background.ogg")
-pygame.mixer.music.set_volume(0.7)    # 0.0 to 1.0
-pygame.mixer.music.play(loops=-1)     # -1 = infinite loop
-pygame.mixer.music.play(loops=3)      # Play 3 times
-
-# Control
-pygame.mixer.music.pause()
-pygame.mixer.music.unpause()
-pygame.mixer.music.stop()
-pygame.mixer.music.fadeout(2000)      # Fade out over 2000ms
-
-# Query state
-pos_ms = pygame.mixer.music.get_pos()   # Current position in ms
-is_playing = pygame.mixer.music.get_busy()
+RULES = {
+    "preco_invalido":      F.col("price").isNull() | (F.col("price") <= 0),
+    "quantidade_invalida": F.col("quantity").isNull() | (F.col("quantity") <= 0),
+}
+errors = F.array_compact(F.array(*[F.when(c, F.lit(n)) for n, c in RULES.items()]))
+df = df.withColumn("_errors", errors)
+valid    = df.filter(F.size("_errors") == 0).drop("_errors")
+rejected = df.filter(F.size("_errors") > 0)
 ```
 
-## Efeitos Sonoros (SFX)
+---
+
+## Escrita particionada
 
 ```python
-# Load fully into memory (use for short clips)
-jump_sfx = pygame.mixer.Sound("sfx/jump.wav")
-jump_sfx.set_volume(0.8)
-
-# Play — returns the Channel it plays on
-channel = jump_sfx.play()             # Any free channel
-channel = jump_sfx.play(loops=2)      # Play 3 times total
-channel = jump_sfx.play(maxtime=500)  # Stop after 500ms
-
-# If no free channel is available, returns None
-if channel is None:
-    print("Nenhum Channel livre!")
+(silver_df
+ .repartition("order_date")      # all rows of a day in the same task
+ .write.mode("overwrite")
+ .partitionBy("order_date")
+ .parquet(SILVER))
 ```
 
-## Channels
+- Boas colunas de partição têm **baixa cardinalidade** e são **usadas em filtros**
+- Cada task escreve um arquivo por partição que encontrar: sem o `repartition`, surge o problema dos **arquivos pequenos**
 
-O Pygame tem N Channels de mixer (8 por padrão). Cada Sound é reproduzido em um Channel por vez.
+---
+
+## Pruning no plano
+
+| Mecanismo | Campo no plano | Efeito |
+|---|---|---|
+| Partition pruning | `PartitionFilters` | Pula pastas inteiras |
+| Predicate pushdown | `PushedFilters` | Pula blocos dentro dos arquivos |
+| Column pruning | `ReadSchema` | Lê só as colunas usadas |
+
+---
+
+## Reprocessar e Gold
 
 ```python
-pygame.mixer.set_num_channels(16)
-
-# Reserve a specific channel for a category
-music_ch = pygame.mixer.Channel(7)
-music_ch.play(bg_sound, loops=-1)
-music_ch.set_volume(0.5)
-
-# Stereo panning: set_volume(left, right)
-music_ch.set_volume(0.8, 0.2)   # Panned left
-
-# Query
-music_ch.get_busy()             # Is something playing?
-music_ch.stop()
-music_ch.pause()
-music_ch.fadeout(1000)
+spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+day3.repartition("order_date").write.mode("overwrite") \
+    .partitionBy("order_date").parquet(SILVER)
 ```
 
-## Channels
-
-```{python}
-# Demonstrate how stereo panning works mathematically
-
-def stereo_pan(position_x, screen_width, volume=1.0):
-    """
-    Convert a world x position to stereo L/R volumes.
-    position_x = 0    → full left
-    position_x = W/2  → center (equal)
-    position_x = W    → full right
-    """
-    pan   = (position_x / screen_width) * 2 - 1   # -1 to +1
-    left  = volume * (1.0 - max(0.0, pan))
-    right = volume * (1.0 + min(0.0, pan))
-    return round(min(1.0, left), 2), round(min(1.0, right), 2)
-
-print("Spatial audio — stereo pan por posição")
-print("=" * 45)
-print(f"  {'posição x':<14} {'pan':<8} {'vol esq':<12} {'vol dir'}")
-print("  " + "-" * 44)
-
-width = 900
-for x in [0, 150, 300, 450, 600, 750, 900]:
-    pan  = (x / width) * 2 - 1
-    l, r = stereo_pan(x, width)
-    print(f"  x={x:<10}    {pan:+.2f}    {l:<12}  {r}")
-```
-
-## Hierarquia de Volume
+::: {.callout-warning}
+Com o modo padrão `static`, o mesmo comando **apagaria todos os outros dias**.
+:::
 
 ```python
-# Three independent volume levels that multiply together
-# Final volume = master * category * sound
-
-# 1. Per-sound volume
-sfx.set_volume(0.8)
-
-# 2. Per-channel volume
-channel.set_volume(0.7)
-
-# 3. No true "master" in pygame — simulate with a multiplier
-master_volume = 0.5
-
-def play_sfx(sound, master=1.0):
-    ch = sound.play()
-    if ch:
-        current = sound.get_volume()
-        ch.set_volume(current * master)
+gold_daily = (sales.groupBy("order_date", "region", "category")
+    .agg(F.count("*").alias("orders"),
+         F.round(F.sum("revenue"), 2).alias("revenue")))
 ```
-
-## Audios — Resumo
-
-- `pygame.mixer.pre_init()` deve ser chamado **antes** de `pygame.init()`
-- `music` faz streaming a partir do disco — use para faixas de fundo longas
-- `Sound` é carregado totalmente na RAM — use apenas para SFX curtos
-- Cada `Sound` é reproduzido em um `Channel`; reserve channels para categorias
-- Panning estéreo: `channel.set_volume(left, right)`
-- Atenuação por distância: `volume = max(0, 1 - distance / max_dist)`
-

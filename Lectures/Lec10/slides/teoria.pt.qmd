@@ -1,6 +1,6 @@
 ---
-title: "Physics e AI de Inimigos"
-subtitle: "Curso de Desenvolvimento de Jogos com Pygame"
+title: "Machine Learning Distribuído com MLlib"
+subtitle: "Big Data com PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: pt
 format:
@@ -15,314 +15,142 @@ format:
     fontsize: 30px
   html:
     allow-html: true
-jupyter: python3
 ---
 
+## O que você vai aprender
 
-# 🤖 Inimigos e AI Básica
+- Transformer, Estimator e Pipeline
+- Preparação de features: nulos, categorias e vetores
+- Treinar e avaliar um classificador (churn de clientes)
+- Escolher o limiar de decisão
+- Validação cruzada, salvar modelos, scoring em batch e streaming
 
-## Steering Behaviors
+---
 
-Os steering behaviors são simples **cálculos de força** que, combinados, produzem um movimento de AI que parece complexo.
+## Quando usar MLlib
 
-```
-Desired Velocity = direction × max_speed
-Steering Force   = Desired Velocity - Current Velocity
-New Velocity     = Current Velocity + Steering Force × dt
-```
+| | scikit-learn | Spark MLlib |
+|-|-------------|-------------|
+| Dados | Cabem na memória de uma máquina | Distribuídos, sem limite prático |
+| Entrada | NumPy / Pandas | Spark DataFrame |
+| Features | Uma matriz `X` | **Uma coluna do tipo vetor** (`features`) |
+| Algoritmos | Muito amplo | Os principais: lineares, árvores, ensembles, clustering, ALS |
 
-### Seek
+Regra prática: se os dados de treino cabem em uma máquina, scikit-learn costuma ser mais simples.
 
-Mova-se em direção a um alvo na velocidade máxima:
+---
 
-```python
-def seek(ex, ey, evx, evy, tx, ty, max_speed, max_force):
-    dx, dy   = tx - ex, ty - ey
-    dist     = math.hypot(dx, dy)
-    if dist < 0.1: return 0, 0
-    desired_vx = (dx / dist) * max_speed
-    desired_vy = (dy / dist) * max_speed
-    fx = desired_vx - evx   # Steering = desired - current
-    fy = desired_vy - evy
-    # Clamp to max_force
-    fmag = math.hypot(fx, fy)
-    if fmag > max_force:
-        fx, fy = fx / fmag * max_force, fy / fmag * max_force
-    return fx, fy
-```
+## Três conceitos centrais
 
-## Flee
+| Conceito | O que é | Método |
+|---------|-----------|--------|
+| **Transformer** | Recebe um DataFrame e devolve outro com colunas novas | `.transform(df)` |
+| **Estimator** | Aprende dos dados e produz um Transformer | `.fit(df)` |
+| **Pipeline** | Sequência de estágios; ele próprio é um Estimator | `.fit(df)` gera um `PipelineModel` |
 
-O inverso de seek — afaste-se do alvo:
+::: {.callout-important}
+Tudo que aprende dos dados é ajustado **só no treino**. Caso contrário, a avaliação fica otimista (*data leakage*). O Pipeline garante isso.
+:::
 
-```python
-def flee(ex, ey, evx, evy, tx, ty, max_speed, max_force):
-    # Seek toward a point on the opposite side
-    return seek(ex, ey, evx, evy,
-                ex - (tx - ex),   # Mirrored target X
-                ey - (ty - ey),   # Mirrored target Y
-                max_speed, max_force)
-```
+---
 
-## Arrival (Seek with deceleration)
+## Preparação de features
 
-Reduza a velocidade conforme o enemy se aproxima do alvo, para evitar passar do ponto:
+| Coluna | Problema | Estágio |
+|--------|---------|-------|
+| `last_rating`, `monthly_spend` | Nulos | `Imputer` (mediana) |
+| `plan`, `region` | Texto | `StringIndexer` + `OneHotEncoder` |
+| Todas | Várias colunas | `VectorAssembler` |
+| Numéricas | Escalas diferentes | `StandardScaler` |
 
 ```python
-def seek_with_arrival(ex, ey, evx, evy, tx, ty,
-                      max_speed, max_force, slow_radius=80):
-    dx, dy   = tx - ex, ty - ey
-    dist     = math.hypot(dx, dy)
-    speed    = max_speed if dist > slow_radius else max_speed * (dist / slow_radius)
-    desired_vx = (dx / dist) * speed if dist > 0.1 else 0
-    desired_vy = (dy / dist) * speed if dist > 0.1 else 0
-    fx = desired_vx - evx
-    fy = desired_vy - evy
-    fmag = math.hypot(fx, fy)
-    if fmag > max_force:
-        fx, fy = fx / fmag * max_force, fy / fmag * max_force
-    return fx, fy
+train, test = customers.randomSplit([0.8, 0.2], seed=42)   # before any preparation
+
+lr = LogisticRegression(featuresCol="features", labelCol="churn", maxIter=50)
+pipeline = Pipeline(stages=[imputer, indexer, encoder, assembler, scaler, lr])
+model = pipeline.fit(train)
+pred  = model.transform(test)
 ```
 
-## Arrival (Seek with deceleration)
+---
 
-Reduza a velocidade conforme o enemy se aproxima do alvo, para evitar passar do ponto:
+## Avaliação {.smaller}
+
+| Métrica | Pergunta | Quando importa |
+|--------|----------|-----------------|
+| **AUC-ROC** | O modelo ordena bem os clientes por risco? | Comparar modelos, independente do limiar |
+| **AUC-PR** | Idem, focando na classe positiva | Classes desbalanceadas |
+| **Precision** | Dos que marquei como churn, quantos eram? | Custo de abordar um cliente sem necessidade |
+| **Recall** | Dos que eram churn, quantos encontrei? | Custo de perder um cliente |
+| **Accuracy** | Quantos acertei no total? | Enganosa com classes desbalanceadas |
+
+O limiar de 0.5 raramente é o ideal: a escolha é uma **decisão de negócio**.
+
+---
+
+## Comparando modelos
+
+| | Regressão logística | Random Forest | Gradient-Boosted Trees |
+|-|---------------------|---------------|------------------------|
+| Relações | Lineares | Não-lineares | Não-lineares |
+| Interpretação | Coeficientes | Importância de features | Importância de features |
+| Treino | Rápido | Paralelo (árvores independentes) | Sequencial (mais lento) |
+| Risco de overfitting | Baixo | Médio | Maior, exige tuning |
+
+::: {.callout-tip}
+O modelo mais complexo não é automaticamente o melhor: sempre compare com uma base simples.
+:::
+
+---
+
+## Validação cruzada
+
+```
+  params 1:  [train ][train ][valid ]  -> AUC_1
+             [train ][valid ][train ]  -> AUC_2
+             [valid ][train ][train ]  -> AUC_3   => mean
+  params 2:  ...                                  => mean
+```
 
 ```python
-def seek_with_arrival(ex, ey, evx, evy, tx, ty,
-                      max_speed, max_force, slow_radius=80):
-    dx, dy   = tx - ex, ty - ey
-    dist     = math.hypot(dx, dy)
-    speed    = max_speed if dist > slow_radius else max_speed * (dist / slow_radius)
-    desired_vx = (dx / dist) * speed if dist > 0.1 else 0
-    desired_vy = (dy / dist) * speed if dist > 0.1 else 0
-    fx = desired_vx - evx
-    fy = desired_vy - evy
-    fmag = math.hypot(fx, fy)
-    if fmag > max_force:
-        fx, fy = fx / fmag * max_force, fy / fmag * max_force
-    return fx, fy
+grid = (ParamGridBuilder()
+        .addGrid(lr.regParam, [0.0, 0.01, 0.1])
+        .addGrid(lr.elasticNetParam, [0.0, 1.0]).build())
+cv = CrossValidator(estimator=pipeline, estimatorParamMaps=grid,
+                    evaluator=BinaryClassificationEvaluator(labelCol="churn"),
+                    numFolds=3, parallelism=2, seed=42)
+best = cv.fit(train).bestModel
 ```
 
-```{python}
-import math
+---
 
-def arrival_speed(dist, max_speed, slow_radius=80):
-    if dist > slow_radius:
-        return max_speed
-    return max_speed * (dist / slow_radius)
+## Salvar e servir
 
-print("Comportamento Arrival — speed vs distância até o alvo")
-print(f"  max_speed={150} px/s   slow_radius=80 px")
-print()
-print(f"  {'Distância':<12} {'Velocidade':<12} {'Comportamento'}")
-print("  " + "-" * 38)
-for d in [200, 150, 100, 80, 60, 40, 20, 5, 0]:
-    speed = arrival_speed(d, 150, 80)
-    note  = "velocidade máxima" if d > 80 else ("reduzindo" if d > 10 else "parado")
-    print(f"  {d:<12} {speed:<12.1f} {note}")
-```
-
-## Line of Sight (LOS)
-
-LOS verifica se existe um caminho livre entre dois pontos. Usa uma interseção paramétrica line-AABB:
+Um `PipelineModel` salvo contém **todos os estágios**: quem o carrega aplica a mesma preparação. Também funciona em DataFrames de streaming.
 
 ```python
-def line_of_sight(ax, ay, bx, by, wall_rects):
-    """Returns True if A can see B without hitting any wall."""
-    dx, dy = bx - ax, by - ay
-    for wall in wall_rects:
-        inv_dx = 1 / dx if dx != 0 else float('inf')
-        inv_dy = 1 / dy if dy != 0 else float('inf')
-        tx1 = (wall.left   - ax) * inv_dx
-        tx2 = (wall.right  - ax) * inv_dx
-        ty1 = (wall.top    - ay) * inv_dy
-        ty2 = (wall.bottom - ay) * inv_dy
-        tmin = max(min(tx1, tx2), min(ty1, ty2))
-        tmax = min(max(tx1, tx2), max(ty1, ty2))
-        if tmax >= 0 and tmin <= tmax and tmin <= 1:
-            return False   # Blocked
-    return True
+best.write().overwrite().save(MODEL_PATH)
+loaded = PipelineModel.load(MODEL_PATH)
+
+stream = spark.readStream.schema(schema).json(STREAM_IN)
+q = (loaded.transform(stream)
+     .select("customer_id",
+             F.round(vector_to_array("probability")[1], 3).alias("p_churn"))
+     .filter("p_churn >= 0.5")
+     .writeStream.format("memory").queryName("at_risk")
+     .outputMode("append").start())
 ```
 
-## Vision Cone (Field of View)
+---
 
-Verifica se um alvo cai dentro do arco frontal do enemy:
-
-```python
-def in_fov(ex, ey, facing_angle, fov_degrees, tx, ty):
-    dx, dy       = tx - ex, ty - ey
-    target_angle = math.atan2(dy, dx)
-    # Shortest angular distance (handles wraparound)
-    delta = abs(math.atan2(
-        math.sin(target_angle - facing_angle),
-        math.cos(target_angle - facing_angle)
-    ))
-    return delta <= math.radians(fov_degrees / 2)
-```
-
-## The Finite State Machine (FSM)
-
-Uma FSM é um conjunto de **estados** e **transições** entre eles. Um enemy está sempre em exatamente um estado.
+## O percurso completo
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                   ENEMY FSM                          │
-│                                                      │
-│  IDLE ──timer──► PATROL ──detect──► ALERT            │
-│   ▲                 ▲                  │             │
-│   │                 │             timer / lost       │
-│   │                 │                  ▼             │
-│   │                 └───lost──── CHASE ◄─── far      │
-│   │                                   │              │
-│   │                              close│              │
-│   │                                   ▼              │
-│   │                               ATTACK ──low HP──► │
-│   │                                                  │
-│   │                  FLEE ──safe / hp──► PATROL      │
-│   └────────────────────────────────────────────────  │
-└──────────────────────────────────────────────────────┘
+  raw files ─▶ Bronze ─▶ Silver ─▶ Gold ─▶ model ─▶ batch and streaming predictions
 ```
 
-## State base class pattern
-
-```python
-class State:
-    def enter(self, enemy): pass
-    def update(self, enemy, dt, target): pass
-    def exit(self, enemy):  pass
-
-class IdleState(State):
-    def enter(self, enemy):
-        enemy.vx = enemy.vy = 0
-
-    def update(self, enemy, dt, target):
-        dist = math.hypot(target.x - enemy.x, target.y - enemy.y)
-        if dist < DETECT_RADIUS:
-            enemy.transition_to("ALERT")
-        elif enemy.state_timer > IDLE_DURATION:
-            enemy.transition_to("PATROL")
-
-class ChaseState(State):
-    def update(self, enemy, dt, target):
-        if math.hypot(target.x - enemy.x, target.y - enemy.y) < ATTACK_RADIUS:
-            enemy.transition_to("ATTACK")
-        # Steer toward target
-        fx, fy = seek(enemy.x, enemy.y, enemy.vx, enemy.vy,
-                      target.x, target.y, CHASE_SPEED, MAX_FORCE)
-        enemy.vx += fx * dt
-        enemy.vy += fy * dt
-```
-
-## Memory — last seen position
-
-Quando o jogador sai do field of view, o enemy se move para a **última posição conhecida** em vez de desistir imediatamente:
-
-```python
-MEMORY_DURATION = 3.0   # seconds
-
-# When player is visible:
-last_seen_x   = player.x
-last_seen_y   = player.y
-memory_timer  = MEMORY_DURATION
-
-# When player is not visible:
-memory_timer -= dt
-if memory_timer > 0:
-    steer_toward(last_seen_x, last_seen_y)   # Move to last known pos
-else:
-    transition_to("PATROL")                  # Give up
-```
-
-## Memory — last seen position
-
-
-```{python}
-# Simulate state transitions for a single enemy encounter
-
-class MockEnemy:
-    def __init__(self):
-        self.state       = "IDLE"
-        self.state_timer = 0.0
-        self.hp          = 100
-        self.transitions = []
-
-    def transition(self, new_state):
-        self.transitions.append((self.state, new_state))
-        self.state       = new_state
-        self.state_timer = 0.0
-
-    def tick(self, dt, player_dist, take_damage=0):
-        self.state_timer += dt
-        if take_damage:
-            self.hp -= take_damage
-
-        if self.state == "IDLE":
-            if player_dist < 200: self.transition("ALERT")
-            elif self.state_timer > 2.0: self.transition("PATROL")
-
-        elif self.state == "PATROL":
-            if player_dist < 200: self.transition("ALERT")
-
-        elif self.state == "ALERT":
-            if self.state_timer > 1.5:
-                self.transition("CHASE" if player_dist < 200 else "PATROL")
-
-        elif self.state == "CHASE":
-            if player_dist < 40: self.transition("ATTACK")
-            if self.hp < 25:     self.transition("FLEE")
-
-        elif self.state == "ATTACK":
-            if player_dist > 60: self.transition("CHASE")
-            if self.hp < 25:     self.transition("FLEE")
-
-        elif self.state == "FLEE":
-            if self.hp > 50 or player_dist > 300: self.transition("PATROL")
-
-enemy = MockEnemy()
-dt    = 0.016
-
-print("Simulação de Enemy FSM")
-print("=" * 48)
-print(f"  {'Tempo':>6}  {'State':<10} {'HP':>5}  {'Dist. jogador':>12}")
-print("  " + "-" * 40)
-
-# Scenario: player approaches, attacks, enemy flees, recovers
-scenario = [
-    (3.0,  400, 0),    # Idle, no player
-    (1.0,  400, 0),    # Patrol
-    (0.5,  180, 0),    # Player detected → alert
-    (0.5,  180, 0),    # Still alert
-    (2.0,  120, 0),    # Chase
-    (0.5,   30, 0),    # Attack range
-    (0.5,   30, 40),   # Take 40 damage
-    (0.5,   30, 40),   # Take 40 damage → flee threshold
-    (2.0,  350, 0),    # Fleeing, recovering
-]
-
-t = 0.0
-for (duration, dist, dmg_per_step) in scenario:
-    steps = int(duration / dt)
-    for _ in range(steps):
-        t += dt
-        enemy.tick(dt, dist, dmg_per_step * dt)
-    print(f"  {t:>6.2f}  {enemy.state:<10} {enemy.hp:>5}  {dist:>12}")
-
-print()
-print("Transitions:")
-for (frm, to) in enemy.transitions:
-    print(f"  {frm} → {to}")
-```
-
-
-## Enemy AI — Resumo {.unnumbered}
-
-- Steering = `desired_velocity - current_velocity` → aplicado como força
-- **Seek**: dirigir-se ao alvo na velocidade máxima
-- **Flee**: afastar-se (seek inverso)
-- **Arrival**: seek com a velocidade escalada pela proximidade → sem passar do ponto
-- **Wander**: ruído aleatório sobre um círculo projetado → movimento idle natural
-- **LOS**: teste paramétrico ray–AABB → `True` se nenhuma wall bloquear o caminho
-- **FOV**: diferença angular entre para onde se olha e a direção do alvo
-- **FSM**: um único estado ativo por vez; transições explícitas com hooks `enter/exit`
-- **Memory**: guarda a última posição vista; persegue-a antes de desistir
+- **API de DataFrames:** Pandas vs Spark
+- **Performance:** shuffles, joins, skew, AQE, cache
+- **ETL Medallion + Delta Lake**
+- **Structured Streaming**
+- **MLlib**

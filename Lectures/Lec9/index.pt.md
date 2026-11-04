@@ -8,18 +8,18 @@ nav_order: 9
 layout: default
 ---
 
-# Aula 9: Introdução a Game Physics
+# Aula 9: Structured Streaming
 {: .no_toc }
 
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* Physics nos jogos
->* delta e fórmula de Euler
->* Accelerations
+>* Tabelas ilimitadas e micro-batches
+>* Output modes e triggers
+>* Janelas e watermark
+>* Checkpoint e exactly-once
 
 
 ### Slides
 
 * <a href="./slides/teoria.pt.html" target="_blank">**Slides**</a>
-

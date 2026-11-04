@@ -8,11 +8,10 @@ nav_order: 5
 layout: default
 ---
 
-# Lab 5: Introduction to Scene transitions
+# Lab 5: Skew, Cache, AQE and UDFs
 
-Here, we have some pygame code samples.
+Detect and fix skew, measure cache and UDF costs, and turn on AQE. The notebook regenerates its dataset.
 
 ### Files
 
-* [Scenes](./files/01_scene_manager.py)
-* [Transitions](./files/02_transitions.py)
+* [Skew, salting, cache, AQE, UDFs and exercises](./files/01_spark_skew_cache_aqe.ipynb)

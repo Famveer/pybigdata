@@ -22,11 +22,11 @@ For labs, please bring your notebooks!
 ### Week 2
 
 {: .lecture}
->Lecture 2: [Introduction to Game Loop](./Lectures/Lec2/)
+>Lecture 2: [Python and Pandas](./Lectures/Lec2/)
 >
 
 {: .lab}
->Lab 1: [Introduction to PyGame](./Labs/Lab1/)
+>Lab 1: [Python and Pandas](./Labs/Lab1/)
 >
 
 --- 
@@ -35,10 +35,10 @@ For labs, please bring your notebooks!
 ### Week 3
 
 {: .lecture}
->Lecture 3: [Introduction to Sprites](./Lectures/Lec3/)
+>Lecture 3: [From Pandas to Spark](./Lectures/Lec3/)
 
 {: .lab}
->Lab 2: [Introduction to Sprites](./Labs/Lab2/)
+>Lab 2: [The Spark DataFrame API](./Labs/Lab2/)
 >
 
 --- 
@@ -47,10 +47,10 @@ For labs, please bring your notebooks!
 ### Week 4
 
 {: .lecture}
->Lecture 4: [Introduction to Collisions](./Lectures/Lec4/)
+>Lecture 4: [Aggregations, Joins and Spark SQL](./Lectures/Lec4/)
 
 {: .lab}
->Lab 3: [Introduction to Collisions](./Labs/Lab3/)
+>Lab 3: [Aggregations, Joins and Spark SQL](./Labs/Lab3/)
 >
 
 --- 
@@ -59,10 +59,10 @@ For labs, please bring your notebooks!
 ### Week 5
 
 {: .lecture}
->Lecture 5: [Introduction to Animations](./Lectures/Lec5/)
+>Lecture 5: [How Spark Runs: Partitions and Joins](./Lectures/Lec5/)
 
 {: .lab}
->Lab 4: [Introduction to Animations](./Labs/Lab4/)
+>Lab 4: [Execution, Partitions and Joins](./Labs/Lab4/)
 >
 
 --- 
@@ -71,10 +71,10 @@ For labs, please bring your notebooks!
 ### Week 6
 
 {: .lecture}
->Lecture 6: [Introduction to Scenes](./Lectures/Lec6/)
+>Lecture 6: [Skew, Cache, AQE and UDFs](./Lectures/Lec6/)
 
 {: .lab}
->Lab 5: [Introduction to Scenes](./Labs/Lab5/)
+>Lab 5: [Skew, Cache, AQE and UDFs](./Labs/Lab5/)
 >
 
 --- 
@@ -83,10 +83,10 @@ For labs, please bring your notebooks!
 ### Week 7
 
 {: .lecture}
->Lecture 7: [Introduction to Audio](./Lectures/Lec7/)
+>Lecture 7: [ETL with the Medallion Architecture](./Lectures/Lec7/)
 
 {: .lab}
->Lab 6: [Introduction to Audio](./Labs/Lab6/)
+>Lab 6: [ETL with the Medallion Architecture](./Labs/Lab6/)
 >
 
 --- 
@@ -95,10 +95,10 @@ For labs, please bring your notebooks!
 ### Week 8
 
 {: .lecture}
->Lecture 8: [Introduction to Tilemap](./Lectures/Lec8/)
+>Lecture 8: [Delta Lake](./Lectures/Lec8/)
 
 {: .lab}
->Lab 7: [Introduction to Tilemap](./Labs/Lab7/)
+>Lab 7: [Delta Lake](./Labs/Lab7/)
 >
 
 --- 
@@ -107,10 +107,10 @@ For labs, please bring your notebooks!
 ### Week 9
 
 {: .lecture}
->Lecture 9: [Introduction to Game Physics](./Lectures/Lec9/)
+>Lecture 9: [Structured Streaming](./Lectures/Lec9/)
 
 {: .lab}
->Lab 8: [Introduction to Game Physics](./Labs/Lab8/)
+>Lab 8: [Structured Streaming](./Labs/Lab8/)
 >
 
 --- 
@@ -119,10 +119,10 @@ For labs, please bring your notebooks!
 ### Week 10
 
 {: .lecture}
->Lecture 10: [Introduction to IA and states](./Lectures/Lec10/)
+>Lecture 10: [Machine Learning with MLlib](./Lectures/Lec10/)
 
 {: .lab}
->Lab 9: [Introduction to IA and states](./Labs/Lab9/)
+>Lab 9: [MLlib: Pipelines and Models](./Labs/Lab9/)
 >
 
 --- 
@@ -131,7 +131,7 @@ For labs, please bring your notebooks!
 ### Week 11
 
 {: .lab}
->Lab 10: [Complete Game demo](./Labs/Lab10/)
+>Lab 10: [MLlib: Tuning and Deployment](./Labs/Lab10/)
 >
 
 --- 

@@ -8,18 +8,18 @@ nav_order: 8
 layout: default
 ---
 
-# Lecture 8: Introduction to Tilemap
+# Lecture 8: Delta Lake
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* TileMap
->* Zoom in and Zoom out
->* Player screening
+>* The transaction log
+>* MERGE and time travel
+>* Schema enforcement and evolution
+>* OPTIMIZE and VACUUM
 
 
 ### Slides
 
 * <a href="./slides/teoria.html" target="_blank">**Slides**</a>
-

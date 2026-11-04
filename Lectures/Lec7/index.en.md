@@ -8,18 +8,18 @@ nav_order: 7
 layout: default
 ---
 
-# Lecture 7: Introduction to Audio
+# Lecture 7: ETL with the Medallion Architecture
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* Audios
->* Math to sound
->* Music
+>* Data warehouse, data lake and lakehouse
+>* Bronze, Silver and Gold layers
+>* Quality rules and quarantine
+>* Partitioned Parquet and pruning
 
 
 ### Slides
 
 * <a href="./slides/teoria.html" target="_blank">**Slides**</a>
-

@@ -8,18 +8,18 @@ nav_order: 8
 layout: default
 ---
 
-# Aula 8: Introdução a Tilemap
+# Aula 8: Delta Lake
 {: .no_toc }
 
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* TileMap
->* Zoom in e Zoom out
->* Visualização do jogador na tela
+>* O log de transações
+>* MERGE e time travel
+>* Schema enforcement e evolution
+>* OPTIMIZE e VACUUM
 
 
 ### Slides
 
 * <a href="./slides/teoria.pt.html" target="_blank">**Slides**</a>
-

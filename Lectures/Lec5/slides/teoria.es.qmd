@@ -1,6 +1,6 @@
 ---
-title: "Sprites, Collisions y Animations"
-subtitle: "Curso de Desarrollo de Juegos con Pygame"
+title: "Cómo Ejecuta Spark: Jobs, Particiones y Joins"
+subtitle: "Big Data con PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: es
 format:
@@ -15,238 +15,111 @@ format:
     fontsize: 30px
   html:
     allow-html: true
-jupyter: python3
 ---
 
+## Lo que aprenderás
 
-# 🎬 Animations
+- Job, stage, task y qué es un shuffle
+- Leer un plan de ejecución con `explain()`
+- Particiones: `repartition` vs `coalesce`
+- Elegir la estrategia de join correcta
 
-## ¿Cómo funciona la animation 2D?
+---
 
-La animation funciona exactamente como un flipbook: una secuencia de imágenes (frames) que cambian a cierta velocidad para crear la ilusión de movimiento.
+## ¿Spark siempre es más rápido?
+
+En una sola máquina, con datos que caben en RAM, Pandas suele empatar o ganar: Spark paga un costo fijo (planificación, JVM, coordinación de tasks).
+
+Spark compensa cuando:
+
+- los datos **no caben** en la memoria de una máquina;
+- hay un **clúster**: el mismo código escala sin cambios;
+- el pipeline lee de fuentes distribuidas (data lake, S3, HDFS).
+
+---
+
+## Job, stage & task
+
+| Concepto | Qué es | Cuántos |
+|---------|-----------|---------|
+| **Job** | Trabajo disparado por una acción | 1 por acción (a veces más) |
+| **Stage** | Operaciones que corren sin intercambiar datos entre particiones | Nuevo stage en cada shuffle |
+| **Task** | Un stage ejecutado sobre **una** partición | 1 por partición |
 
 ```
-Frame 0    Frame 1    Frame 2    Frame 3
-  🧍         🚶         🧍         🚶
-  ↑          ↑          ↑          ↑
- 100ms      100ms      100ms      100ms   → repeats
+                                JOB
+       ┌─────────────────────────┴──────────────────────┐
+    STAGE 1                                          STAGE 2
+ read + filter + partial sum                       final sum
+ [T1] [T2] [T3] [T4]  ──── SHUFFLE (Exchange) ───▶ [T1] [T2] [T3]
 ```
+
+---
+
+## Narrow vs wide {.smaller}
+
+```
+   NARROW                          WIDE (shuffle)
+   P1 ──▶ P1'                      P1 ──┬──▶ P1'
+   P2 ──▶ P2'                      P2 ──┼──▶ P2'
+   P3 ──▶ P3'                      P3 ──┴──▶ P3'
+```
+
+| Tipo | Cada partición de salida depende de | Ejemplos | Shuffle |
+|------|---------------------------------|----------|---------|
+| **Narrow** | una partición de entrada | `select`, `filter`, `withColumn`, `union` | No |
+| **Wide** | varias particiones de entrada | `groupBy`, `join`, `orderBy`, `distinct`, `repartition` | Sí |
 
 ::: {.callout-important}
-La velocidad de animation ≠ FPS del juego. A 60 FPS, puedes animar a 10 FPS (cambiar de frame cada 6 frames del juego).
+El **shuffle** es la operación más cara: los datos se serializan, se escriben en disco, viajan por la red y se leen de nuevo.
 :::
 
-## Spritesheet
+---
 
-Un **spritesheet** es una única imagen que contiene todos los frames de todas las animations. Se usa para:
+## Leer un plan con `explain()`
 
-- Reducir el número de archivos individuales
-- Cargar la memoria de la GPU de forma más eficiente
-- Simplificar la gestión de las animations
+Se lee **de abajo hacia arriba**. Todo shuffle aparece como `Exchange`.
+
+- `PushedFilters`: el filtro llega hasta la lectura (*predicate pushdown*)
+- `ReadSchema`: solo se leen las columnas usadas (*column pruning*)
+- `HashAggregate (partial)` antes de `Exchange`: solo los totales parciales cruzan el shuffle
+- `Exchange hashpartitioning(region, 200)`: el shuffle, con 200 particiones de salida
+
+---
+
+## Particiones {.smaller}
+
+Una task procesa una partición. Muy pocas dejan núcleos ociosos; demasiadas generan overhead y archivos pequeños.
+
+| Momento | Quién decide | Configuración |
+|---------|-------------|---------------|
+| Lectura de archivos | Tamaño de los archivos | `spark.sql.files.maxPartitionBytes` (128 MB) |
+| Tras un shuffle | Configuración fija (sin AQE) | `spark.sql.shuffle.partitions` (200) |
+| Manual | Tú | `repartition(n)` / `coalesce(n)` |
+
+| | `repartition(n)` | `coalesce(n)` |
+|-|------------------|---------------|
+| Shuffle | Sí | No |
+| Puede aumentar particiones | Sí | No, solo reduce |
+| Uso típico | Antes de joins pesados, por clave | Menos archivos antes de escribir |
+
+---
+
+## Estrategias de join
 
 ```
-spritesheet.png:
-┌──────────────────────────────────────────────────┐
-│ [idle_0][idle_1][idle_2][idle_3]                 │  ← row 0: idle
-│ [walk_0][walk_1][walk_2][walk_3][walk_4][walk_5] │  ← row 1: walk
-│ [jump_0][jump_1][jump_2]                         │  ← row 2: jump
-│ [attack_0][attack_1][attack_2][attack_3]         │  ← row 3: attack
-└──────────────────────────────────────────────────┘
+  SORT-MERGE JOIN (default)                BROADCAST HASH JOIN
+  orders ──shuffle──┐                      products (small)
+                    ├── sort + merge         │ copy  │ copy  │ copy
+  customers ─shuffle┘                      [orders P1] [orders P2] [orders P3]
 ```
 
-## Spritesheet
-
-Un **spritesheet** es una única imagen que contiene todos los frames de todas las animations. Se usa para:
-
-- Reducir el número de archivos individuales
-- Cargar la memoria de la GPU de forma más eficiente
-- Simplificar la gestión de las animations
-
-```
-spritesheet.png:
-┌──────────────────────────────────────────────────┐
-│ [idle_0][idle_1][idle_2][idle_3]                 │  ← row 0: idle
-│ [walk_0][walk_1][walk_2][walk_3][walk_4][walk_5] │  ← row 1: walk
-│ [jump_0][jump_1][jump_2]                         │  ← row 2: jump
-│ [attack_0][attack_1][attack_2][attack_3]         │  ← row 3: attack
-└──────────────────────────────────────────────────┘
-```
-
-Para extraer un frame usa `Surface.subsurface(rect)`:
+| Estrategia | Cuándo | Costo |
+|----------|--------|-------|
+| **Broadcast Hash** | Un lado es pequeño (por defecto < 10 MB) | Sin shuffle del lado grande; el pequeño en la memoria de cada executor |
+| **Sort-Merge** | Dos tablas grandes | Shuffle + orden de ambos lados |
+| **Shuffle Hash** | Lado mediano, sin orden | Shuffle de ambos lados, hash del menor |
 
 ```python
-sheet = pygame.image.load("spritesheet.png").convert_alpha()
-SIZE = 64  # Frame size
-
-# Extract frame at column=2, row=1
-frame = sheet.subsurface(pygame.Rect(2 * SIZE, 1 * SIZE, SIZE, SIZE))
+orders.join(F.broadcast(products), "product_id")
 ```
-
-## Animation Timer
-
-El timer controla cuándo avanzar al siguiente frame. Hay dos enfoques:
-
-## Animation Timer
-
-El timer controla cuándo avanzar al siguiente frame. Hay dos enfoques:
-
-### Enfoque 1 — Frame counter (más simple)
-
-```python
-self.current_frame = 0
-self.counter       = 0
-self.anim_speed    = 8  # Change frame every 8 game frames
-
-def update(self):
-    self.counter += 1
-    if self.counter >= self.anim_speed:
-        self.counter = 0
-        self.current_frame = (self.current_frame + 1) % len(self.frames)
-    self.image = self.frames[self.current_frame]
-```
-
-## Animation Timer
-
-El timer controla cuándo avanzar al siguiente frame. Hay dos enfoques:
-
-### Enfoque 1 — Frame counter (más simple)
-
-```python
-self.current_frame = 0
-self.counter       = 0
-self.anim_speed    = 8  # Change frame every 8 game frames
-
-def update(self):
-    self.counter += 1
-    if self.counter >= self.anim_speed:
-        self.counter = 0
-        self.current_frame = (self.current_frame + 1) % len(self.frames)
-    self.image = self.frames[self.current_frame]
-```
-
-### Enfoque 2 — Millisecond timer (recomendado)
-
-```python
-self.current_frame  = 0
-self.last_update    = pygame.time.get_ticks()  # current ms
-self.frame_duration = 100  # ms per frame (100ms = 10 anim FPS)
-
-def update(self):
-    now = pygame.time.get_ticks()
-    if now - self.last_update >= self.frame_duration:
-        self.last_update = now
-        self.current_frame = (self.current_frame + 1) % len(self.frames)
-    self.image = self.frames[self.current_frame]
-```
-
-## Animation Timer
-
-El timer controla cuándo avanzar al siguiente frame.
-
-::: {.callout-tip}
-**Approach 2** es preferido porque si el FPS del juego baja, la animation se sigue reproduciendo a la misma velocidad en tiempo real en pantalla.
-:::
-
-## Animation State Machine
-
-Un personaje tiene múltiples animations según su state. La **state machine** decide cuál reproducir.
-
-```
-                 ┌─────────────────────┐
-                 │       IDLE          │
-                 │  (standing still)   │
-                 └─────┬───────┬───────┘
-                       │       │
-               move    │       │ airborne
-               key     ↓       ↓
-               ┌───────────┐ ┌───────────┐
-               │   WALK    │ │   JUMP    │
-               │ (walking) │ │ (jumping) │
-               └─────┬─────┘ └─────┬─────┘
-                     │ release     │ land
-                     └──────┬──────┘
-                            ↓
-                          IDLE
-```
-
-## Animation State Machine -- código
-
-```python
-class Player(pygame.sprite.Sprite):
-    def __init__(self):
-        ...
-        self.state = 'idle'   # Current state
-        self.animations = {
-            'idle':   [frame_idle_0, frame_idle_1, frame_idle_2],
-            'walk':   [frame_walk_0, frame_walk_1, frame_walk_2, frame_walk_3],
-            'jump':   [frame_jump_0, frame_jump_1],
-        }
-
-    def change_state(self, new_state):
-        if self.state != new_state:        # Only if it actually changed
-            self.state = new_state
-            self.current_frame = 0         # Reset animation on state change
-
-    def update(self):
-        # Determine state
-        keys = pygame.key.get_pressed()
-        if self.airborne:
-            self.change_state('jump')
-        elif keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]:
-            self.change_state('walk')
-        else:
-            self.change_state('idle')
-
-        # Animate
-        frames = self.animations[self.state]
-        self.image = frames[self.current_frame % len(frames)]
-```
-
-## State Machine Simulation
-
-```{python}
-class StateMachine:
-    def __init__(self):
-        self.state = 'idle'
-        self.current_frame = 0
-        self.frames_per_state = {'idle': 3, 'walk': 4, 'jump': 2, 'attack': 4}
-        self.history = []
-
-    def change_state(self, new):
-        if self.state != new:
-            self.history.append(f"  {self.state} → {new}")
-            self.state = new
-            self.current_frame = 0  # Reset on state change
-
-    def tick(self):
-        total = self.frames_per_state[self.state]
-        self.current_frame = (self.current_frame + 1) % total
-        return f"{self.state}[{self.current_frame}/{total-1}]"
-
-# Simulate a sequence of actions
-sm = StateMachine()
-sequence = [
-    ('idle', 3), ('walk', 5), ('jump', 4),
-    ('idle', 2), ('attack', 5), ('idle', 3),
-]
-
-print("Simulación de la state machine:")
-print("=" * 45)
-for action, duration in sequence:
-    sm.change_state(action)
-    frames_out = [sm.tick() for _ in range(duration)]
-    print(f"  {' → '.join(frames_out)}")
-
-print()
-print("Transiciones de state:")
-for h in sm.history:
-    print(h)
-```
-
-## Animations — Resumen {.unnumbered}
-
-- Spritesheet = una única imagen que contiene todos los frames
-- ms timer = independiente del FPS (approach preferido)
-- State machine = determina qué animation reproducir
-- Reinicia `current_frame = 0` cada vez que cambia el state
-

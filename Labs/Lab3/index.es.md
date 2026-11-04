@@ -8,11 +8,10 @@ nav_order: 3
 layout: default
 ---
 
-# Laboratorio 3: Introducción a Collisions
+# Laboratorio 3: Agregaciones, Joins y Spark SQL
 
-Aquí tenemos algunos ejemplos de código de pygame.
+Agrupa, une y consulta datos con Spark SQL, y observa la evaluación perezosa.
 
 ### Archivos
 
-* [Collisions - rects](./files/01_colisiones_rect.py)
-* [Collisions - sprites](./files/02_colisiones_sprites.py)
+* [GroupBy, joins, Spark SQL, evaluación perezosa y ejemplos](./files/01_spark_aggregations_joins_sql.ipynb)

@@ -7,28 +7,28 @@ nav_order: 1
 permalink: /
 ---
 
-# Videogames com PyGame
+# Big Data com PySpark
 {: .fs-9 }
 
-O objetivo geral deste curso é fornecer aos estudantes a base necessária para compreender e estudar o desenvolvimento de videogames usando Pygame.
+O objetivo geral deste curso é oferecer aos estudantes as bases necessárias para processar e analisar grandes volumes de dados com Python e Apache Spark.
 {: .fs-6 .fw-300 }
 
 ---
-Descubra o poder do desenvolvimento de videogames com Python e Pygame! Este curso ensina você a construir jogos 2D interativos do zero. Aprenda conceitos básicos de programação, princípios de design de jogos e técnicas de gráficos em tempo real enquanto cria projetos envolventes. Ganhe experiência prática usando Pygame para desenvolver mecânicas de jogo, animation, sistemas de collision e interações com o usuário. Junte-se a nós para transformar suas ideias em experiências jogáveis.
+Aprenda a trabalhar com dados que não cabem em uma única máquina! Este curso parte de Python e Pandas e avança para o processamento distribuído com PySpark. Você vai construir pipelines ETL com arquitetura Medallion e Delta Lake, processar dados em tempo real com Structured Streaming e treinar modelos de machine learning com MLlib.
 
 Ao final do curso, os estudantes terão adquirido:
 
-1. Uma compreensão dos conceitos fundamentais de desenvolvimento de jogos, incluindo game loop, manejo de event, sistemas de sprite, detecção de collision e manejo de state.
-2. Experiência prática no design, construção, depuração e otimização de jogos 2D usando Python e Pygame.
-3. A capacidade de analisar e discutir a arquitetura de um jogo, técnicas de programação e decisões de design usadas em jogos indie e arcade modernos.
+1. Uma compreensão dos conceitos fundamentais do processamento distribuído, incluindo partições, avaliação preguiçosa, shuffles e planos de execução.
+2. Experiência prática na construção, depuração e otimização de pipelines de dados com PySpark, Delta Lake e Structured Streaming.
+3. A capacidade de analisar problemas de desempenho, escolher a ferramenta adequada para cada volume de dados e treinar modelos com MLlib.
 
 ---
 
 # Referências
 
-* [Pygame tutorial series](https://eli.thegreenplace.net/2008/12/13/writing-a-game-in-python-with-pygame-part-i/)  
-* [Game programing](https://www.amazon.com/Game-Programming-Line-Express-Learning/dp/0470068221)  
-* [Litle book of pygame](https://mathspp.com/books/the-little-book-of-pygame)
+* [PySpark Documentation](https://spark.apache.org/docs/latest/api/python/)  
+* [Pandas Documentation](https://pandas.pydata.org/docs/)  
+* [Pandas Cheat Sheet (DataCamp)](https://www.datacamp.com/cheat-sheet/pandas-cheat-sheet-for-data-science-in-python)
 
 
 ---

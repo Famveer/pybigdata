@@ -8,11 +8,10 @@ nav_order: 7
 layout: default
 ---
 
-# Laboratorio 7: Introducción a Tilemap
+# Laboratorio 7: Delta Lake
 
-Aquí tenemos algunos ejemplos de código de pygame.
+Convierte la tabla Silver a Delta y usa MERGE, time travel, OPTIMIZE y VACUUM. El notebook reconstruye el pipeline del Laboratorio 6. La primera ejecución descarga los jars de Delta, así que necesita internet.
 
 ### Archivos
 
-* [Tilemap](./files/01_tilemap.py)
-* [Cameras](./files/02_camera_parallax.py)
+* [Tablas Delta, MERGE, time travel, schema, OPTIMIZE y VACUUM](./files/01_delta_lake.ipynb)

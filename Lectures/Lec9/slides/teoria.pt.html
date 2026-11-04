@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Physics e AI de Inimigos</title>
+  <title>Structured Streaming</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,8 +194,8 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Physics e AI de Inimigos</h1>
-  <p class="subtitle">Curso de Desenvolvimento de Jogos com Pygame</p>
+  <h1 class="title">Structured Streaming</h1>
+  <p class="subtitle">Big Data com PySpark</p>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
@@ -206,315 +206,233 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section class="slide level2">
-
-<div class="callout callout-note callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Nota</strong></p>
-</div>
-<div class="callout-content">
-<p>Nestes módulos você vai aprender:</p>
+<section id="o-que-você-vai-aprender" class="slide level2">
+<h2>O que você vai aprender</h2>
 <ul>
-<li>Gravity, velocidade, aceleração, atrito, altura de salto variável, coyote time, jump buffering, plataformas de mão única, plataformas móveis, e wall jumping</li>
-<li>Steering behaviors (seek, flee, patrol, wander), line of sight, vision cones, e uma Finite State Machine completa para inimigos</li>
+<li>O modelo de tabela ilimitada e o micro-batch</li>
+<li>Sources, sinks, output modes e triggers</li>
+<li>Agregar por <strong>tempo do evento</strong> com janelas</li>
+<li>Tratar dados atrasados com <strong>watermark</strong></li>
+<li>Tolerância a falhas com <strong>checkpoint</strong></li>
 </ul>
-</div>
-</div>
-</div>
 </section>
-<section>
-<section id="physics-básica" class="title-slide slide level1 center">
-<h1>⚙️ Physics Básica</h1>
-
+<section id="batch-vs-streaming" class="slide level2">
+<h2>Batch vs streaming</h2>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th></th>
+<th>Batch</th>
+<th>Streaming</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Dados</td>
+<td>Conjunto fechado</td>
+<td>Fluxo sem fim</td>
+</tr>
+<tr class="even">
+<td>Execução</td>
+<td>Roda uma vez e termina</td>
+<td>Roda continuamente</td>
+</tr>
+<tr class="odd">
+<td>Leitura</td>
+<td><code>spark.read</code></td>
+<td><code>spark.readStream</code></td>
+</tr>
+<tr class="even">
+<td>Escrita</td>
+<td><code>df.write</code></td>
+<td><code>df.writeStream</code></td>
+</tr>
+<tr class="odd">
+<td>Latência típica</td>
+<td>Minutos a horas</td>
+<td>Segundos</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="o-physics-update-loop" class="slide level2">
-<h2>O Physics Update Loop</h2>
-<p>A physics de plataformas se baseia em duas equações fundamentais aplicadas a cada frame:</p>
-<pre><code>velocity += acceleration × dt      # Euler integration
-position += velocity   × dt</code></pre>
+<section id="a-tabela-ilimitada" class="slide level2">
+<h2>A tabela ilimitada</h2>
+<p>O fluxo é uma <strong>tabela que cresce sem parar</strong>. Você escreve a consulta como se fosse sobre a tabela inteira; o Spark a executa <strong>de forma incremental</strong>.</p>
+<pre><code>   source     [e1 e2]        [e3 e4 e5]        [e6]
+                 │               │               │
+   query      groupBy        groupBy        groupBy
+                 │               │               │
+   result     [A:2]          [A:3 B:2]      [A:3 B:3]</code></pre>
+<pre><code>   SOURCE ──▶ TRANSFORMATIONS ──▶ SINK
+              CHECKPOINT: processed offsets + aggregation state
+              TRIGGER   : when each micro-batch runs</code></pre>
 </section>
-<section id="o-physics-update-loop-1" class="slide level2">
-<h2>O Physics Update Loop</h2>
-<p>A physics de plataformas se baseia em duas equações fundamentais aplicadas a cada frame:</p>
-<pre><code>velocity += acceleration × dt      # Euler integration
-position += velocity   × dt</code></pre>
-<p><code>dt</code> (delta time) é o tempo decorrido desde o último frame, em <strong>segundos</strong>. Usar <code>dt</code> torna a simulação <strong>independente do frame rate</strong>: o mesmo comportamento a 30 FPS e a 120 FPS.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="co"># Every frame:</span></span>
-<span id="cb3-2"><a href=""></a>vy    <span class="op">+=</span> GRAVITY <span class="op">*</span> dt       <span class="co"># Gravity accelerates the fall</span></span>
-<span id="cb3-3"><a href=""></a>y     <span class="op">+=</span> vy <span class="op">*</span> dt            <span class="co"># Velocity moves the position</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="modos-de-saída" class="slide level2">
+<h2>Modos de saída</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 12%">
+<col style="width: 60%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Modo</th>
+<th>O que é escrito em cada micro-batch</th>
+<th>Uso típico</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>append</code></td>
+<td>Só linhas novas que <strong>não mudarão mais</strong></td>
+<td>Eventos sem agregação; janelas fechadas pelo watermark</td>
+</tr>
+<tr class="even">
+<td><code>update</code></td>
+<td>Só linhas do resultado que <strong>mudaram</strong></td>
+<td>Dashboards, upserts</td>
+</tr>
+<tr class="odd">
+<td><code>complete</code></td>
+<td>O resultado <strong>inteiro</strong>, de novo</td>
+<td>Agregações pequenas</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Processing time:</strong> quando o Spark recebeu o evento. <strong>Event time:</strong> quando ele aconteceu. Para métricas de negócio quase sempre queremos event time, o que exige lidar com dados atrasados.</p>
 </section>
-<section id="o-physics-update-loop-2" class="slide level2">
-<h2>O Physics Update Loop</h2>
-<p>A physics de plataformas se baseia em duas equações fundamentais aplicadas a cada frame:</p>
-<pre><code>velocity += acceleration × dt      # Euler integration
-position += velocity   × dt</code></pre>
-<p><code>dt</code> (delta time) é o tempo decorrido desde o último frame, em <strong>segundos</strong>. Usar <code>dt</code> torna a simulação <strong>independente do frame rate</strong>: o mesmo comportamento a 30 FPS e a 120 FPS.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="co"># Every frame:</span></span>
-<span id="cb5-2"><a href=""></a>vy    <span class="op">+=</span> GRAVITY <span class="op">*</span> dt       <span class="co"># Gravity accelerates the fall</span></span>
-<span id="cb5-3"><a href=""></a>y     <span class="op">+=</span> vy <span class="op">*</span> dt            <span class="co"># Velocity moves the position</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-important callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Importante</strong></p>
-</div>
-<div class="callout-content">
-<p>Sempre multiplique forças e velocidades por <code>dt</code>. Sem isso, seu jogo vai rodar em velocidades diferentes dependendo do hardware.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="gravity" class="slide level2">
-<h2>Gravity</h2>
-<p>Gravity é simplesmente uma <strong>aceleração constante para baixo</strong> aplicada a cada frame:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>GRAVITY      <span class="op">=</span> <span class="fl">900.0</span>    <span class="co"># px/s²  — feel free to tune</span></span>
-<span id="cb6-2"><a href=""></a>TERMINAL_VEL <span class="op">=</span> <span class="fl">850.0</span>    <span class="co"># cap: prevents infinite acceleration</span></span>
-<span id="cb6-3"><a href=""></a></span>
-<span id="cb6-4"><a href=""></a>vy <span class="op">=</span> <span class="bu">min</span>(vy <span class="op">+</span> GRAVITY <span class="op">*</span> dt, TERMINAL_VEL)</span>
-<span id="cb6-5"><a href=""></a>y  <span class="op">+=</span> vy <span class="op">*</span> dt</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="gravity-1" class="slide level2">
-<h2>Gravity</h2>
-<p>Gravity é simplesmente uma <strong>aceleração constante para baixo</strong> aplicada a cada frame:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>GRAVITY      <span class="op">=</span> <span class="fl">900.0</span>    <span class="co"># px/s²  — feel free to tune</span></span>
-<span id="cb7-2"><a href=""></a>TERMINAL_VEL <span class="op">=</span> <span class="fl">850.0</span>    <span class="co"># cap: prevents infinite acceleration</span></span>
-<span id="cb7-3"><a href=""></a></span>
-<span id="cb7-4"><a href=""></a>vy <span class="op">=</span> <span class="bu">min</span>(vy <span class="op">+</span> GRAVITY <span class="op">*</span> dt, TERMINAL_VEL)</span>
-<span id="cb7-5"><a href=""></a>y  <span class="op">+=</span> vy <span class="op">*</span> dt</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div id="d28edf4b" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-stdout">
-<pre><code>Simulação de queda livre (60 FPS, gravity=900 px/s²)
-  frame    vy (px/s)      y (px)       notas
-  ----------------------------------------------------
-  0        15.0           0.2          
-  10       165.0          16.5         
-  20       315.0          57.8         
-  30       465.0          124.0        
-  40       615.0          215.2        
-  50       765.0          331.5        
-  60       850.0          469.8        terminal velocity atingida</code></pre>
-</div>
-</div>
-</section>
-<section id="jumping" class="slide level2">
-<h2>Jumping</h2>
-<p>Um salto é simplesmente uma <strong>velocidade instantânea para cima</strong> aplicada quando o jogador está no chão:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href=""></a>JUMP_VY <span class="op">=</span> <span class="op">-</span><span class="fl">460.0</span>    <span class="co"># Negative = upward (Y grows downward in Pygame)</span></span>
-<span id="cb9-2"><a href=""></a></span>
-<span id="cb9-3"><a href=""></a><span class="cf">if</span> player_pressed_jump <span class="kw">and</span> on_ground:</span>
-<span id="cb9-4"><a href=""></a>    vy <span class="op">=</span> JUMP_VY</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="variable-jump-height" class="slide level2">
-<h2>Variable Jump Height</h2>
-<p>Segure o botão de pulo para um salto mais alto; solte antes para um salto curto. O truque: <strong>reduzir a gravity enquanto o botão está pressionado</strong> e o jogador ainda está subindo.</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href=""></a>JUMP_FRAMES_MAX <span class="op">=</span> <span class="dv">20</span>   <span class="co"># Max frames of reduced gravity</span></span>
-<span id="cb10-2"><a href=""></a>JUMP_FRAMES_MIN <span class="op">=</span> <span class="dv">6</span>    <span class="co"># Must hold at least this long</span></span>
-<span id="cb10-3"><a href=""></a></span>
-<span id="cb10-4"><a href=""></a><span class="cf">if</span> jumping:</span>
-<span id="cb10-5"><a href=""></a>    jump_frames <span class="op">+=</span> <span class="dv">1</span></span>
-<span id="cb10-6"><a href=""></a>    <span class="cf">if</span> <span class="kw">not</span> keys[K_SPACE] <span class="kw">and</span> jump_frames <span class="op">&gt;</span> JUMP_FRAMES_MIN:</span>
-<span id="cb10-7"><a href=""></a>        jumping <span class="op">=</span> <span class="va">False</span>          <span class="co"># Cut jump short</span></span>
-<span id="cb10-8"><a href=""></a>    <span class="cf">if</span> jump_frames <span class="op">&gt;=</span> JUMP_FRAMES_MAX:</span>
-<span id="cb10-9"><a href=""></a>        jumping <span class="op">=</span> <span class="va">False</span></span>
-<span id="cb10-10"><a href=""></a></span>
-<span id="cb10-11"><a href=""></a>grav_mult <span class="op">=</span> <span class="fl">0.4</span> <span class="cf">if</span> jumping <span class="cf">else</span> <span class="fl">1.0</span>   <span class="co"># Reduced gravity = higher jump</span></span>
-<span id="cb10-12"><a href=""></a>vy <span class="op">+=</span> GRAVITY <span class="op">*</span> grav_mult <span class="op">*</span> dt</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="coyote-time" class="slide level2">
-<h2>Coyote Time</h2>
-<p>O período de graça do <strong>coyote time</strong> permite que o jogador pule durante alguns frames depois de andar para fora de uma plataforma — parece justo e responsivo:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href=""></a>COYOTE_FRAMES <span class="op">=</span> <span class="dv">8</span></span>
-<span id="cb11-2"><a href=""></a></span>
-<span id="cb11-3"><a href=""></a><span class="cf">if</span> on_ground:</span>
-<span id="cb11-4"><a href=""></a>    coyote_timer <span class="op">=</span> COYOTE_FRAMES</span>
-<span id="cb11-5"><a href=""></a><span class="cf">elif</span> coyote_timer <span class="op">&gt;</span> <span class="dv">0</span>:</span>
-<span id="cb11-6"><a href=""></a>    coyote_timer <span class="op">-=</span> <span class="dv">1</span></span>
-<span id="cb11-7"><a href=""></a></span>
-<span id="cb11-8"><a href=""></a>can_jump <span class="op">=</span> on_ground <span class="kw">or</span> coyote_timer <span class="op">&gt;</span> <span class="dv">0</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="jump-buffering" class="slide level2">
-<h2>Jump Buffering</h2>
-<p>Se o jogador pressionar pular pouco antes de aterrissar, <strong>guarde o input em um buffer</strong> e execute-o ao entrar em contato:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href=""></a>BUFFER_FRAMES <span class="op">=</span> <span class="dv">10</span></span>
-<span id="cb12-2"><a href=""></a></span>
-<span id="cb12-3"><a href=""></a><span class="co"># On KEYDOWN event:</span></span>
-<span id="cb12-4"><a href=""></a>jump_buffer <span class="op">=</span> BUFFER_FRAMES</span>
-<span id="cb12-5"><a href=""></a></span>
-<span id="cb12-6"><a href=""></a><span class="co"># In update():</span></span>
-<span id="cb12-7"><a href=""></a><span class="cf">if</span> jump_buffer <span class="op">&gt;</span> <span class="dv">0</span>:</span>
-<span id="cb12-8"><a href=""></a>    jump_buffer <span class="op">-=</span> <span class="dv">1</span></span>
-<span id="cb12-9"><a href=""></a><span class="cf">if</span> jump_buffer <span class="op">&gt;</span> <span class="dv">0</span> <span class="kw">and</span> can_jump:</span>
-<span id="cb12-10"><a href=""></a>    vy <span class="op">=</span> JUMP_VY</span>
-<span id="cb12-11"><a href=""></a>    jump_buffer <span class="op">=</span> <span class="dv">0</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="jump-buffering-1" class="slide level2">
-<h2>Jump Buffering</h2>
-<div id="2d7bb8e3" class="cell" data-execution_count="2">
-<div class="cell-output cell-output-stdout">
-<pre><code>Valores de Coyote time e jump buffer
-=============================================
-  Coyote frames  : 8 frames = 133 ms
-  Buffer frames  : 10 frames = 167 ms
-
-Por que isso importa:
-  Sem coyote: andar para fora da borda → não é possível pular (parece injusto)
-  Com coyote:     8 frames de graça → parece responsive
-
-  Sem buffer: pressionar pular 1 frame antes → nada acontece
-  Com buffer:     input mantido por 10 frames → dispara automaticamente ao aterrissar</code></pre>
-</div>
-</div>
-</section>
-<section id="collision-resolution" class="slide level2">
-<h2>Collision Resolution</h2>
-<p>O padrão mais confiável: <strong>mova-se em um eixo, resolva a collision, e depois mova-se no outro</strong>.</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href=""></a><span class="co"># Step 1: move horizontally</span></span>
-<span id="cb14-2"><a href=""></a>x <span class="op">+=</span> vx <span class="op">*</span> dt</span>
-<span id="cb14-3"><a href=""></a><span class="cf">for</span> platform <span class="kw">in</span> platforms:</span>
-<span id="cb14-4"><a href=""></a>    <span class="cf">if</span> player_rect.colliderect(platform.rect):</span>
-<span id="cb14-5"><a href=""></a>        <span class="cf">if</span> vx <span class="op">&gt;</span> <span class="dv">0</span>: x <span class="op">=</span> platform.rect.left  <span class="op">-</span> player_w   <span class="co"># Pushed left</span></span>
-<span id="cb14-6"><a href=""></a>        <span class="cf">if</span> vx <span class="op">&lt;</span> <span class="dv">0</span>: x <span class="op">=</span> platform.rect.right               <span class="co"># Pushed right</span></span>
-<span id="cb14-7"><a href=""></a>        vx <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb14-8"><a href=""></a></span>
-<span id="cb14-9"><a href=""></a><span class="co"># Step 2: move vertically</span></span>
-<span id="cb14-10"><a href=""></a>y <span class="op">+=</span> vy <span class="op">*</span> dt</span>
-<span id="cb14-11"><a href=""></a>on_ground <span class="op">=</span> <span class="va">False</span></span>
-<span id="cb14-12"><a href=""></a><span class="cf">for</span> platform <span class="kw">in</span> platforms:</span>
-<span id="cb14-13"><a href=""></a>    <span class="cf">if</span> player_rect.colliderect(platform.rect):</span>
-<span id="cb14-14"><a href=""></a>        <span class="cf">if</span> vy <span class="op">&gt;</span> <span class="dv">0</span>:                                        <span class="co"># Falling</span></span>
-<span id="cb14-15"><a href=""></a>            y        <span class="op">=</span> platform.rect.top <span class="op">-</span> player_h</span>
-<span id="cb14-16"><a href=""></a>            vy       <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb14-17"><a href=""></a>            on_ground <span class="op">=</span> <span class="va">True</span></span>
-<span id="cb14-18"><a href=""></a>        <span class="cf">elif</span> vy <span class="op">&lt;</span> <span class="dv">0</span>:                                      <span class="co"># Rising</span></span>
-<span id="cb14-19"><a href=""></a>            y  <span class="op">=</span> platform.rect.bottom</span>
-<span id="cb14-20"><a href=""></a>            vy <span class="op">=</span> <span class="dv">0</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="collision-resolution-1" class="slide level2">
-<h2>Collision Resolution</h2>
-<p>O padrão mais confiável: <strong>mova-se em um eixo, resolva a collision, e depois mova-se no outro</strong>.</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href=""></a><span class="co"># Step 1: move horizontally</span></span>
-<span id="cb15-2"><a href=""></a>x <span class="op">+=</span> vx <span class="op">*</span> dt</span>
-<span id="cb15-3"><a href=""></a><span class="cf">for</span> platform <span class="kw">in</span> platforms:</span>
-<span id="cb15-4"><a href=""></a>    <span class="cf">if</span> player_rect.colliderect(platform.rect):</span>
-<span id="cb15-5"><a href=""></a>        <span class="cf">if</span> vx <span class="op">&gt;</span> <span class="dv">0</span>: x <span class="op">=</span> platform.rect.left  <span class="op">-</span> player_w   <span class="co"># Pushed left</span></span>
-<span id="cb15-6"><a href=""></a>        <span class="cf">if</span> vx <span class="op">&lt;</span> <span class="dv">0</span>: x <span class="op">=</span> platform.rect.right               <span class="co"># Pushed right</span></span>
-<span id="cb15-7"><a href=""></a>        vx <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb15-8"><a href=""></a></span>
-<span id="cb15-9"><a href=""></a><span class="co"># Step 2: move vertically</span></span>
-<span id="cb15-10"><a href=""></a>y <span class="op">+=</span> vy <span class="op">*</span> dt</span>
-<span id="cb15-11"><a href=""></a>on_ground <span class="op">=</span> <span class="va">False</span></span>
-<span id="cb15-12"><a href=""></a><span class="cf">for</span> platform <span class="kw">in</span> platforms:</span>
-<span id="cb15-13"><a href=""></a>    <span class="cf">if</span> player_rect.colliderect(platform.rect):</span>
-<span id="cb15-14"><a href=""></a>        <span class="cf">if</span> vy <span class="op">&gt;</span> <span class="dv">0</span>:                                        <span class="co"># Falling</span></span>
-<span id="cb15-15"><a href=""></a>            y        <span class="op">=</span> platform.rect.top <span class="op">-</span> player_h</span>
-<span id="cb15-16"><a href=""></a>            vy       <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb15-17"><a href=""></a>            on_ground <span class="op">=</span> <span class="va">True</span></span>
-<span id="cb15-18"><a href=""></a>        <span class="cf">elif</span> vy <span class="op">&lt;</span> <span class="dv">0</span>:                                      <span class="co"># Rising</span></span>
-<span id="cb15-19"><a href=""></a>            y  <span class="op">=</span> platform.rect.bottom</span>
-<span id="cb15-20"><a href=""></a>            vy <span class="op">=</span> <span class="dv">0</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-tip callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Dica</strong></p>
-</div>
-<div class="callout-content">
-<p>Sempre resolva X e Y <strong>separadamente</strong>. Resolver os dois juntos faz o jogador atravessar cantos e ficar preso nas paredes de forma incorreta.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="one-way-platforms" class="slide level2">
-<h2>One-Way Platforms</h2>
-<p>Sólidas apenas por cima — o jogador pode atravessá-las pulando por baixo:</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href=""></a><span class="cf">for</span> platform <span class="kw">in</span> one_way_platforms:</span>
-<span id="cb16-2"><a href=""></a>    <span class="cf">if</span> player_rect.colliderect(platform.rect):</span>
-<span id="cb16-3"><a href=""></a>        <span class="co"># Only resolve if falling AND was above the platform top last frame</span></span>
-<span id="cb16-4"><a href=""></a>        <span class="cf">if</span> vy <span class="op">&gt;</span> <span class="dv">0</span> <span class="kw">and</span> (prev_y <span class="op">+</span> player_h) <span class="op">&lt;=</span> platform.rect.top <span class="op">+</span> <span class="dv">4</span>:</span>
-<span id="cb16-5"><a href=""></a>            y        <span class="op">=</span> platform.rect.top <span class="op">-</span> player_h</span>
-<span id="cb16-6"><a href=""></a>            vy       <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb16-7"><a href=""></a>            on_ground <span class="op">=</span> <span class="va">True</span></span>
-<span id="cb16-8"><a href=""></a>        <span class="co"># If rising: ignore (pass through)</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="moving-platforms-velocity-inheritance" class="slide level2">
-<h2>Moving Platforms — Velocity Inheritance</h2>
-<p>Quando o jogador está parado sobre uma plataforma em movimento, some a velocidade da plataforma ao jogador:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href=""></a><span class="kw">class</span> MovingPlatform:</span>
-<span id="cb17-2"><a href=""></a>    <span class="kw">def</span> update(<span class="va">self</span>, dt):</span>
-<span id="cb17-3"><a href=""></a>        prev_x     <span class="op">=</span> <span class="va">self</span>.rect.x</span>
-<span id="cb17-4"><a href=""></a>        <span class="va">self</span>.rect.x <span class="op">+=</span> <span class="va">self</span>.direction <span class="op">*</span> <span class="va">self</span>.speed <span class="op">*</span> dt</span>
-<span id="cb17-5"><a href=""></a>        <span class="va">self</span>.vel_x  <span class="op">=</span> (<span class="va">self</span>.rect.x <span class="op">-</span> prev_x) <span class="op">/</span> dt   <span class="co"># Derived velocity</span></span>
-<span id="cb17-6"><a href=""></a></span>
-<span id="cb17-7"><a href=""></a><span class="co"># In player update:</span></span>
-<span id="cb17-8"><a href=""></a><span class="cf">if</span> on_ground <span class="kw">and</span> standing_on:</span>
-<span id="cb17-9"><a href=""></a>    x <span class="op">+=</span> standing_on.vel_x <span class="op">*</span> dt   <span class="co"># Inherit platform movement</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="acceleration-based-movement" class="slide level2">
-<h2>Acceleration-Based Movement</h2>
-<p>A velocidade instantânea parece rígida. A aceleração dá peso e momentum ao movimento:</p>
-<div class="sourceCode" id="cb18"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href=""></a>MOVE_ACCEL   <span class="op">=</span> <span class="fl">1800.0</span>   <span class="co"># px/s² — ground acceleration</span></span>
-<span id="cb18-2"><a href=""></a>AIR_ACCEL    <span class="op">=</span> <span class="fl">900.0</span>    <span class="co"># Less control in the air</span></span>
-<span id="cb18-3"><a href=""></a>MAX_VX       <span class="op">=</span> <span class="fl">240.0</span></span>
-<span id="cb18-4"><a href=""></a></span>
-<span id="cb18-5"><a href=""></a>accel <span class="op">=</span> MOVE_ACCEL <span class="cf">if</span> on_ground <span class="cf">else</span> AIR_ACCEL</span>
-<span id="cb18-6"><a href=""></a></span>
-<span id="cb18-7"><a href=""></a><span class="cf">if</span> pressing_right:</span>
-<span id="cb18-8"><a href=""></a>    vx <span class="op">+=</span> (MAX_VX <span class="op">-</span> vx) <span class="op">*</span> (accel <span class="op">/</span> MAX_VX) <span class="op">*</span> dt   <span class="co"># Accelerate toward target</span></span>
-<span id="cb18-9"><a href=""></a><span class="cf">else</span>:</span>
-<span id="cb18-10"><a href=""></a>    vx <span class="op">-=</span> math.copysign(MOVE_ACCEL <span class="op">*</span> dt, vx)       <span class="co"># Decelerate</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="acceleration-based-movement-1" class="slide level2">
-<h2>Acceleration-Based Movement</h2>
-<p>A velocidade instantânea parece rígida. A aceleração dá peso e momentum ao movimento:</p>
-<div class="sourceCode" id="cb19"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href=""></a>MOVE_ACCEL   <span class="op">=</span> <span class="fl">1800.0</span>   <span class="co"># px/s² — ground acceleration</span></span>
-<span id="cb19-2"><a href=""></a>AIR_ACCEL    <span class="op">=</span> <span class="fl">900.0</span>    <span class="co"># Less control in the air</span></span>
-<span id="cb19-3"><a href=""></a>MAX_VX       <span class="op">=</span> <span class="fl">240.0</span></span>
-<span id="cb19-4"><a href=""></a></span>
-<span id="cb19-5"><a href=""></a>accel <span class="op">=</span> MOVE_ACCEL <span class="cf">if</span> on_ground <span class="cf">else</span> AIR_ACCEL</span>
-<span id="cb19-6"><a href=""></a></span>
-<span id="cb19-7"><a href=""></a><span class="cf">if</span> pressing_right:</span>
-<span id="cb19-8"><a href=""></a>    vx <span class="op">+=</span> (MAX_VX <span class="op">-</span> vx) <span class="op">*</span> (accel <span class="op">/</span> MAX_VX) <span class="op">*</span> dt   <span class="co"># Accelerate toward target</span></span>
-<span id="cb19-9"><a href=""></a><span class="cf">else</span>:</span>
-<span id="cb19-10"><a href=""></a>    vx <span class="op">-=</span> math.copysign(MOVE_ACCEL <span class="op">*</span> dt, vx)       <span class="co"># Decelerate</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div id="488fddb9" class="cell" data-execution_count="3">
-<div class="cell-output cell-output-stdout">
-<pre><code>Velocity profile em 30 frames
-  Frame    Instantânea  Accelerated
-  ----------------------------------
-  0        240.0        30.0
-  5        240.0        132.3
-  10       240.0        184.8
-  15       240.0        211.7
-  20       240.0        225.5
-  25       240.0        232.5
-
-O movimento Accelerated alcança max speed de forma gradual → parece weighted</code></pre>
-</div>
-</div>
-</section>
-<section id="physics-resumo" class="slide level2 unnumbered">
-<h2>Physics — Resumo</h2>
+<section id="fontes-de-arquivos-dois-cuidados" class="slide level2">
+<h2>Fontes de arquivos: dois cuidados</h2>
 <ul>
-<li><code>velocity += acceleration × dt</code> e depois <code>position += velocity × dt</code> — sempre use <code>dt</code></li>
-<li>Gravity = aceleração constante para baixo + limite de terminal velocity</li>
-<li>Variable jump = reduzir a gravity enquanto o botão de pulo está pressionado</li>
-<li><strong>Coyote time</strong> = período de graça de salto (8 frames) depois de andar para fora de uma plataforma</li>
-<li><strong>Jump buffering</strong> = lembrar o input de salto (10 frames) antes de aterrissar</li>
-<li>Resolução separada de X e Y para evitar que o jogador atravesse cantos</li>
-<li>One-way platforms: resolver a collision apenas ao cair <strong>e</strong> estar acima da borda superior</li>
-<li>Moving platforms: derivar <code>vel_x</code> a partir do delta de posição, herdar no jogador</li>
-<li>Acceleration-based movement: <code>vx += (target - vx) * accel_factor * dt</code></li>
+<li><strong>O schema é obrigatório:</strong> precisa ser estável durante toda a vida da consulta</li>
+<li><strong>Os arquivos devem aparecer completos:</strong> escreva em outra pasta e depois <strong>mova</strong> (atômico no mesmo sistema de arquivos)</li>
 </ul>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>orders_stream <span class="op">=</span> (spark.readStream.schema(event_schema)</span>
+<span id="cb3-2"><a href=""></a>                 .option(<span class="st">"maxFilesPerTrigger"</span>, <span class="dv">1</span>).json(INPUT))</span>
+<span id="cb3-3"><a href=""></a></span>
+<span id="cb3-4"><a href=""></a>q <span class="op">=</span> (orders_stream.groupBy(<span class="st">"region"</span>).count()</span>
+<span id="cb3-5"><a href=""></a>     .writeStream.<span class="bu">format</span>(<span class="st">"memory"</span>).queryName(<span class="st">"by_region"</span>)</span>
+<span id="cb3-6"><a href=""></a>     .outputMode(<span class="st">"complete"</span>).start())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="janelas" class="slide level2">
+<h2>Janelas</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>.groupBy(F.window(<span class="st">"event_time"</span>, <span class="st">"5 minutes"</span>))                <span class="co"># tumbling</span></span>
+<span id="cb4-2"><a href=""></a>.groupBy(F.window(<span class="st">"event_time"</span>, <span class="st">"10 minutes"</span>, <span class="st">"5 minutes"</span>))  <span class="co"># sliding</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<pre><code>  Tumbling (5 min)                         Sliding (10 min, every 5 min)
+  |10:00-10:05|10:05-10:10|10:10-10:15|    |10:00-------10:10|
+                                                 |10:05-------10:15|
+  each event falls in 1 window             each event falls in 2 windows</code></pre>
+</section>
+<section id="watermark" class="slide level2">
+<h2>Watermark</h2>
+<pre><code>  watermark = latest event_time seen − tolerated delay
 
-</section></section>
+  tolerated delay 5 min, latest event_time = 10:11  -&gt;  watermark = 10:06
+
+  - window 10:00-10:05 -&gt; end &lt; watermark: closed, emitted, state released
+  - event at 10:07     -&gt; window 10:05-10:10 still open: accepted
+  - event at 10:02     -&gt; its window is closed: dropped</code></pre>
+<p><strong>Trade-off:</strong> um atraso maior aceita mais eventos atrasados, mas segura mais estado em memória e atrasa os resultados.</p>
+</section>
+<section id="checkpoint" class="slide level2">
+<h2>Checkpoint</h2>
+<pre><code>  checkpoint/
+  ├── offsets/    &lt;- what each micro-batch will read (written BEFORE processing)
+  ├── commits/    &lt;- which micro-batches finished    (written AFTER the sink)
+  ├── sources/    &lt;- files already seen by the source
+  └── state/      &lt;- aggregation and window state</code></pre>
+<p>Reiniciar com o <strong>mesmo checkpoint</strong> continua de onde parou. Com um sink transacional (arquivos do Spark, Delta), a garantia é <strong>exactly-once</strong>. Cada consulta precisa do seu próprio checkpoint.</p>
+</section>
+<section id="triggers" class="slide level2">
+<h2>Triggers</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 41%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Trigger</th>
+<th>Comportamento</th>
+<th>Uso</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>(padrão)</td>
+<td>Novo micro-batch assim que o anterior termina</td>
+<td>Menor latência</td>
+</tr>
+<tr class="even">
+<td><code>processingTime="1 minute"</code></td>
+<td>Um micro-batch a cada intervalo</td>
+<td>Controlar custo e tamanho dos arquivos</td>
+</tr>
+<tr class="odd">
+<td><code>availableNow=True</code></td>
+<td>Processa <strong>tudo que está disponível</strong> e <strong>para</strong></td>
+<td>Ingestão incremental agendada</td>
+</tr>
+<tr class="even">
+<td><code>continuous="1 second"</code></td>
+<td>Contínuo, sem micro-batch (experimental)</td>
+<td>Latência de milissegundos, operações simples</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="outras-operações" class="slide level2 smaller">
+<h2>Outras operações</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 42%">
+<col style="width: 34%">
+<col style="width: 23%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operação</th>
+<th>Suporte</th>
+<th>Observação</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>select</code>, <code>filter</code>, <code>withColumn</code></td>
+<td>Sim</td>
+<td>Iguais ao batch</td>
+</tr>
+<tr class="even">
+<td>Join stream + estático</td>
+<td>Sim</td>
+<td>Enriquecimento com dimensões</td>
+</tr>
+<tr class="odd">
+<td>Join stream + stream</td>
+<td>Sim</td>
+<td>Watermark nos dois lados e condição de tempo</td>
+</tr>
+<tr class="even">
+<td><code>dropDuplicatesWithinWatermark</code></td>
+<td>Sim (3.5+)</td>
+<td>Deduplicação com estado limitado</td>
+</tr>
+<tr class="odd">
+<td><code>orderBy</code></td>
+<td>Só após agregação em <code>complete</code></td>
+<td>Ordenar um fluxo infinito não faz sentido</td>
+</tr>
+<tr class="even">
+<td><code>show()</code>, <code>collect()</code></td>
+<td>Não</td>
+<td>Use um sink (memory, foreachBatch)</td>
+</tr>
+</tbody>
+</table>
+
+</section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

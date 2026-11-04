@@ -8,18 +8,18 @@ nav_order: 4
 layout: default
 ---
 
-# Clase 4: Introducción a Collisions
+# Clase 4: Agregaciones, Joins y Spark SQL
 {: .no_toc }
 
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Collides
->* Collisions
->* Overlappings
+>* GroupBy y funciones de ventana
+>* Joins y uniones
+>* Spark SQL
+>* Evaluación perezosa, transformaciones y acciones
 
 
 ### Slides
 
 * <a href="./slides/teoria.es.html" target="_blank">**Slides**</a>
-

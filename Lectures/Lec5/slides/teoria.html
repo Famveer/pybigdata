@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Sprites, Collisions and Animations</title>
+  <title>How Spark Runs: Jobs, Partitions and Joins</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,8 +194,8 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Sprites, Collisions and Animations</h1>
-  <p class="subtitle">Pygame Game Development Course</p>
+  <h1 class="title">How Spark Runs: Jobs, Partitions and Joins</h1>
+  <p class="subtitle">BigData with PySpark</p>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
@@ -206,18 +206,100 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section>
-<section id="animations" class="title-slide slide level1 center">
-<h1>🎬 Animations</h1>
-
+<section id="what-you-will-learn" class="slide level2">
+<h2>What you will learn</h2>
+<ul>
+<li>Job, stage, task and what a shuffle is</li>
+<li>Reading an execution plan with <code>explain()</code></li>
+<li>Partitions: <code>repartition</code> vs <code>coalesce</code></li>
+<li>Choosing the right join strategy</li>
+</ul>
 </section>
-<section id="how-does-2d-animation-work" class="slide level2">
-<h2>How does 2D animation work?</h2>
-<p>Animation works exactly like a flipbook: a sequence of images (frames) that change at a certain speed to create the illusion of movement.</p>
-<pre><code>Frame 0    Frame 1    Frame 2    Frame 3
-  🧍         🚶         🧍         🚶
-  ↑          ↑          ↑          ↑
- 100ms      100ms      100ms      100ms   → repeats</code></pre>
+<section id="is-spark-always-faster" class="slide level2">
+<h2>Is Spark always faster?</h2>
+<p>On one machine, with data that fits in RAM, Pandas often ties or wins: Spark pays a fixed cost (planning, JVM, task coordination).</p>
+<p>Spark pays off when:</p>
+<ul>
+<li>data <strong>does not fit</strong> in the memory of one machine;</li>
+<li>there is a <strong>cluster</strong>: the same code scales without changes;</li>
+<li>the pipeline reads from distributed sources (data lake, S3, HDFS).</li>
+</ul>
+</section>
+<section id="job-stage-task" class="slide level2">
+<h2>Job, stage &amp; task</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 31%">
+<col style="width: 37%">
+<col style="width: 31%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Concept</th>
+<th>What it is</th>
+<th>How many</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Job</strong></td>
+<td>Work triggered by an action</td>
+<td>1 per action (sometimes more)</td>
+</tr>
+<tr class="even">
+<td><strong>Stage</strong></td>
+<td>Operations that run without exchanging data between partitions</td>
+<td>New stage at each shuffle</td>
+</tr>
+<tr class="odd">
+<td><strong>Task</strong></td>
+<td>A stage running over <strong>one</strong> partition</td>
+<td>1 per partition</td>
+</tr>
+</tbody>
+</table>
+<pre><code>                                JOB
+       ┌─────────────────────────┴──────────────────────┐
+    STAGE 1                                          STAGE 2
+ read + filter + partial sum                       final sum
+ [T1] [T2] [T3] [T4]  ──── SHUFFLE (Exchange) ───▶ [T1] [T2] [T3]</code></pre>
+</section>
+<section id="narrow-vs-wide" class="slide level2 smaller">
+<h2>Narrow vs wide</h2>
+<pre><code>   NARROW                          WIDE (shuffle)
+   P1 ──▶ P1'                      P1 ──┬──▶ P1'
+   P2 ──▶ P2'                      P2 ──┼──▶ P2'
+   P3 ──▶ P3'                      P3 ──┴──▶ P3'</code></pre>
+<table class="caption-top">
+<colgroup>
+<col style="width: 10%">
+<col style="width: 56%">
+<col style="width: 17%">
+<col style="width: 15%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Type</th>
+<th>Each output partition depends on</th>
+<th>Examples</th>
+<th>Shuffle</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Narrow</strong></td>
+<td>one input partition</td>
+<td><code>select</code>, <code>filter</code>, <code>withColumn</code>, <code>union</code></td>
+<td>No</td>
+</tr>
+<tr class="even">
+<td><strong>Wide</strong></td>
+<td>many input partitions</td>
+<td><code>groupBy</code>, <code>join</code>, <code>orderBy</code>, <code>distinct</code>, <code>repartition</code></td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
 <div class="callout callout-important callout-titled callout-style-default">
 <div class="callout-body">
 <div class="callout-title">
@@ -227,193 +309,127 @@ Felipe A. Moreno-Vera
 <p><strong>Important</strong></p>
 </div>
 <div class="callout-content">
-<p>Animation speed ≠ game FPS. At 60 FPS, you can animate at 10 FPS (change frame every 6 game frames).</p>
+<p>The <strong>shuffle</strong> is the most expensive operation: data is serialized, written to disk, sent over the network and read again.</p>
 </div>
 </div>
 </div>
 </section>
-<section id="spritesheet" class="slide level2">
-<h2>Spritesheet</h2>
-<p>A <strong>spritesheet</strong> is a single image containing all frames for all animations. It is used to:</p>
+<section id="reading-a-plan-with-explain" class="slide level2">
+<h2>Reading a plan with <code>explain()</code></h2>
+<p>Read from <strong>bottom to top</strong>. Every shuffle appears as <code>Exchange</code>.</p>
 <ul>
-<li>Reduce the number of individual files</li>
-<li>Load GPU memory more efficiently</li>
-<li>Simplify animation management</li>
+<li><code>PushedFilters</code>: the filter reaches the read (<em>predicate pushdown</em>)</li>
+<li><code>ReadSchema</code>: only used columns are read (<em>column pruning</em>)</li>
+<li><code>HashAggregate (partial)</code> before <code>Exchange</code>: only partial totals cross the shuffle</li>
+<li><code>Exchange hashpartitioning(region, 200)</code>: the shuffle, with 200 output partitions</li>
 </ul>
-<pre><code>spritesheet.png:
-┌──────────────────────────────────────────────────┐
-│ [idle_0][idle_1][idle_2][idle_3]                 │  ← row 0: idle
-│ [walk_0][walk_1][walk_2][walk_3][walk_4][walk_5] │  ← row 1: walk
-│ [jump_0][jump_1][jump_2]                         │  ← row 2: jump
-│ [attack_0][attack_1][attack_2][attack_3]         │  ← row 3: attack
-└──────────────────────────────────────────────────┘</code></pre>
 </section>
-<section id="spritesheet-1" class="slide level2">
-<h2>Spritesheet</h2>
-<p>A <strong>spritesheet</strong> is a single image containing all frames for all animations. It is used to:</p>
-<ul>
-<li>Reduce the number of individual files</li>
-<li>Load GPU memory more efficiently</li>
-<li>Simplify animation management</li>
-</ul>
-<pre><code>spritesheet.png:
-┌──────────────────────────────────────────────────┐
-│ [idle_0][idle_1][idle_2][idle_3]                 │  ← row 0: idle
-│ [walk_0][walk_1][walk_2][walk_3][walk_4][walk_5] │  ← row 1: walk
-│ [jump_0][jump_1][jump_2]                         │  ← row 2: jump
-│ [attack_0][attack_1][attack_2][attack_3]         │  ← row 3: attack
-└──────────────────────────────────────────────────┘</code></pre>
-<p>To extract a frame use <code>Surface.subsurface(rect)</code>:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>sheet <span class="op">=</span> pygame.image.load(<span class="st">"spritesheet.png"</span>).convert_alpha()</span>
-<span id="cb4-2"><a href=""></a>SIZE <span class="op">=</span> <span class="dv">64</span>  <span class="co"># Frame size</span></span>
-<span id="cb4-3"><a href=""></a></span>
-<span id="cb4-4"><a href=""></a><span class="co"># Extract frame at column=2, row=1</span></span>
-<span id="cb4-5"><a href=""></a>frame <span class="op">=</span> sheet.subsurface(pygame.Rect(<span class="dv">2</span> <span class="op">*</span> SIZE, <span class="dv">1</span> <span class="op">*</span> SIZE, SIZE, SIZE))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="partitions" class="slide level2 smaller">
+<h2>Partitions</h2>
+<p>One task processes one partition. Too few leave cores idle; too many create scheduling overhead and small files.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 24%">
+<col style="width: 35%">
+<col style="width: 40%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Moment</th>
+<th>Who decides</th>
+<th>Setting</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Reading files</td>
+<td>File size</td>
+<td><code>spark.sql.files.maxPartitionBytes</code> (128 MB)</td>
+</tr>
+<tr class="even">
+<td>After a shuffle</td>
+<td>Fixed setting (no AQE)</td>
+<td><code>spark.sql.shuffle.partitions</code> (200)</td>
+</tr>
+<tr class="odd">
+<td>Manual</td>
+<td>You</td>
+<td><code>repartition(n)</code> / <code>coalesce(n)</code></td>
+</tr>
+</tbody>
+</table>
+<table class="caption-top">
+<colgroup>
+<col style="width: 2%">
+<col style="width: 52%">
+<col style="width: 44%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th><code>repartition(n)</code></th>
+<th><code>coalesce(n)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Shuffle</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr class="even">
+<td>Can increase partitions</td>
+<td>Yes</td>
+<td>No, only reduces</td>
+</tr>
+<tr class="odd">
+<td>Typical use</td>
+<td>Before heavy joins, by key</td>
+<td>Fewer files before writing</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="animation-timer" class="slide level2">
-<h2>Animation Timer</h2>
-<p>The timer controls when to advance to the next frame. There are two approaches:</p>
-</section>
-<section id="animation-timer-1" class="slide level2">
-<h2>Animation Timer</h2>
-<p>The timer controls when to advance to the next frame. There are two approaches:</p>
-<h3 id="approach-1-frame-counter-simpler">Approach 1 — Frame counter (simpler)</h3>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="va">self</span>.current_frame <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb5-2"><a href=""></a><span class="va">self</span>.counter       <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb5-3"><a href=""></a><span class="va">self</span>.anim_speed    <span class="op">=</span> <span class="dv">8</span>  <span class="co"># Change frame every 8 game frames</span></span>
-<span id="cb5-4"><a href=""></a></span>
-<span id="cb5-5"><a href=""></a><span class="kw">def</span> update(<span class="va">self</span>):</span>
-<span id="cb5-6"><a href=""></a>    <span class="va">self</span>.counter <span class="op">+=</span> <span class="dv">1</span></span>
-<span id="cb5-7"><a href=""></a>    <span class="cf">if</span> <span class="va">self</span>.counter <span class="op">&gt;=</span> <span class="va">self</span>.anim_speed:</span>
-<span id="cb5-8"><a href=""></a>        <span class="va">self</span>.counter <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb5-9"><a href=""></a>        <span class="va">self</span>.current_frame <span class="op">=</span> (<span class="va">self</span>.current_frame <span class="op">+</span> <span class="dv">1</span>) <span class="op">%</span> <span class="bu">len</span>(<span class="va">self</span>.frames)</span>
-<span id="cb5-10"><a href=""></a>    <span class="va">self</span>.image <span class="op">=</span> <span class="va">self</span>.frames[<span class="va">self</span>.current_frame]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="animation-timer-2" class="slide level2">
-<h2>Animation Timer</h2>
-<p>The timer controls when to advance to the next frame. There are two approaches:</p>
-<h3 id="approach-1-frame-counter-simpler-1">Approach 1 — Frame counter (simpler)</h3>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a><span class="va">self</span>.current_frame <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb6-2"><a href=""></a><span class="va">self</span>.counter       <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb6-3"><a href=""></a><span class="va">self</span>.anim_speed    <span class="op">=</span> <span class="dv">8</span>  <span class="co"># Change frame every 8 game frames</span></span>
-<span id="cb6-4"><a href=""></a></span>
-<span id="cb6-5"><a href=""></a><span class="kw">def</span> update(<span class="va">self</span>):</span>
-<span id="cb6-6"><a href=""></a>    <span class="va">self</span>.counter <span class="op">+=</span> <span class="dv">1</span></span>
-<span id="cb6-7"><a href=""></a>    <span class="cf">if</span> <span class="va">self</span>.counter <span class="op">&gt;=</span> <span class="va">self</span>.anim_speed:</span>
-<span id="cb6-8"><a href=""></a>        <span class="va">self</span>.counter <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb6-9"><a href=""></a>        <span class="va">self</span>.current_frame <span class="op">=</span> (<span class="va">self</span>.current_frame <span class="op">+</span> <span class="dv">1</span>) <span class="op">%</span> <span class="bu">len</span>(<span class="va">self</span>.frames)</span>
-<span id="cb6-10"><a href=""></a>    <span class="va">self</span>.image <span class="op">=</span> <span class="va">self</span>.frames[<span class="va">self</span>.current_frame]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<h3 id="approach-2-millisecond-timer-recommended">Approach 2 — Millisecond timer (recommended)</h3>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a><span class="va">self</span>.current_frame  <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb7-2"><a href=""></a><span class="va">self</span>.last_update    <span class="op">=</span> pygame.time.get_ticks()  <span class="co"># current ms</span></span>
-<span id="cb7-3"><a href=""></a><span class="va">self</span>.frame_duration <span class="op">=</span> <span class="dv">100</span>  <span class="co"># ms per frame (100ms = 10 anim FPS)</span></span>
-<span id="cb7-4"><a href=""></a></span>
-<span id="cb7-5"><a href=""></a><span class="kw">def</span> update(<span class="va">self</span>):</span>
-<span id="cb7-6"><a href=""></a>    now <span class="op">=</span> pygame.time.get_ticks()</span>
-<span id="cb7-7"><a href=""></a>    <span class="cf">if</span> now <span class="op">-</span> <span class="va">self</span>.last_update <span class="op">&gt;=</span> <span class="va">self</span>.frame_duration:</span>
-<span id="cb7-8"><a href=""></a>        <span class="va">self</span>.last_update <span class="op">=</span> now</span>
-<span id="cb7-9"><a href=""></a>        <span class="va">self</span>.current_frame <span class="op">=</span> (<span class="va">self</span>.current_frame <span class="op">+</span> <span class="dv">1</span>) <span class="op">%</span> <span class="bu">len</span>(<span class="va">self</span>.frames)</span>
-<span id="cb7-10"><a href=""></a>    <span class="va">self</span>.image <span class="op">=</span> <span class="va">self</span>.frames[<span class="va">self</span>.current_frame]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="animation-timer-3" class="slide level2">
-<h2>Animation Timer</h2>
-<p>The timer controls when to advance to the next frame.</p>
-<div class="callout callout-tip callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Tip</strong></p>
-</div>
-<div class="callout-content">
-<p><strong>Approach 2</strong> is preferred because if the game FPS drop, the animation still plays at the same real-time speed on screen.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="animation-state-machine" class="slide level2">
-<h2>Animation State Machine</h2>
-<p>A character has multiple animations depending on its state. The <strong>state machine</strong> decides which one to play.</p>
-<pre><code>                 ┌─────────────────────┐
-                 │       IDLE          │
-                 │  (standing still)   │
-                 └─────┬───────┬───────┘
-                       │       │
-               move    │       │ airborne
-               key     ↓       ↓
-               ┌───────────┐ ┌───────────┐
-               │   WALK    │ │   JUMP    │
-               │ (walking) │ │ (jumping) │
-               └─────┬─────┘ └─────┬─────┘
-                     │ release     │ land
-                     └──────┬──────┘
-                            ↓
-                          IDLE</code></pre>
-</section>
-<section id="animation-state-machine-code" class="slide level2">
-<h2>Animation State Machine – code</h2>
-<div class="sourceCode" id="cb9"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href=""></a><span class="kw">class</span> Player(pygame.sprite.Sprite):</span>
-<span id="cb9-2"><a href=""></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>):</span>
-<span id="cb9-3"><a href=""></a>        ...</span>
-<span id="cb9-4"><a href=""></a>        <span class="va">self</span>.state <span class="op">=</span> <span class="st">'idle'</span>   <span class="co"># Current state</span></span>
-<span id="cb9-5"><a href=""></a>        <span class="va">self</span>.animations <span class="op">=</span> {</span>
-<span id="cb9-6"><a href=""></a>            <span class="st">'idle'</span>:   [frame_idle_0, frame_idle_1, frame_idle_2],</span>
-<span id="cb9-7"><a href=""></a>            <span class="st">'walk'</span>:   [frame_walk_0, frame_walk_1, frame_walk_2, frame_walk_3],</span>
-<span id="cb9-8"><a href=""></a>            <span class="st">'jump'</span>:   [frame_jump_0, frame_jump_1],</span>
-<span id="cb9-9"><a href=""></a>        }</span>
-<span id="cb9-10"><a href=""></a></span>
-<span id="cb9-11"><a href=""></a>    <span class="kw">def</span> change_state(<span class="va">self</span>, new_state):</span>
-<span id="cb9-12"><a href=""></a>        <span class="cf">if</span> <span class="va">self</span>.state <span class="op">!=</span> new_state:        <span class="co"># Only if it actually changed</span></span>
-<span id="cb9-13"><a href=""></a>            <span class="va">self</span>.state <span class="op">=</span> new_state</span>
-<span id="cb9-14"><a href=""></a>            <span class="va">self</span>.current_frame <span class="op">=</span> <span class="dv">0</span>         <span class="co"># Reset animation on state change</span></span>
-<span id="cb9-15"><a href=""></a></span>
-<span id="cb9-16"><a href=""></a>    <span class="kw">def</span> update(<span class="va">self</span>):</span>
-<span id="cb9-17"><a href=""></a>        <span class="co"># Determine state</span></span>
-<span id="cb9-18"><a href=""></a>        keys <span class="op">=</span> pygame.key.get_pressed()</span>
-<span id="cb9-19"><a href=""></a>        <span class="cf">if</span> <span class="va">self</span>.airborne:</span>
-<span id="cb9-20"><a href=""></a>            <span class="va">self</span>.change_state(<span class="st">'jump'</span>)</span>
-<span id="cb9-21"><a href=""></a>        <span class="cf">elif</span> keys[pygame.K_LEFT] <span class="kw">or</span> keys[pygame.K_RIGHT]:</span>
-<span id="cb9-22"><a href=""></a>            <span class="va">self</span>.change_state(<span class="st">'walk'</span>)</span>
-<span id="cb9-23"><a href=""></a>        <span class="cf">else</span>:</span>
-<span id="cb9-24"><a href=""></a>            <span class="va">self</span>.change_state(<span class="st">'idle'</span>)</span>
-<span id="cb9-25"><a href=""></a></span>
-<span id="cb9-26"><a href=""></a>        <span class="co"># Animate</span></span>
-<span id="cb9-27"><a href=""></a>        frames <span class="op">=</span> <span class="va">self</span>.animations[<span class="va">self</span>.state]</span>
-<span id="cb9-28"><a href=""></a>        <span class="va">self</span>.image <span class="op">=</span> frames[<span class="va">self</span>.current_frame <span class="op">%</span> <span class="bu">len</span>(frames)]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="state-machine-simulation" class="slide level2">
-<h2>State Machine Simulation</h2>
-<div id="d4725db4" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-stdout">
-<pre><code>State machine simulation:
-=============================================
-  idle[1/2] → idle[2/2] → idle[0/2]
-  walk[1/3] → walk[2/3] → walk[3/3] → walk[0/3] → walk[1/3]
-  jump[1/1] → jump[0/1] → jump[1/1] → jump[0/1]
-  idle[1/2] → idle[2/2]
-  attack[1/3] → attack[2/3] → attack[3/3] → attack[0/3] → attack[1/3]
-  idle[1/2] → idle[2/2] → idle[0/2]
+<section id="join-strategies" class="slide level2">
+<h2>Join strategies</h2>
+<pre><code>  SORT-MERGE JOIN (default)                BROADCAST HASH JOIN
+  orders ──shuffle──┐                      products (small)
+                    ├── sort + merge         │ copy  │ copy  │ copy
+  customers ─shuffle┘                      [orders P1] [orders P2] [orders P3]</code></pre>
+<table class="caption-top">
+<colgroup>
+<col style="width: 40%">
+<col style="width: 32%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Strategy</th>
+<th>When</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Broadcast Hash</strong></td>
+<td>One side is small (default &lt; 10 MB)</td>
+<td>No shuffle on the big side; small side in each executor’s memory</td>
+</tr>
+<tr class="even">
+<td><strong>Sort-Merge</strong></td>
+<td>Two large tables</td>
+<td>Shuffle + sort on both sides</td>
+</tr>
+<tr class="odd">
+<td><strong>Shuffle Hash</strong></td>
+<td>Medium side, no sort</td>
+<td>Shuffle on both sides, hash of the smaller</td>
+</tr>
+</tbody>
+</table>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>orders.join(F.broadcast(products), <span class="st">"product_id"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
-State transitions:
-  idle → walk
-  walk → jump
-  jump → idle
-  idle → attack
-  attack → idle</code></pre>
-</div>
-</div>
 </section>
-<section id="animations-summary" class="slide level2 unnumbered">
-<h2>Animations — Summary</h2>
-<ul>
-<li>Spritesheet = single image holding all frames</li>
-<li>ms timer = FPS-independent (preferred approach)</li>
-<li>State machine = determines which animation to play</li>
-<li>Reset <code>current_frame = 0</code> whenever the state changes</li>
-</ul>
-
-</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

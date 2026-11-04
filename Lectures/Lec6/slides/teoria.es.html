@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Scenes, Audio y Tilemaps</title>
+  <title>Skew, Cache, AQE y UDFs</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,8 +194,8 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Scenes, Audio y Tilemaps</h1>
-  <p class="subtitle">Curso de Desarrollo de Juegos con Pygame</p>
+  <h1 class="title">Skew, Cache, AQE y UDFs</h1>
+  <p class="subtitle">Big Data con PySpark</p>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
@@ -206,236 +206,242 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section class="slide level2">
-
-<div class="callout callout-note callout-titled callout-style-default">
+<section id="lo-que-aprenderás" class="slide level2">
+<h2>Lo que aprenderás</h2>
+<ul>
+<li>Detectar y corregir <em>data skew</em></li>
+<li>Decidir cuándo usar cache</li>
+<li>Qué hace automáticamente Adaptive Query Execution</li>
+<li>Funciones nativas vs Pandas UDF vs UDF de Python</li>
+<li>Dónde mirar en la Spark UI</li>
+</ul>
+</section>
+<section id="data-skew" class="slide level2">
+<h2>Data skew</h2>
+<p>Pocas claves concentran gran parte de las filas. Tras el shuffle, <strong>una partición queda enorme</strong> y todo el job espera por su task.</p>
+<pre><code>   T1 ███
+   T2 ███
+   T3 ████████████████████████████████   &lt;- hot key
+   T4 ███</code></pre>
+<p>Síntoma típico: duración máxima de las tasks muy superior a la mediana, job detenido en “199/200 tasks”.</p>
+</section>
+<section id="corregir-el-skew" class="slide level2 smaller">
+<h2>Corregir el skew</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 39%">
+<col style="width: 26%">
+<col style="width: 34%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Técnica</th>
+<th>Idea</th>
+<th>Cuándo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Broadcast</strong></td>
+<td>Elimina el shuffle, así el skew deja de importar</td>
+<td>El otro lado cabe en memoria</td>
+</tr>
+<tr class="even">
+<td><strong>Salting</strong></td>
+<td>Divide la clave caliente en N subclaves artificiales</td>
+<td>Ambos lados son grandes</td>
+</tr>
+<tr class="odd">
+<td><strong>AQE skew join</strong></td>
+<td>Spark detecta particiones enormes y las divide</td>
+<td>Spark 3+</td>
+</tr>
+<tr class="even">
+<td><strong>Separar la clave</strong></td>
+<td>Procesa la clave caliente aparte y hace <code>union</code></td>
+<td>Pocas claves conocidas</td>
+</tr>
+</tbody>
+</table>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>orders_salted <span class="op">=</span> orders_skew.withColumn(<span class="st">"salt"</span>, (F.rand(<span class="dv">8</span>) <span class="op">*</span> SALT).cast(<span class="st">"int"</span>))</span>
+<span id="cb2-2"><a href=""></a>customers_salted <span class="op">=</span> customers.crossJoin(</span>
+<span id="cb2-3"><a href=""></a>    spark.<span class="bu">range</span>(SALT).select(F.col(<span class="st">"id"</span>).cast(<span class="st">"int"</span>).alias(<span class="st">"salt"</span>)))</span>
+<span id="cb2-4"><a href=""></a>orders_salted.join(customers_salted, [<span class="st">"customer_id"</span>, <span class="st">"salt"</span>])</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="cache-y-persist" class="slide level2">
+<h2>Cache y persist</h2>
+<p>Cada acción recalcula el plan desde la lectura. El cache evita ese retrabajo.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 35%">
+<col style="width: 35%">
+<col style="width: 30%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Nivel</th>
+<th>Dónde</th>
+<th>Nota</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>MEMORY_AND_DISK</code></td>
+<td>Memoria, desbordando a disco</td>
+<td>Por defecto en <code>df.cache()</code></td>
+</tr>
+<tr class="even">
+<td><code>MEMORY_ONLY</code></td>
+<td>Solo memoria</td>
+<td>Lo que no cabe se recalcula</td>
+</tr>
+<tr class="odd">
+<td><code>DISK_ONLY</code></td>
+<td>Solo disco</td>
+<td>Útil cuando calcular es muy caro</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Úsalo:</strong> el mismo DataFrame alimenta varias acciones, y es caro de calcular y pequeño de guardar.</p>
+<p><strong>Evítalo:</strong> el DataFrame se usa una vez, o es una simple lectura de Parquet. El cache ocupa memoria que podrían usar los shuffles.</p>
+</section>
+<section id="adaptive-query-execution" class="slide level2">
+<h2>Adaptive Query Execution</h2>
+<p>Sin AQE, el plan se decide <strong>antes</strong> de ejecutar, con estimaciones. Con AQE (por defecto desde Spark 3.2), Spark <strong>reoptimiza entre stages</strong> con estadísticas reales.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 40%">
+<col style="width: 59%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Recurso</th>
+<th>Qué hace</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Coalescer particiones</td>
+<td>Junta particiones pequeñas tras el shuffle (200 pasan a pocas)</td>
+</tr>
+<tr class="even">
+<td>Cambiar estrategia de join</td>
+<td>Convierte sort-merge en broadcast si un lado quedó pequeño tras los filtros</td>
+</tr>
+<tr class="odd">
+<td>Skew join</td>
+<td>Divide particiones gigantes en partes menores</td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-tip callout-titled callout-style-default">
 <div class="callout-body">
 <div class="callout-title">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
 </div>
-<p><strong>Nota</strong></p>
+<p><strong>Tip</strong></p>
 </div>
 <div class="callout-content">
-<p>En estos módulos aprenderás:</p>
-<ul>
-<li>Scene management, game state machines y transitions</li>
-<li>Música de fondo, sound effects, channels y spatial audio</li>
-<li>Tile maps, sistemas de camera, scrolling y fondos con parallax</li>
-</ul>
+<p>En producción, mantén AQE activo. No reemplaza un buen diseño, pero resuelve gran parte del ajuste de particiones.</p>
 </div>
 </div>
 </div>
 </section>
-<section>
-<section id="scenes-game-states" class="title-slide slide level1 center">
-<h1>Scenes &amp; Game States</h1>
-
+<section id="funciones-nativas-vs-udfs" class="slide level2">
+<h2>Funciones nativas vs UDFs</h2>
+<pre><code>  F.when(...)     JVM ──────────────────────────────▶ JVM            (fast)
+  @udf            JVM ─▶ row-by-row serialization ─▶ Python ─▶ JVM   (slow)
+  @pandas_udf     JVM ─▶ Arrow batches (columnar) ─▶ Pandas ─▶ JVM   (middle)</code></pre>
+<p>Orden de preferencia: <strong>función nativa &gt; Pandas UDF &gt; UDF de Python</strong>. Antes de escribir una UDF, revisa la lista de funciones: casi siempre ya existe.</p>
 </section>
-<section id="el-problema-qué-es-un-game-state" class="slide level2">
-<h2>El problema: ¿qué es un “game state”?</h2>
-<p>Un juego nunca está en un solo modo. Alterna entre states:</p>
-<pre><code>┌─────────┐   ENTER    ┌──────────┐   PAUSE    ┌─────────┐
-│  MENU   │ ─────────► │   GAME   │ ─────────► │  PAUSE  │
-└─────────┘            └──────────┘            └─────────┘
-                            │                       │ RESUME
-                          DEAD                      ▼
-                            │                  ┌──────────┐
-                            └────────────────► │ GAME     │
-                                               └──────────┘
-                                                    │ 0 lives
-                                                    ▼
-                                               ┌──────────┐
-                                               │ GAME OVER│
-                                               └──────────┘</code></pre>
-<p>Sin un state system adecuado, terminas con una jungla de checks <code>if game_state == "menu"</code> esparcidos por todas partes. El <strong>Scene pattern</strong> resuelve esto de forma limpia.</p>
-</section>
-<section id="the-scene-base-class" class="slide level2">
-<h2>The Scene Base Class</h2>
-<p>Cada pantalla del juego es una <strong>Scene</strong>. Cada scene sabe cómo:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a><span class="kw">class</span> Scene:</span>
-<span id="cb2-2"><a href=""></a>    <span class="kw">def</span> enter(<span class="va">self</span>):        <span class="co"># Called once when scene becomes active</span></span>
-<span id="cb2-3"><a href=""></a>        <span class="cf">pass</span></span>
-<span id="cb2-4"><a href=""></a></span>
-<span id="cb2-5"><a href=""></a>    <span class="kw">def</span> exit(<span class="va">self</span>):         <span class="co"># Called once when scene is deactivated</span></span>
-<span id="cb2-6"><a href=""></a>        <span class="cf">pass</span></span>
-<span id="cb2-7"><a href=""></a></span>
-<span id="cb2-8"><a href=""></a>    <span class="kw">def</span> handle_event(<span class="va">self</span>, event):   <span class="co"># Process pygame events</span></span>
-<span id="cb2-9"><a href=""></a>        <span class="cf">pass</span></span>
-<span id="cb2-10"><a href=""></a></span>
-<span id="cb2-11"><a href=""></a>    <span class="kw">def</span> update(<span class="va">self</span>, dt):   <span class="co"># Update logic; dt = delta time in seconds</span></span>
-<span id="cb2-12"><a href=""></a>        <span class="cf">pass</span></span>
-<span id="cb2-13"><a href=""></a></span>
-<span id="cb2-14"><a href=""></a>    <span class="kw">def</span> draw(<span class="va">self</span>, surface): <span class="co"># Render to the screen</span></span>
-<span id="cb2-15"><a href=""></a>        <span class="cf">pass</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Esta interface obliga a mantener la lógica de cada scene <strong>self-contained</strong>. Una <code>MenuScene</code> nunca toca las variables de <code>GameScene</code>.</p>
-</section>
-<section id="the-scene-manager" class="slide level2">
-<h2>The Scene Manager</h2>
-<p>El Scene Manager posee un <strong>stack</strong> de scenes. La scene que está en la cima del stack es la que se ejecuta.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="kw">class</span> SceneManager:</span>
-<span id="cb3-2"><a href=""></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>):</span>
-<span id="cb3-3"><a href=""></a>        <span class="va">self</span>._stack <span class="op">=</span> []</span>
-<span id="cb3-4"><a href=""></a></span>
-<span id="cb3-5"><a href=""></a>    <span class="kw">def</span> push(<span class="va">self</span>, scene):</span>
-<span id="cb3-6"><a href=""></a>        <span class="co">"""Add a scene on top — previous scene stays in memory."""</span></span>
-<span id="cb3-7"><a href=""></a>        <span class="cf">if</span> <span class="va">self</span>._stack:</span>
-<span id="cb3-8"><a href=""></a>            <span class="va">self</span>._stack[<span class="op">-</span><span class="dv">1</span>].exit()</span>
-<span id="cb3-9"><a href=""></a>        <span class="va">self</span>._stack.append(scene)</span>
-<span id="cb3-10"><a href=""></a>        scene.enter()</span>
-<span id="cb3-11"><a href=""></a></span>
-<span id="cb3-12"><a href=""></a>    <span class="kw">def</span> pop(<span class="va">self</span>):</span>
-<span id="cb3-13"><a href=""></a>        <span class="co">"""Remove the top scene — reveals the scene below."""</span></span>
-<span id="cb3-14"><a href=""></a>        <span class="va">self</span>._stack.pop().exit()</span>
-<span id="cb3-15"><a href=""></a>        <span class="cf">if</span> <span class="va">self</span>._stack:</span>
-<span id="cb3-16"><a href=""></a>            <span class="va">self</span>._stack[<span class="op">-</span><span class="dv">1</span>].enter()</span>
-<span id="cb3-17"><a href=""></a></span>
-<span id="cb3-18"><a href=""></a>    <span class="kw">def</span> replace(<span class="va">self</span>, scene):</span>
-<span id="cb3-19"><a href=""></a>        <span class="co">"""Swap the current scene — no going back."""</span></span>
-<span id="cb3-20"><a href=""></a>        <span class="cf">if</span> <span class="va">self</span>._stack:</span>
-<span id="cb3-21"><a href=""></a>            <span class="va">self</span>._stack.pop().exit()</span>
-<span id="cb3-22"><a href=""></a>        <span class="va">self</span>._stack.append(scene)</span>
-<span id="cb3-23"><a href=""></a>        scene.enter()</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="push-vs-replace-vs-pop" class="slide level2">
-<h2>Push vs Replace vs Pop</h2>
+<section id="spark-ui-dónde-mirar" class="slide level2">
+<h2>Spark UI: dónde mirar</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 25%">
-<col style="width: 41%">
-<col style="width: 32%">
+<col style="width: 22%">
+<col style="width: 77%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Method</th>
-<th>Efecto en el stack</th>
-<th>Caso de uso</th>
+<th>Pestaña</th>
+<th>Qué buscar</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>push(PauseScene)</code></td>
-<td><code>[Menu, Game, Pause]</code></td>
-<td>Overlay — el juego permanece en memoria</td>
+<td><strong>Jobs</strong></td>
+<td>Qué acciones tardaron más</td>
 </tr>
 <tr class="even">
-<td><code>pop()</code></td>
-<td><code>[Menu, Game]</code></td>
-<td>Resume — vuelve a la scene anterior</td>
+<td><strong>Stages</strong></td>
+<td>Shuffle Read/Write, duración <strong>máxima vs mediana</strong> de tasks (skew)</td>
 </tr>
 <tr class="odd">
-<td><code>replace(GameOver)</code></td>
-<td><code>[Menu, GameOver]</code></td>
-<td>Transición completa — sin vuelta atrás</td>
+<td><strong>Storage</strong></td>
+<td>DataFrames en cache y cuánto ocupan</td>
+</tr>
+<tr class="even">
+<td><strong>SQL / DataFrame</strong></td>
+<td>Plan visual con filas y tiempo por operador</td>
+</tr>
+<tr class="odd">
+<td><strong>Executors</strong></td>
+<td>Memoria, tiempo de GC, tasks fallidas</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="push-vs-replace-vs-pop-1" class="slide level2">
-<h2>Push vs Replace vs Pop</h2>
-<div id="e396748d" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-stdout">
-<pre><code>=== PUSH Menu ===
-  ► MenuScene.enter()
-  Stack: ['MenuScene']
+<section id="resumen-síntoma-causa-y-acción" class="slide level2 smaller">
+<h2>Resumen: síntoma, causa y acción</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 40%">
+<col style="width: 34%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Síntoma</th>
+<th>Causa probable</th>
+<th>Qué hacer</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Muchos <code>Exchange</code> en el plan</td>
+<td>Exceso de joins y agregaciones</td>
+<td>Broadcast de dimensiones, agregar antes de unir</td>
+</tr>
+<tr class="even">
+<td>Job detenido en “199/200 tasks”</td>
+<td>Data skew</td>
+<td>Broadcast, salting, AQE skew join</td>
+</tr>
+<tr class="odd">
+<td>Miles de tasks de milisegundos</td>
+<td>Demasiadas particiones</td>
+<td>AQE activo, ajustar <code>shuffle.partitions</code></td>
+</tr>
+<tr class="even">
+<td>Mismo cálculo repetido</td>
+<td>Reuso sin cache</td>
+<td><code>cache()</code> + <code>unpersist()</code></td>
+</tr>
+<tr class="odd">
+<td>Columna calculada muy lenta</td>
+<td>UDF de Python</td>
+<td>Función nativa o Pandas UDF</td>
+</tr>
+<tr class="even">
+<td>Lectura lenta</td>
+<td>CSV/JSON, sin pruning</td>
+<td>Parquet/Delta, filtrar y seleccionar pronto</td>
+</tr>
+</tbody>
+</table>
 
-=== PUSH Game ===
-  ◄ MenuScene.exit()
-  ► GameScene.enter()
-  Stack: ['MenuScene', 'GameScene']
-
-=== PUSH Pause (overlay) ===
-  ◄ GameScene.exit()
-  ► PauseScene.enter()
-  Stack: ['MenuScene', 'GameScene', 'PauseScene']
-
-=== POP (resume) ===
-  ◄ PauseScene.exit()
-  ► GameScene.enter()
-  Stack: ['MenuScene', 'GameScene']
-
-=== REPLACE with GameOver ===
-  ◄ GameScene.exit()
-  ► GameOverScene.enter()
-  Stack: ['MenuScene', 'GameOverScene']
-</code></pre>
-</div>
-</div>
 </section>
-<section id="compartir-datos-entre-scenes" class="slide level2">
-<h2>Compartir datos entre scenes</h2>
-<p>Las scenes están decoupled — no mantienen referencias entre sí. Usa el <code>shared</code> dict del manager para pasar datos:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="co"># In GameScene — store the score when dying</span></span>
-<span id="cb5-2"><a href=""></a><span class="va">self</span>.manager.shared[<span class="st">'score'</span>] <span class="op">=</span> <span class="va">self</span>.score</span>
-<span id="cb5-3"><a href=""></a><span class="va">self</span>.manager.replace(GameOverScene(<span class="va">self</span>.manager))</span>
-<span id="cb5-4"><a href=""></a></span>
-<span id="cb5-5"><a href=""></a><span class="co"># In GameOverScene — read it back</span></span>
-<span id="cb5-6"><a href=""></a><span class="va">self</span>.score <span class="op">=</span> <span class="va">self</span>.manager.shared.get(<span class="st">'score'</span>, <span class="dv">0</span>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="scene-transitions" class="slide level2">
-<h2>Scene Transitions</h2>
-<p>Una transition es un efecto visual que se reproduce mientras se cambian las scenes. La idea clave: <strong>renderizar ambas scenes a surfaces, y luego hacer blend entre ellas</strong>.</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a><span class="kw">class</span> TransitionEngine:</span>
-<span id="cb6-2"><a href=""></a>    <span class="kw">def</span> start(<span class="va">self</span>, surf_from, surf_to, mode<span class="op">=</span><span class="st">"fade"</span>, duration<span class="op">=</span><span class="fl">0.5</span>):</span>
-<span id="cb6-3"><a href=""></a>        <span class="va">self</span>.surf_from <span class="op">=</span> surf_from.copy()</span>
-<span id="cb6-4"><a href=""></a>        <span class="va">self</span>.surf_to   <span class="op">=</span> surf_to.copy()</span>
-<span id="cb6-5"><a href=""></a>        <span class="va">self</span>.progress  <span class="op">=</span> <span class="fl">0.0</span></span>
-<span id="cb6-6"><a href=""></a>        <span class="va">self</span>.active    <span class="op">=</span> <span class="va">True</span></span>
-<span id="cb6-7"><a href=""></a></span>
-<span id="cb6-8"><a href=""></a>    <span class="kw">def</span> update(<span class="va">self</span>, dt):</span>
-<span id="cb6-9"><a href=""></a>        <span class="va">self</span>.progress <span class="op">+=</span> dt <span class="op">/</span> <span class="va">self</span>.duration</span>
-<span id="cb6-10"><a href=""></a>        <span class="cf">if</span> <span class="va">self</span>.progress <span class="op">&gt;=</span> <span class="fl">1.0</span>:</span>
-<span id="cb6-11"><a href=""></a>            <span class="va">self</span>.active <span class="op">=</span> <span class="va">False</span></span>
-<span id="cb6-12"><a href=""></a></span>
-<span id="cb6-13"><a href=""></a>    <span class="kw">def</span> draw(<span class="va">self</span>, surface):</span>
-<span id="cb6-14"><a href=""></a>        p <span class="op">=</span> <span class="va">self</span>.progress <span class="op">*</span> <span class="va">self</span>.progress <span class="op">*</span> (<span class="dv">3</span> <span class="op">-</span> <span class="dv">2</span> <span class="op">*</span> <span class="va">self</span>.progress)  <span class="co"># Ease</span></span>
-<span id="cb6-15"><a href=""></a></span>
-<span id="cb6-16"><a href=""></a>        <span class="cf">if</span> <span class="va">self</span>.mode <span class="op">==</span> <span class="st">"fade"</span>:</span>
-<span id="cb6-17"><a href=""></a>            <span class="cf">if</span> p <span class="op">&lt;</span> <span class="fl">0.5</span>:</span>
-<span id="cb6-18"><a href=""></a>                alpha <span class="op">=</span> <span class="bu">int</span>(<span class="dv">255</span> <span class="op">*</span> (<span class="dv">1</span> <span class="op">-</span> p <span class="op">*</span> <span class="dv">2</span>))</span>
-<span id="cb6-19"><a href=""></a>                <span class="va">self</span>.surf_from.set_alpha(alpha)</span>
-<span id="cb6-20"><a href=""></a>                surface.blit(<span class="va">self</span>.surf_from, (<span class="dv">0</span>, <span class="dv">0</span>))</span>
-<span id="cb6-21"><a href=""></a>            <span class="cf">else</span>:</span>
-<span id="cb6-22"><a href=""></a>                alpha <span class="op">=</span> <span class="bu">int</span>(<span class="dv">255</span> <span class="op">*</span> ((p <span class="op">-</span> <span class="fl">0.5</span>) <span class="op">*</span> <span class="dv">2</span>))</span>
-<span id="cb6-23"><a href=""></a>                <span class="va">self</span>.surf_to.set_alpha(alpha)</span>
-<span id="cb6-24"><a href=""></a>                surface.blit(<span class="va">self</span>.surf_to, (<span class="dv">0</span>, <span class="dv">0</span>))</span>
-<span id="cb6-25"><a href=""></a></span>
-<span id="cb6-26"><a href=""></a>        <span class="cf">elif</span> <span class="va">self</span>.mode <span class="op">==</span> <span class="st">"slide_left"</span>:</span>
-<span id="cb6-27"><a href=""></a>            offset <span class="op">=</span> <span class="bu">int</span>((<span class="dv">1</span> <span class="op">-</span> p) <span class="op">*</span> WIDTH)</span>
-<span id="cb6-28"><a href=""></a>            surface.blit(<span class="va">self</span>.surf_from, (<span class="op">-</span>offset, <span class="dv">0</span>))</span>
-<span id="cb6-29"><a href=""></a>            surface.blit(<span class="va">self</span>.surf_to, (WIDTH <span class="op">-</span> offset, <span class="dv">0</span>))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="scene-transitions-1" class="slide level2">
-<h2>Scene Transitions</h2>
-<div id="fd5815a7" class="cell" data-execution_count="2">
-<div class="cell-output cell-output-stdout">
-<pre><code>t        linear   ease_in  ease_out  ease_inout
-----------------------------------------------------
-  0.0     0.00    0.00     0.00      0.00
-  0.1     0.10    0.01     0.19      0.03
-  0.2     0.20    0.04     0.36      0.10
-  0.3     0.30    0.09     0.51      0.22
-  0.4     0.40    0.16     0.64      0.35
-  0.5     0.50    0.25     0.75      0.50
-  0.6     0.60    0.36     0.84      0.65
-  0.7     0.70    0.49     0.91      0.78
-  0.8     0.80    0.64     0.96      0.90
-  0.9     0.90    0.81     0.99      0.97
-  1.0     1.00    1.00     1.00      1.00</code></pre>
-</div>
-</div>
-</section>
-<section id="scene-transitions-resumen" class="slide level2">
-<h2>Scene transitions — Resumen</h2>
-<ul>
-<li>La base class <code>Scene</code> obliga a implementar <code>enter / exit / handle_event / update / draw</code></li>
-<li><code>SceneManager</code> posee una <strong>stack</strong>: <code>push</code> superpone, <code>pop</code> regresa, <code>replace</code> reemplaza</li>
-<li>Comparte datos entre scenes mediante el <code>manager.shared</code> dict</li>
-<li>Las transitions pre-renderizan ambas scenes a surfaces, y luego hacen blend entre ellas</li>
-<li>Las easing functions (<code>ease_inout</code>) hacen que las transitions se sientan smooth</li>
-</ul>
-
-</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

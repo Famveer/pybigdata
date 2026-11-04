@@ -8,17 +8,17 @@ nav_order: 2
 layout: default
 ---
 
-# Lecture 2: Introduction to Game loop
+# Lecture 2: Python and Pandas
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* Game loop
->* Pygame events
+>* Python essentials
+>* Pandas Series and DataFrames
+>* Filtering, cleaning, GroupBy and joins
 
 
 ### Slides
 
 * <a href="./slides/teoria.html" target="_blank">**Slides**</a>
-

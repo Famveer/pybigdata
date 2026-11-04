@@ -8,17 +8,17 @@ nav_order: 2
 layout: default
 ---
 
-# Clase 2: Introducción al Game Loop
+# Clase 2: Python y Pandas
 {: .no_toc }
 
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Game loop
->* Pygame events
+>* Python esencial
+>* Series y DataFrames en Pandas
+>* Filtrado, limpieza, GroupBy y joins
 
 
 ### Slides
 
 * <a href="./slides/teoria.es.html" target="_blank">**Slides**</a>
-

@@ -8,11 +8,10 @@ nav_order: 4
 layout: default
 ---
 
-# Laboratório 4: Introdução a Animations
+# Laboratório 4: Execução, Partições e Joins
 
-Aqui temos alguns exemplos de código pygame.
+Use 5 milhões de linhas para ler planos de execução e comparar estratégias de join.
 
 ### Arquivos
 
-* [Animations - frames](./files/01_animacion_frames.py)
-* [Animations - states](./files/02_animacion_estados.py)
+* [Pandas vs Spark em escala, explain(), partições e joins](./files/01_spark_execution_partitions_joins.ipynb)

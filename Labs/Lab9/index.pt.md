@@ -8,11 +8,10 @@ nav_order: 9
 layout: default
 ---
 
-# Laboratório 9: Introdução a IA and states
+# Laboratório 9: MLlib: Pipelines e Modelos
 
-Aqui temos alguns exemplos de código pygame.
+Preveja o churn de clientes: prepare features, treine modelos e escolha um limiar de decisão.
 
 ### Arquivos
 
-* [AI behavior](./files/01_gravity_jump.py)
-* [Finite State Machine (FSM) do inimigo](./files/02_platformer_physics.py)
+* [Features, regressão logística, Random Forest e exercícios](./files/01_mllib_pipelines_models.ipynb)

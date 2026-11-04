@@ -22,11 +22,11 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 2
 
 {: .lecture}
->Aula 2: [Introdução ao Game Loop](./Lectures/Lec2/)
+>Aula 2: [Python e Pandas](./Lectures/Lec2/)
 >
 
 {: .lab}
->Laboratório 1: [Introdução ao PyGame](./Labs/Lab1/)
+>Laboratório 1: [Python e Pandas](./Labs/Lab1/)
 >
 
 --- 
@@ -35,10 +35,10 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 3
 
 {: .lecture}
->Aula 3: [Introdução a Sprites](./Lectures/Lec3/)
+>Aula 3: [De Pandas ao Spark](./Lectures/Lec3/)
 
 {: .lab}
->Laboratório 2: [Introdução a Sprites](./Labs/Lab2/)
+>Laboratório 2: [A API de DataFrames do Spark](./Labs/Lab2/)
 >
 
 --- 
@@ -47,10 +47,10 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 4
 
 {: .lecture}
->Aula 4: [Introdução a Collisions](./Lectures/Lec4/)
+>Aula 4: [Agregações, Joins e Spark SQL](./Lectures/Lec4/)
 
 {: .lab}
->Laboratório 3: [Introdução a Collisions](./Labs/Lab3/)
+>Laboratório 3: [Agregações, Joins e Spark SQL](./Labs/Lab3/)
 >
 
 --- 
@@ -59,10 +59,10 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 5
 
 {: .lecture}
->Aula 5: [Introdução a Animations](./Lectures/Lec5/)
+>Aula 5: [Como o Spark Executa: Partições e Joins](./Lectures/Lec5/)
 
 {: .lab}
->Laboratório 4: [Introdução a Animations](./Labs/Lab4/)
+>Laboratório 4: [Execução, Partições e Joins](./Labs/Lab4/)
 >
 
 --- 
@@ -71,10 +71,10 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 6
 
 {: .lecture}
->Aula 6: [Introdução a Scenes](./Lectures/Lec6/)
+>Aula 6: [Skew, Cache, AQE e UDFs](./Lectures/Lec6/)
 
 {: .lab}
->Laboratório 5: [Introdução a Scenes](./Labs/Lab5/)
+>Laboratório 5: [Skew, Cache, AQE e UDFs](./Labs/Lab5/)
 >
 
 --- 
@@ -83,10 +83,10 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 7
 
 {: .lecture}
->Aula 7: [Introdução a Audio](./Lectures/Lec7/)
+>Aula 7: [ETL com Arquitetura Medallion](./Lectures/Lec7/)
 
 {: .lab}
->Laboratório 6: [Introdução a Audio](./Labs/Lab6/)
+>Laboratório 6: [ETL com Arquitetura Medallion](./Labs/Lab6/)
 >
 
 --- 
@@ -95,10 +95,10 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 8
 
 {: .lecture}
->Aula 8: [Introdução a Tilemap](./Lectures/Lec8/)
+>Aula 8: [Delta Lake](./Lectures/Lec8/)
 
 {: .lab}
->Laboratório 7: [Introdução a Tilemap](./Labs/Lab7/)
+>Laboratório 7: [Delta Lake](./Labs/Lab7/)
 >
 
 --- 
@@ -107,10 +107,10 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 9
 
 {: .lecture}
->Aula 9: [Introdução a Game Physics](./Lectures/Lec9/)
+>Aula 9: [Structured Streaming](./Lectures/Lec9/)
 
 {: .lab}
->Laboratório 8: [Introdução a Game Physics](./Labs/Lab8/)
+>Laboratório 8: [Structured Streaming](./Labs/Lab8/)
 >
 
 --- 
@@ -119,10 +119,10 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 10
 
 {: .lecture}
->Aula 10: [Introdução a IA and states](./Lectures/Lec10/)
+>Aula 10: [Machine Learning com MLlib](./Lectures/Lec10/)
 
 {: .lab}
->Laboratório 9: [Introdução a IA and states](./Labs/Lab9/)
+>Laboratório 9: [MLlib: Pipelines e Modelos](./Labs/Lab9/)
 >
 
 --- 
@@ -131,7 +131,7 @@ Para os laboratórios, por favor traga seu notebook!
 ### Semana 11
 
 {: .lab}
->Laboratório 10: [Demo de jogo completo](./Labs/Lab10/)
+>Laboratório 10: [MLlib: Ajuste e Implantação](./Labs/Lab10/)
 >
 
 --- 

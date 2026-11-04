@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Sprites, Collisions e Animations</title>
+  <title>Agregações, Joins, Spark SQL e Avaliação Preguiçosa</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,8 +194,8 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Sprites, Collisions e Animations</h1>
-  <p class="subtitle">Pygame Game Development Course</p>
+  <h1 class="title">Agregações, Joins, Spark SQL e Avaliação Preguiçosa</h1>
+  <p class="subtitle">Big Data com PySpark</p>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
@@ -206,210 +206,153 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section>
-<section id="collisions" class="title-slide slide level1 center">
-<h1>💥 Collisions</h1>
-
-</section>
-<section id="o-que-é-uma-collision" class="slide level2">
-<h2>O que é uma Collision?</h2>
-<p>Uma collision ocorre quando dois objetos <strong>se sobrepõem no espaço</strong>. Detectá-la é essencial para: receber dano, coletar itens, bloquear o movimento, atirar, e mais.</p>
-<p>Pygame oferece vários níveis de precisão, com um trade-off claro:</p>
-<pre><code>Faster ←──────────────────────────────→ More Precise
-
-  Rect-Rect      Circle-Circle      Pixel-perfect
-  (AABB)         (distance)         (mask)</code></pre>
-</section>
-<section id="rect-rect-collision-aabb" class="slide level2">
-<h2>Rect-Rect Collision (AABB)</h2>
-<p><strong>AABB</strong> = Axis-Aligned Bounding Box. O método mais rápido e mais usado.</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a><span class="co"># Method 1: rect.colliderect()</span></span>
-<span id="cb2-2"><a href=""></a><span class="cf">if</span> player.rect.colliderect(enemy.rect):</span>
-<span id="cb2-3"><a href=""></a>    <span class="bu">print</span>(<span class="st">"Collision!"</span>)</span>
-<span id="cb2-4"><a href=""></a></span>
-<span id="cb2-5"><a href=""></a><span class="co"># Method 2: rect.collidepoint() — point inside rect</span></span>
-<span id="cb2-6"><a href=""></a><span class="cf">if</span> player.rect.collidepoint(pygame.mouse.get_pos()):</span>
-<span id="cb2-7"><a href=""></a>    <span class="bu">print</span>(<span class="st">"Mouse is over the player"</span>)</span>
-<span id="cb2-8"><a href=""></a></span>
-<span id="cb2-9"><a href=""></a><span class="co"># Method 3: rect.collidelist() — against a list of rects</span></span>
-<span id="cb2-10"><a href=""></a>index <span class="op">=</span> player.rect.collidelist([rect1, rect2, rect3])</span>
-<span id="cb2-11"><a href=""></a><span class="co"># Returns the index of the first collided rect, or -1</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="rect-rect-collision-aabb-1" class="slide level2">
-<h2>Rect-Rect Collision (AABB)</h2>
-<p><strong>AABB</strong> = Axis-Aligned Bounding Box. O método mais rápido e mais usado.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="co"># Method 1: rect.colliderect()</span></span>
-<span id="cb3-2"><a href=""></a><span class="cf">if</span> player.rect.colliderect(enemy.rect):</span>
-<span id="cb3-3"><a href=""></a>    <span class="bu">print</span>(<span class="st">"Collision!"</span>)</span>
-<span id="cb3-4"><a href=""></a></span>
-<span id="cb3-5"><a href=""></a><span class="co"># Method 2: rect.collidepoint() — point inside rect</span></span>
-<span id="cb3-6"><a href=""></a><span class="cf">if</span> player.rect.collidepoint(pygame.mouse.get_pos()):</span>
-<span id="cb3-7"><a href=""></a>    <span class="bu">print</span>(<span class="st">"Mouse is over the player"</span>)</span>
-<span id="cb3-8"><a href=""></a></span>
-<span id="cb3-9"><a href=""></a><span class="co"># Method 3: rect.collidelist() — against a list of rects</span></span>
-<span id="cb3-10"><a href=""></a>index <span class="op">=</span> player.rect.collidelist([rect1, rect2, rect3])</span>
-<span id="cb3-11"><a href=""></a><span class="co"># Returns the index of the first collided rect, or -1</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<h3 id="implementação-manual-de-aabb">Implementação Manual de AABB</h3>
-<div id="a245eae6" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-stdout">
-<pre><code>AABB Collision — tests:
-=======================================================
-  Parcialmente sobrepostos               → ✅ COLLISION
-  Separados horizontalmente              → ❌ sem COLLISION
-  B totalmente dentro de A               → ✅ COLLISION
-  Apenas se tocando (borda)              → ✅ COLLISION
-  Separados por 1px                      → ❌ sem COLLISION</code></pre>
-</div>
-</div>
-</section>
-<section id="circle-circle-collision" class="slide level2">
-<h2>Circle-Circle Collision</h2>
-<p>Mais preciso para objetos redondos (balas, moedas, personagens circulares). A lógica: há collision entre dois círculos se a <strong>distância entre seus centros</strong> for menor que a <strong>soma de seus raios</strong>.</p>
-<pre><code>    A            B
-   (●)          (●)
-       ←── d ──→
-
-  If d &lt; rA + rB → collision</code></pre>
-</section>
-<section id="circle-circle-collision-1" class="slide level2">
-<h2>Circle-Circle Collision</h2>
-<p>Mais preciso para objetos redondos (balas, moedas, personagens circulares). A lógica: há collision entre dois círculos se a <strong>distância entre seus centros</strong> for menor que a <strong>soma de seus raios</strong>.</p>
-<pre><code>    A            B
-   (●)          (●)
-       ←── d ──→
-
-  If d &lt; rA + rB → collision</code></pre>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a><span class="im">import</span> math</span>
-<span id="cb7-2"><a href=""></a></span>
-<span id="cb7-3"><a href=""></a><span class="kw">def</span> circle_collision(cx1, cy1, r1, cx2, cy2, r2):</span>
-<span id="cb7-4"><a href=""></a>    distance <span class="op">=</span> math.sqrt((cx2 <span class="op">-</span> cx1)<span class="op">**</span><span class="dv">2</span> <span class="op">+</span> (cy2 <span class="op">-</span> cy1)<span class="op">**</span><span class="dv">2</span>)</span>
-<span id="cb7-5"><a href=""></a>    <span class="cf">return</span> distance <span class="op">&lt;</span> r1 <span class="op">+</span> r2</span>
-<span id="cb7-6"><a href=""></a></span>
-<span id="cb7-7"><a href=""></a><span class="co"># Optimization: avoid sqrt using squared distance</span></span>
-<span id="cb7-8"><a href=""></a><span class="kw">def</span> circle_collision_fast(cx1, cy1, r1, cx2, cy2, r2):</span>
-<span id="cb7-9"><a href=""></a>    dx <span class="op">=</span> cx2 <span class="op">-</span> cx1</span>
-<span id="cb7-10"><a href=""></a>    dy <span class="op">=</span> cy2 <span class="op">-</span> cy1</span>
-<span id="cb7-11"><a href=""></a>    dist_sq <span class="op">=</span> dx<span class="op">*</span>dx <span class="op">+</span> dy<span class="op">*</span>dy</span>
-<span id="cb7-12"><a href=""></a>    <span class="cf">return</span> dist_sq <span class="op">&lt;</span> (r1 <span class="op">+</span> r2)<span class="op">**</span><span class="dv">2</span>   <span class="co"># No sqrt needed</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="spritecollide-group-collisions" class="slide level2">
-<h2>spritecollide() — Group Collisions</h2>
-<p>Esta é a função de collision mais poderosa do Pygame.</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href=""></a><span class="co"># Detect collision of ONE sprite against a GROUP</span></span>
-<span id="cb8-2"><a href=""></a>hits <span class="op">=</span> pygame.sprite.spritecollide(</span>
-<span id="cb8-3"><a href=""></a>    player,    <span class="co"># individual sprite</span></span>
-<span id="cb8-4"><a href=""></a>    bullets,   <span class="co"># group to check against</span></span>
-<span id="cb8-5"><a href=""></a>    <span class="va">True</span>       <span class="co"># True = remove colliding sprites from the group</span></span>
-<span id="cb8-6"><a href=""></a>)</span>
-<span id="cb8-7"><a href=""></a><span class="co"># hits is a list of sprites that collided</span></span>
-<span id="cb8-8"><a href=""></a><span class="cf">if</span> hits:</span>
-<span id="cb8-9"><a href=""></a>    health <span class="op">-=</span> <span class="bu">len</span>(hits)</span>
-<span id="cb8-10"><a href=""></a></span>
-<span id="cb8-11"><a href=""></a><span class="co"># Detect collisions between TWO GROUPS</span></span>
-<span id="cb8-12"><a href=""></a>clashes <span class="op">=</span> pygame.sprite.groupcollide(</span>
-<span id="cb8-13"><a href=""></a>    bullets,   <span class="co"># group 1</span></span>
-<span id="cb8-14"><a href=""></a>    enemies,   <span class="co"># group 2</span></span>
-<span id="cb8-15"><a href=""></a>    <span class="va">True</span>,      <span class="co"># remove from group 1</span></span>
-<span id="cb8-16"><a href=""></a>    <span class="va">True</span>       <span class="co"># remove from group 2</span></span>
-<span id="cb8-17"><a href=""></a>)</span>
-<span id="cb8-18"><a href=""></a><span class="co"># clashes is a dict: {bullet: [enemies_hit], ...}</span></span>
-<span id="cb8-19"><a href=""></a></span>
-<span id="cb8-20"><a href=""></a><span class="co"># Using circular collision (more precise)</span></span>
-<span id="cb8-21"><a href=""></a>hits <span class="op">=</span> pygame.sprite.spritecollide(</span>
-<span id="cb8-22"><a href=""></a>    player, bullets, <span class="va">True</span>,</span>
-<span id="cb8-23"><a href=""></a>    collided<span class="op">=</span>pygame.sprite.collide_circle</span>
-<span id="cb8-24"><a href=""></a>)</span>
-<span id="cb8-25"><a href=""></a></span>
-<span id="cb8-26"><a href=""></a><span class="co"># Using pixel masks (maximum precision, slowest)</span></span>
-<span id="cb8-27"><a href=""></a>hits <span class="op">=</span> pygame.sprite.spritecollide(</span>
-<span id="cb8-28"><a href=""></a>    player, bullets, <span class="va">True</span>,</span>
-<span id="cb8-29"><a href=""></a>    collided<span class="op">=</span>pygame.sprite.collide_mask</span>
-<span id="cb8-30"><a href=""></a>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="collision-response" class="slide level2">
-<h2>Collision Response</h2>
-<p>Detectar a collision é apenas metade do trabalho. A outra metade é <strong>o que fazer</strong> quando isso acontece.</p>
-</section>
-<section id="collision-response-1" class="slide level2">
-<h2>Collision Response</h2>
-<p>Detectar a collision é apenas metade do trabalho. A outra metade é <strong>o que fazer</strong> quando isso acontece.</p>
-<h3 id="padrão-1-separation-platforms-paredes">Padrão 1 — Separation (platforms, paredes)</h3>
-<div class="sourceCode" id="cb9"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href=""></a><span class="co"># Move first, then correct</span></span>
-<span id="cb9-2"><a href=""></a>player.rect.x <span class="op">+=</span> vel_x</span>
-<span id="cb9-3"><a href=""></a><span class="cf">for</span> platform <span class="kw">in</span> platforms:</span>
-<span id="cb9-4"><a href=""></a>    <span class="cf">if</span> player.rect.colliderect(platform.rect):</span>
-<span id="cb9-5"><a href=""></a>        <span class="cf">if</span> vel_x <span class="op">&gt;</span> <span class="dv">0</span>:   <span class="co"># Moving right</span></span>
-<span id="cb9-6"><a href=""></a>            player.rect.right <span class="op">=</span> platform.rect.left</span>
-<span id="cb9-7"><a href=""></a>        <span class="cf">elif</span> vel_x <span class="op">&lt;</span> <span class="dv">0</span>: <span class="co"># Moving left</span></span>
-<span id="cb9-8"><a href=""></a>            player.rect.left <span class="op">=</span> platform.rect.right</span>
-<span id="cb9-9"><a href=""></a>        vel_x <span class="op">=</span> <span class="dv">0</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="collision-response-2" class="slide level2">
-<h2>Collision Response</h2>
-<p>Detectar a collision é apenas metade do trabalho. A outra metade é <strong>o que fazer</strong> quando isso acontece.</p>
-<h3 id="padrão-1-separation-platforms-paredes-1">Padrão 1 — Separation (platforms, paredes)</h3>
-<div class="sourceCode" id="cb10"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href=""></a><span class="co"># Move first, then correct</span></span>
-<span id="cb10-2"><a href=""></a>player.rect.x <span class="op">+=</span> vel_x</span>
-<span id="cb10-3"><a href=""></a><span class="cf">for</span> platform <span class="kw">in</span> platforms:</span>
-<span id="cb10-4"><a href=""></a>    <span class="cf">if</span> player.rect.colliderect(platform.rect):</span>
-<span id="cb10-5"><a href=""></a>        <span class="cf">if</span> vel_x <span class="op">&gt;</span> <span class="dv">0</span>:   <span class="co"># Moving right</span></span>
-<span id="cb10-6"><a href=""></a>            player.rect.right <span class="op">=</span> platform.rect.left</span>
-<span id="cb10-7"><a href=""></a>        <span class="cf">elif</span> vel_x <span class="op">&lt;</span> <span class="dv">0</span>: <span class="co"># Moving left</span></span>
-<span id="cb10-8"><a href=""></a>            player.rect.left <span class="op">=</span> platform.rect.right</span>
-<span id="cb10-9"><a href=""></a>        vel_x <span class="op">=</span> <span class="dv">0</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<h3 id="padrão-2-bounce-balas-bolas">Padrão 2 — Bounce (balas, bolas)</h3>
-<div class="sourceCode" id="cb11"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href=""></a><span class="cf">if</span> bullet.rect.left <span class="op">&lt;=</span> <span class="dv">0</span> <span class="kw">or</span> bullet.rect.right <span class="op">&gt;=</span> WIDTH:</span>
-<span id="cb11-2"><a href=""></a>    bullet.vel_x <span class="op">*=</span> <span class="op">-</span><span class="dv">1</span>   <span class="co"># Reverse horizontal velocity</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="collision-response-3" class="slide level2">
-<h2>Collision Response</h2>
-<p>Detectar a collision é apenas metade do trabalho. A outra metade é <strong>o que fazer</strong> quando isso acontece.</p>
-<h3 id="padrão-1-separation-platforms-paredes-2">Padrão 1 — Separation (platforms, paredes)</h3>
-<div class="sourceCode" id="cb12"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href=""></a><span class="co"># Move first, then correct</span></span>
-<span id="cb12-2"><a href=""></a>player.rect.x <span class="op">+=</span> vel_x</span>
-<span id="cb12-3"><a href=""></a><span class="cf">for</span> platform <span class="kw">in</span> platforms:</span>
-<span id="cb12-4"><a href=""></a>    <span class="cf">if</span> player.rect.colliderect(platform.rect):</span>
-<span id="cb12-5"><a href=""></a>        <span class="cf">if</span> vel_x <span class="op">&gt;</span> <span class="dv">0</span>:   <span class="co"># Moving right</span></span>
-<span id="cb12-6"><a href=""></a>            player.rect.right <span class="op">=</span> platform.rect.left</span>
-<span id="cb12-7"><a href=""></a>        <span class="cf">elif</span> vel_x <span class="op">&lt;</span> <span class="dv">0</span>: <span class="co"># Moving left</span></span>
-<span id="cb12-8"><a href=""></a>            player.rect.left <span class="op">=</span> platform.rect.right</span>
-<span id="cb12-9"><a href=""></a>        vel_x <span class="op">=</span> <span class="dv">0</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<h3 id="padrão-2-bounce-balas-bolas-1">Padrão 2 — Bounce (balas, bolas)</h3>
-<div class="sourceCode" id="cb13"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href=""></a><span class="cf">if</span> bullet.rect.left <span class="op">&lt;=</span> <span class="dv">0</span> <span class="kw">or</span> bullet.rect.right <span class="op">&gt;=</span> WIDTH:</span>
-<span id="cb13-2"><a href=""></a>    bullet.vel_x <span class="op">*=</span> <span class="op">-</span><span class="dv">1</span>   <span class="co"># Reverse horizontal velocity</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<h3 id="padrão-3-destruction-item-coletado-inimigo-eliminado">Padrão 3 — Destruction (item coletado, inimigo eliminado)</h3>
-<div class="sourceCode" id="cb14"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href=""></a>items_picked <span class="op">=</span> pygame.sprite.spritecollide(player, items, <span class="va">True</span>)  <span class="co"># True = kill</span></span>
-<span id="cb14-2"><a href=""></a>score <span class="op">+=</span> <span class="bu">len</span>(items_picked) <span class="op">*</span> <span class="dv">10</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="comparação-de-métodos-de-collision" class="slide level2">
-<h2>Comparação de Métodos de Collision</h2>
-<div id="a3cf89a6" class="cell" data-execution_count="2">
-<div class="cell-output cell-output-stdout">
-<pre><code>Collision method comparison
-============================================================
-
-  Method                 Cost     Precision                  When to use
-  --------------------------------------------------------------------------------
-  AABB (Rect-Rect)       O(1)     Baixa — caixa invisível    Plataformas, itens, a maioria dos objetos
-  Circle-Circle          O(1)     Média — circular           Balas, moedas, personagens redondos
-  collide_rect_ratio     O(1)     Média — rect reduzido      Hitbox menor que o sprite
-  collide_mask           O(n)     Máxima — pixel a pixel     Bosses, formas irregulares (usar com moderação)
-
-Regra geral: comece com AABB. Troque apenas quando a imprecisão
-for perceptível. Reserve collide_mask para pouquíssimos sprites.</code></pre>
-</div>
-</div>
-</section>
-<section id="collisions-resumo" class="slide level2 unnumbered">
-<h2>Collisions — Resumo</h2>
+<section id="o-que-você-vai-aprender" class="slide level2">
+<h2>O que você vai aprender</h2>
 <ul>
-<li>AABB (<code>colliderect</code>) = o mais rápido, suficiente para a maioria dos casos</li>
-<li><code>spritecollide(sprite, group, kill)</code> = collision de um contra muitos</li>
-<li><code>groupcollide(g1, g2, k1, k2)</code> = collision de group contra group</li>
-<li>A response depende do tipo: separate, bounce, ou destroy</li>
+<li><code>groupBy</code>, agregações e funções de janela</li>
+<li>Joins e uniões</li>
+<li>Consultar qualquer DataFrame com Spark SQL</li>
+<li>Transformações vs ações: avaliação preguiçosa</li>
+<li>Primeiro olhar sobre <code>explain()</code>, cache e partições</li>
 </ul>
+</section>
+<section id="groupby-e-agregações" class="slide level2">
+<h2>GroupBy e agregações</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a><span class="co"># Pandas</span></span>
+<span id="cb1-2"><a href=""></a>pdf.groupby(<span class="st">"category"</span>).agg(</span>
+<span id="cb1-3"><a href=""></a>    orders<span class="op">=</span>(<span class="st">"order_id"</span>, <span class="st">"count"</span>), total_revenue<span class="op">=</span>(<span class="st">"total"</span>, <span class="st">"sum"</span>))</span>
+<span id="cb1-4"><a href=""></a></span>
+<span id="cb1-5"><a href=""></a><span class="co"># Spark</span></span>
+<span id="cb1-6"><a href=""></a>(sdf.groupBy(<span class="st">"category"</span>)</span>
+<span id="cb1-7"><a href=""></a>    .agg(F.count(<span class="st">"order_id"</span>).alias(<span class="st">"orders"</span>),</span>
+<span id="cb1-8"><a href=""></a>         F.<span class="bu">sum</span>(<span class="st">"total"</span>).alias(<span class="st">"total_revenue"</span>),</span>
+<span id="cb1-9"><a href=""></a>         F.<span class="bu">round</span>(F.avg(<span class="st">"price"</span>), <span class="dv">2</span>).alias(<span class="st">"avg_price"</span>))</span>
+<span id="cb1-10"><a href=""></a>    .orderBy(F.col(<span class="st">"total_revenue"</span>).desc()))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="funções-de-janela" class="slide level2">
+<h2>Funções de janela</h2>
+<p>Calculam valores sobre um grupo <strong>sem colapsar</strong> o DataFrame, como <code>.groupby().transform()</code> no Pandas.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>w_cat       <span class="op">=</span> Window.partitionBy(<span class="st">"category"</span>)</span>
+<span id="cb2-2"><a href=""></a>w_cat_price <span class="op">=</span> Window.partitionBy(<span class="st">"category"</span>).orderBy(F.col(<span class="st">"price"</span>).desc())</span>
+<span id="cb2-3"><a href=""></a></span>
+<span id="cb2-4"><a href=""></a>(sdf</span>
+<span id="cb2-5"><a href=""></a> .withColumn(<span class="st">"avg_price_cat"</span>, F.<span class="bu">round</span>(F.avg(<span class="st">"price"</span>).over(w_cat), <span class="dv">2</span>))</span>
+<span id="cb2-6"><a href=""></a> .withColumn(<span class="st">"rank_in_cat"</span>,   F.rank().over(w_cat_price)))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="joins" class="slide level2">
+<h2>Joins</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 19%">
+<col style="width: 25%">
+<col style="width: 22%">
+<col style="width: 32%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Tipo</th>
+<th>Pandas</th>
+<th>Spark</th>
+<th>Comportamento</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Inner</td>
+<td><code>how="inner"</code></td>
+<td><code>how="inner"</code></td>
+<td>Só linhas correspondentes</td>
+</tr>
+<tr class="even">
+<td>Left</td>
+<td><code>how="left"</code></td>
+<td><code>how="left"</code></td>
+<td>Toda a esquerda + correspondências</td>
+</tr>
+<tr class="odd">
+<td>Right</td>
+<td><code>how="right"</code></td>
+<td><code>how="right"</code></td>
+<td>Toda a direita + correspondências</td>
+</tr>
+<tr class="even">
+<td>Full outer</td>
+<td><code>how="outer"</code></td>
+<td><code>how="outer"</code></td>
+<td>Todas as linhas dos dois</td>
+</tr>
+<tr class="odd">
+<td>Empilhar linhas</td>
+<td><code>pd.concat([...])</code></td>
+<td><code>df1.union(df2)</code></td>
+<td>Adiciona linhas (UNION)</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="spark-sql" class="slide level2">
+<h2>Spark SQL</h2>
+<p>Registre um DataFrame como <strong>view temporária</strong> e escreva SQL. Usa o mesmo planejador otimizado.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>sdf.createOrReplaceTempView(<span class="st">"sales"</span>)</span>
+<span id="cb3-2"><a href=""></a></span>
+<span id="cb3-3"><a href=""></a>spark.sql(<span class="st">"""</span></span>
+<span id="cb3-4"><a href=""></a><span class="st">    SELECT product, category, price,</span></span>
+<span id="cb3-5"><a href=""></a><span class="st">           RANK() OVER (PARTITION BY category ORDER BY price DESC) AS rank_in_cat</span></span>
+<span id="cb3-6"><a href=""></a><span class="st">    FROM   sales</span></span>
+<span id="cb3-7"><a href=""></a><span class="st">    WHERE  price &gt; 100</span></span>
+<span id="cb3-8"><a href=""></a><span class="st">    ORDER  BY category, rank_in_cat</span></span>
+<span id="cb3-9"><a href=""></a><span class="st">"""</span>).show()</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="transformações-vs-ações" class="slide level2">
+<h2>Transformações vs ações</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 24%">
+<col style="width: 40%">
+<col style="width: 32%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Tipo</th>
+<th>Exemplos</th>
+<th>Efeito</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Transformações</strong></td>
+<td>Preguiçosas</td>
+<td><code>filter</code>, <code>select</code>, <code>withColumn</code>, <code>groupBy</code>, <code>join</code></td>
+<td>Constrói um plano: <strong>nada roda</strong></td>
+</tr>
+<tr class="even">
+<td><strong>Ações</strong></td>
+<td>Imediatas</td>
+<td><code>show()</code>, <code>count()</code>, <code>collect()</code>, <code>write</code>, <code>toPandas()</code></td>
+<td><strong>Executa o plano inteiro</strong></td>
+</tr>
+</tbody>
+</table>
+<pre><code>  TRANSFORMATION ──▶ TRANSFORMATION ──▶ TRANSFORMATION ──▶  ACTION
+    .filter()          .withColumn()      .groupBy()        .show()</code></pre>
+<p>O Spark usa isso para construir um <strong>plano otimizado</strong> antes de executar.</p>
+</section>
+<section id="plano-cache-e-partições" class="slide level2">
+<h2>Plano, cache e partições</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>plan.explain(mode<span class="op">=</span><span class="st">"simple"</span>)        <span class="co"># logical and physical plan</span></span>
+<span id="cb5-2"><a href=""></a></span>
+<span id="cb5-3"><a href=""></a>cached <span class="op">=</span> sdf.cache()               <span class="co"># stored on the first action</span></span>
+<span id="cb5-4"><a href=""></a>cached.count()<span class="op">;</span> cached.count()     <span class="co"># the second one reads from memory</span></span>
+<span id="cb5-5"><a href=""></a>cached.unpersist()</span>
+<span id="cb5-6"><a href=""></a></span>
+<span id="cb5-7"><a href=""></a>sdf.rdd.getNumPartitions()</span>
+<span id="cb5-8"><a href=""></a>sdf.repartition(<span class="dv">4</span>, <span class="st">"category"</span>)     <span class="co"># full shuffle, evenly distributed</span></span>
+<span id="cb5-9"><a href=""></a>sdf.coalesce(<span class="dv">2</span>)                    <span class="co"># no full shuffle, less balanced</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>A próxima aula abre o que acontece por trás de cada um desses comandos.</p>
 
-</section></section>
+</section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

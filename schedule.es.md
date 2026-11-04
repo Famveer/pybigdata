@@ -22,11 +22,11 @@ nav_order: 2
 ### Semana 2
 
 {: .lecture}
->Clase 2: [Introducción al Game Loop](./Lectures/Lec2/)
+>Clase 2: [Python y Pandas](./Lectures/Lec2/)
 >
 
 {: .lab}
->Laboratorio 1: [Introducción a PyGame](./Labs/Lab1/)
+>Laboratorio 1: [Python y Pandas](./Labs/Lab1/)
 >
 
 --- 
@@ -35,10 +35,10 @@ nav_order: 2
 ### Semana 3
 
 {: .lecture}
->Clase 3: [Introducción a Sprites](./Lectures/Lec3/)
+>Clase 3: [De Pandas a Spark](./Lectures/Lec3/)
 
 {: .lab}
->Laboratorio 2: [Introducción a Sprites](./Labs/Lab2/)
+>Laboratorio 2: [La API de DataFrames de Spark](./Labs/Lab2/)
 >
 
 --- 
@@ -47,10 +47,10 @@ nav_order: 2
 ### Semana 4
 
 {: .lecture}
->Clase 4: [Introducción a Collisions](./Lectures/Lec4/)
+>Clase 4: [Agregaciones, Joins y Spark SQL](./Lectures/Lec4/)
 
 {: .lab}
->Laboratorio 3: [Introducción a Collisions](./Labs/Lab3/)
+>Laboratorio 3: [Agregaciones, Joins y Spark SQL](./Labs/Lab3/)
 >
 
 --- 
@@ -59,10 +59,10 @@ nav_order: 2
 ### Semana 5
 
 {: .lecture}
->Clase 5: [Introducción a Animations](./Lectures/Lec5/)
+>Clase 5: [Cómo Ejecuta Spark: Particiones y Joins](./Lectures/Lec5/)
 
 {: .lab}
->Laboratorio 4: [Introducción a Animations](./Labs/Lab4/)
+>Laboratorio 4: [Ejecución, Particiones y Joins](./Labs/Lab4/)
 >
 
 --- 
@@ -71,10 +71,10 @@ nav_order: 2
 ### Semana 6
 
 {: .lecture}
->Clase 6: [Introducción a Scenes](./Lectures/Lec6/)
+>Clase 6: [Skew, Cache, AQE y UDFs](./Lectures/Lec6/)
 
 {: .lab}
->Laboratorio 5: [Introducción a Scenes](./Labs/Lab5/)
+>Laboratorio 5: [Skew, Cache, AQE y UDFs](./Labs/Lab5/)
 >
 
 --- 
@@ -83,10 +83,10 @@ nav_order: 2
 ### Semana 7
 
 {: .lecture}
->Clase 7: [Introducción a Audio](./Lectures/Lec7/)
+>Clase 7: [ETL con Arquitectura Medallion](./Lectures/Lec7/)
 
 {: .lab}
->Laboratorio 6: [Introducción a Audio](./Labs/Lab6/)
+>Laboratorio 6: [ETL con Arquitectura Medallion](./Labs/Lab6/)
 >
 
 --- 
@@ -95,10 +95,10 @@ nav_order: 2
 ### Semana 8
 
 {: .lecture}
->Clase 8: [Introducción a Tilemap](./Lectures/Lec8/)
+>Clase 8: [Delta Lake](./Lectures/Lec8/)
 
 {: .lab}
->Laboratorio 7: [Introducción a Tilemap](./Labs/Lab7/)
+>Laboratorio 7: [Delta Lake](./Labs/Lab7/)
 >
 
 --- 
@@ -107,10 +107,10 @@ nav_order: 2
 ### Semana 9
 
 {: .lecture}
->Clase 9: [Introducción a Game Physics](./Lectures/Lec9/)
+>Clase 9: [Structured Streaming](./Lectures/Lec9/)
 
 {: .lab}
->Laboratorio 8: [Introducción a Game Physics](./Labs/Lab8/)
+>Laboratorio 8: [Structured Streaming](./Labs/Lab8/)
 >
 
 --- 
@@ -119,10 +119,10 @@ nav_order: 2
 ### Semana 10
 
 {: .lecture}
->Clase 10: [Introducción a IA and states](./Lectures/Lec10/)
+>Clase 10: [Machine Learning con MLlib](./Lectures/Lec10/)
 
 {: .lab}
->Laboratorio 9: [Introducción a IA and states](./Labs/Lab9/)
+>Laboratorio 9: [MLlib: Pipelines y Modelos](./Labs/Lab9/)
 >
 
 --- 
@@ -131,7 +131,7 @@ nav_order: 2
 ### Semana 11
 
 {: .lab}
->Laboratorio 10: [Demo de juego completo](./Labs/Lab10/)
+>Laboratorio 10: [MLlib: Ajuste y Despliegue](./Labs/Lab10/)
 >
 
 --- 

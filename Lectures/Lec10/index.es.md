@@ -8,15 +8,16 @@ nav_order: 10
 layout: default
 ---
 
-# Clase 10: Introducción a IA and states
+# Clase 10: Machine Learning con MLlib
 {: .no_toc }
 
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Machine States
->* AI para enemigos
->* Bots
+>* Transformers, Estimators y Pipelines
+>* Preparación de features
+>* Evaluación y umbral de decisión
+>* Validación cruzada, guardar modelos y scoring
 
 
 ### Slides

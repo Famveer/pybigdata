@@ -8,11 +8,10 @@ nav_order: 10
 layout: default
 ---
 
-# Laboratorio 10: Demo de juego completo
+# Laboratorio 10: MLlib: Ajuste y Despliegue
 
-Aquí tenemos algunos ejemplos de código de pygame.
+Ajusta el modelo con validación cruzada, guárdalo y puntúa clientes en batch y streaming. El notebook reentrena el pipeline del Laboratorio 9.
 
 ### Archivos
 
-* [Neon Runner demo](./files/neon_runner.py)
-* [Shadow Vault demo](./files/shadow_vault.py)
+* [Validación cruzada, guardar modelos y scoring en streaming](./files/01_mllib_tuning_deployment.ipynb)

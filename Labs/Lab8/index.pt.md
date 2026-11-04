@@ -8,11 +8,10 @@ nav_order: 8
 layout: default
 ---
 
-# Laboratório 8: Introdução a Game Physics
+# Laboratório 8: Structured Streaming
 
-Aqui temos alguns exemplos de código pygame.
+Processe dados que não param de chegar: janelas, watermark, checkpoints e triggers.
 
 ### Arquivos
 
-* [Gravity](./files/01_gravity_jump.py)
-* [Physics](./files/02_platformer_physics.py)
+* [Sources, sinks, janelas, watermark, checkpoint e exercícios](./files/01_structured_streaming.ipynb)

@@ -10,35 +10,35 @@ has_toc: false
 
 # Aulas
 
-As aulas vão ajudar você a entender a teoria e os conceitos por trás dos jogos.
+As aulas vão ajudar você a entender a teoria e os conceitos por trás do processamento de big data com Spark.
 
 
 **Aula 1**: [Introdução ao Git](./Lec1)
 
 
-**Aula 2**: [Introdução ao Game Loop](./Lec2)
+**Aula 2**: [Python e Pandas](./Lec2)
 
 
-**Aula 3**: [Introdução a Sprites](./Lec3)
+**Aula 3**: [De Pandas ao Spark](./Lec3)
 
 
-**Aula 4**: [Introdução a Collisions](./Lec4)
+**Aula 4**: [Agregações, Joins e Spark SQL](./Lec4)
 
 
-**Aula 5**: [Introdução a Animations](./Lec5)
+**Aula 5**: [Como o Spark Executa: Partições e Joins](./Lec5)
 
 
-**Aula 6**: [Introdução a Scenes](./Lec6)
+**Aula 6**: [Skew, Cache, AQE e UDFs](./Lec6)
 
 
-**Aula 7**: [Introdução a Audio](./Lec7)
+**Aula 7**: [ETL com Arquitetura Medallion](./Lec7)
 
 
-**Aula 8**: [Introdução a Tilemaps](./Lec8)
+**Aula 8**: [Delta Lake](./Lec8)
 
 
-**Aula 9**: [Introdução a Game Physics](./Lec9)
+**Aula 9**: [Structured Streaming](./Lec9)
 
 
-**Aula 10**: [Introdução a IA and states](./Lec10)
+**Aula 10**: [Machine Learning com MLlib](./Lec10)
 

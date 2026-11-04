@@ -10,35 +10,35 @@ has_toc: false
 
 # Lectures
 
-Lectures sessions will help you understand the theory and concepts behind games.
+Lectures will help you understand the theory and concepts behind big data processing with Spark.
 
 
 **Lecture 1**: [Introduction to Git](./Lec1)
 
 
-**Lecture 2**: [Introduction to Game Loop](./Lec2)
+**Lecture 2**: [Python and Pandas](./Lec2)
 
 
-**Lecture 3**: [Introduction to Sprites](./Lec3)
+**Lecture 3**: [From Pandas to Spark](./Lec3)
 
 
-**Lecture 4**: [Introduction to Collisions](./Lec4)
+**Lecture 4**: [Aggregations, Joins and Spark SQL](./Lec4)
 
 
-**Lecture 5**: [Introduction to Animations](./Lec5)
+**Lecture 5**: [How Spark Runs: Partitions and Joins](./Lec5)
 
 
-**Lecture 6**: [Introduction to Scenes](./Lec6)
+**Lecture 6**: [Skew, Cache, AQE and UDFs](./Lec6)
 
 
-**Lecture 7**: [Introduction to Audio](./Lec7)
+**Lecture 7**: [ETL with the Medallion Architecture](./Lec7)
 
 
-**Lecture 8**: [Introduction to Tilemaps](./Lec8)
+**Lecture 8**: [Delta Lake](./Lec8)
 
 
-**Lecture 9**: [Introduction to Game Physics](./Lec9)
+**Lecture 9**: [Structured Streaming](./Lec9)
 
 
-**Lecture 10**: [Introduction to IA and states](./Lec10)
+**Lecture 10**: [Machine Learning with MLlib](./Lec10)
 

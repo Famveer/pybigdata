@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Scenes, Audio, y Tilemaps</title>
+  <title>Delta Lake</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,8 +194,8 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Scenes, Audio, y Tilemaps</h1>
-  <p class="subtitle">Curso de Desarrollo de Videojuegos con Pygame</p>
+  <h1 class="title">Delta Lake</h1>
+  <p class="subtitle">Big Data con PySpark</p>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
@@ -206,210 +206,192 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section>
-<section id="tilemaps-scrolling" class="title-slide slide level1 center">
-<h1>🗺️ Tilemaps &amp; Scrolling</h1>
-
-</section>
-<section id="qué-es-un-tilemap" class="slide level2">
-<h2>¿Qué es un Tilemap?</h2>
-<p>Un <strong>tilemap</strong> es una grilla 2D donde cada celda contiene un número entero pequeño (tile ID) que se asocia a una imagen de tile. Así es como casi todos los juegos 2D almacenan sus niveles — desde Super Mario Bros hasta los juegos indie modernos.</p>
-</section>
-<section id="qué-es-un-tilemap-1" class="slide level2">
-<h2>¿Qué es un Tilemap?</h2>
-<p>Un <strong>tilemap</strong> es una grilla 2D donde cada celda contiene un número entero pequeño (tile ID) que se asocia a una imagen de tile. Así es como casi todos los juegos 2D almacenan sus niveles — desde Super Mario Bros hasta los juegos indie modernos.</p>
-<pre><code>Level data (2D list of ints):     Rendered result:
-0 = air   1 = grass   2 = stone
-
- 0  0  0  0  0  0  0  0            ░░░░░░░░
- 0  0  0  1  1  0  0  0            ░░░🌿🌿░░░
- 0  0  0  0  0  0  0  0            ░░░░░░░░
- 1  1  1  2  2  1  1  1            🌿🌿🌿🪨🪨🌿🌿🌿
- 2  2  2  2  2  2  2  2            🪨🪨🪨🪨🪨🪨🪨🪨</code></pre>
-</section>
-<section id="qué-es-un-tilemap-2" class="slide level2">
-<h2>¿Qué es un Tilemap?</h2>
-<p>Un <strong>tilemap</strong> es una grilla 2D donde cada celda contiene un número entero pequeño (tile ID) que se asocia a una imagen de tile. Así es como casi todos los juegos 2D almacenan sus niveles — desde Super Mario Bros hasta los juegos indie modernos.</p>
-<pre><code>Level data (2D list of ints):     Rendered result:
-0 = air   1 = grass   2 = stone
-
- 0  0  0  0  0  0  0  0            ░░░░░░░░
- 0  0  0  1  1  0  0  0            ░░░🌿🌿░░░
- 0  0  0  0  0  0  0  0            ░░░░░░░░
- 1  1  1  2  2  1  1  1            🌿🌿🌿🪨🪨🌿🌿🌿
- 2  2  2  2  2  2  2  2            🪨🪨🪨🪨🪨🪨🪨🪨</code></pre>
-<p>Beneficios de los tilemaps: - Los niveles son <strong>compactos</strong> — un mapa de 100×50 son solo 5,000 enteros - Fáciles de <strong>serializar</strong> (guardar/cargar niveles como archivos de texto) - <strong>Renderizado eficiente</strong> — dibuja solo los tiles visibles (culling) - <strong>Assets reutilizables</strong> — 10 imágenes de tile pueden construir niveles infinitos</p>
-</section>
-<section id="clase-tilemap" class="slide level2">
-<h2>Clase TileMap</h2>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="kw">class</span> TileMap:</span>
-<span id="cb3-2"><a href=""></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, level_data, tile_size):</span>
-<span id="cb3-3"><a href=""></a>        <span class="va">self</span>.data      <span class="op">=</span> level_data</span>
-<span id="cb3-4"><a href=""></a>        <span class="va">self</span>.tile_size <span class="op">=</span> tile_size</span>
-<span id="cb3-5"><a href=""></a>        <span class="va">self</span>.rows      <span class="op">=</span> <span class="bu">len</span>(data)</span>
-<span id="cb3-6"><a href=""></a>        <span class="va">self</span>.cols      <span class="op">=</span> <span class="bu">len</span>(data[<span class="dv">0</span>])</span>
-<span id="cb3-7"><a href=""></a></span>
-<span id="cb3-8"><a href=""></a>    <span class="kw">def</span> get_tile(<span class="va">self</span>, col, row):</span>
-<span id="cb3-9"><a href=""></a>        <span class="cf">if</span> <span class="dv">0</span> <span class="op">&lt;=</span> row <span class="op">&lt;</span> <span class="va">self</span>.rows <span class="kw">and</span> <span class="dv">0</span> <span class="op">&lt;=</span> col <span class="op">&lt;</span> <span class="va">self</span>.cols:</span>
-<span id="cb3-10"><a href=""></a>            <span class="cf">return</span> <span class="va">self</span>.data[row][col]</span>
-<span id="cb3-11"><a href=""></a>        <span class="cf">return</span> <span class="op">-</span><span class="dv">1</span>   <span class="co"># Out of bounds</span></span>
-<span id="cb3-12"><a href=""></a></span>
-<span id="cb3-13"><a href=""></a>    <span class="kw">def</span> set_tile(<span class="va">self</span>, col, row, tile_id):</span>
-<span id="cb3-14"><a href=""></a>        <span class="cf">if</span> <span class="dv">0</span> <span class="op">&lt;=</span> row <span class="op">&lt;</span> <span class="va">self</span>.rows <span class="kw">and</span> <span class="dv">0</span> <span class="op">&lt;=</span> col <span class="op">&lt;</span> <span class="va">self</span>.cols:</span>
-<span id="cb3-15"><a href=""></a>            <span class="va">self</span>.data[row][col] <span class="op">=</span> tile_id</span>
-<span id="cb3-16"><a href=""></a></span>
-<span id="cb3-17"><a href=""></a>    <span class="kw">def</span> world_to_tile(<span class="va">self</span>, world_x, world_y):</span>
-<span id="cb3-18"><a href=""></a>        <span class="cf">return</span> <span class="bu">int</span>(world_x <span class="op">//</span> <span class="va">self</span>.tile_size), <span class="bu">int</span>(world_y <span class="op">//</span> <span class="va">self</span>.tile_size)</span>
-<span id="cb3-19"><a href=""></a></span>
-<span id="cb3-20"><a href=""></a>    <span class="kw">def</span> draw(<span class="va">self</span>, surface, camera_x, camera_y):</span>
-<span id="cb3-21"><a href=""></a>        ts <span class="op">=</span> <span class="va">self</span>.tile_size</span>
-<span id="cb3-22"><a href=""></a></span>
-<span id="cb3-23"><a href=""></a>        <span class="co"># CULLING: only draw tiles visible in the viewport</span></span>
-<span id="cb3-24"><a href=""></a>        col_start <span class="op">=</span> <span class="bu">max</span>(<span class="dv">0</span>, <span class="bu">int</span>(camera_x <span class="op">//</span> ts))</span>
-<span id="cb3-25"><a href=""></a>        col_end   <span class="op">=</span> <span class="bu">min</span>(<span class="va">self</span>.cols, <span class="bu">int</span>((camera_x <span class="op">+</span> SCREEN_W) <span class="op">//</span> ts) <span class="op">+</span> <span class="dv">1</span>)</span>
-<span id="cb3-26"><a href=""></a>        row_start <span class="op">=</span> <span class="bu">max</span>(<span class="dv">0</span>, <span class="bu">int</span>(camera_y <span class="op">//</span> ts))</span>
-<span id="cb3-27"><a href=""></a>        row_end   <span class="op">=</span> <span class="bu">min</span>(<span class="va">self</span>.rows, <span class="bu">int</span>((camera_y <span class="op">+</span> SCREEN_H) <span class="op">//</span> ts) <span class="op">+</span> <span class="dv">1</span>)</span>
-<span id="cb3-28"><a href=""></a></span>
-<span id="cb3-29"><a href=""></a>        <span class="cf">for</span> row <span class="kw">in</span> <span class="bu">range</span>(row_start, row_end):</span>
-<span id="cb3-30"><a href=""></a>            <span class="cf">for</span> col <span class="kw">in</span> <span class="bu">range</span>(col_start, col_end):</span>
-<span id="cb3-31"><a href=""></a>                tile_id  <span class="op">=</span> <span class="va">self</span>.data[row][col]</span>
-<span id="cb3-32"><a href=""></a>                <span class="cf">if</span> tile_id <span class="op">==</span> <span class="dv">0</span>: <span class="cf">continue</span></span>
-<span id="cb3-33"><a href=""></a>                screen_x <span class="op">=</span> col <span class="op">*</span> ts <span class="op">-</span> camera_x</span>
-<span id="cb3-34"><a href=""></a>                screen_y <span class="op">=</span> row <span class="op">*</span> ts <span class="op">-</span> camera_y</span>
-<span id="cb3-35"><a href=""></a>                surface.blit(tile_images[tile_id], (screen_x, screen_y))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div id="988756c6" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-stdout">
-<pre><code>Culling savings — tiles omitidos vs dibujados por frame
-============================================================
-  Tamaño de mapa   Total    Visible    Omitidos   Ahorrado
-  --------------------------------------------------------
-  Pequeño (20×15)  300      300        0          0%
-  Mediano (50×30)  1500     408        1092       73%
-  Grande (100×50)  5000     408        4592       92%
-  Enorme (200×80)  16000    408        15592      97%</code></pre>
-</div>
-</div>
-</section>
-<section id="la-camera" class="slide level2">
-<h2>La Camera</h2>
-<p>La Camera representa el <strong>viewport hacia el mundo</strong>. Todo se dibuja en <strong>world space</strong> y se convierte a <strong>screen space</strong> para el rendering.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="kw">class</span> Camera:</span>
-<span id="cb5-2"><a href=""></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, view_w, view_h):</span>
-<span id="cb5-3"><a href=""></a>        <span class="va">self</span>.x    <span class="op">=</span> <span class="fl">0.0</span>   <span class="co"># Camera top-left in world space</span></span>
-<span id="cb5-4"><a href=""></a>        <span class="va">self</span>.y    <span class="op">=</span> <span class="fl">0.0</span></span>
-<span id="cb5-5"><a href=""></a>        <span class="va">self</span>.zoom <span class="op">=</span> <span class="fl">1.0</span></span>
-<span id="cb5-6"><a href=""></a></span>
-<span id="cb5-7"><a href=""></a>    <span class="kw">def</span> world_to_screen(<span class="va">self</span>, wx, wy):</span>
-<span id="cb5-8"><a href=""></a>        <span class="co">"""What screen pixel does this world coordinate map to?"""</span></span>
-<span id="cb5-9"><a href=""></a>        sx <span class="op">=</span> (wx <span class="op">-</span> <span class="va">self</span>.x) <span class="op">*</span> <span class="va">self</span>.zoom</span>
-<span id="cb5-10"><a href=""></a>        sy <span class="op">=</span> (wy <span class="op">-</span> <span class="va">self</span>.y) <span class="op">*</span> <span class="va">self</span>.zoom</span>
-<span id="cb5-11"><a href=""></a>        <span class="cf">return</span> <span class="bu">int</span>(sx), <span class="bu">int</span>(sy)</span>
-<span id="cb5-12"><a href=""></a></span>
-<span id="cb5-13"><a href=""></a>    <span class="kw">def</span> screen_to_world(<span class="va">self</span>, sx, sy):</span>
-<span id="cb5-14"><a href=""></a>        <span class="co">"""What world coordinate is under this screen pixel?"""</span></span>
-<span id="cb5-15"><a href=""></a>        wx <span class="op">=</span> sx <span class="op">/</span> <span class="va">self</span>.zoom <span class="op">+</span> <span class="va">self</span>.x</span>
-<span id="cb5-16"><a href=""></a>        wy <span class="op">=</span> sy <span class="op">/</span> <span class="va">self</span>.zoom <span class="op">+</span> <span class="va">self</span>.y</span>
-<span id="cb5-17"><a href=""></a>        <span class="cf">return</span> wx, wy</span>
-<span id="cb5-18"><a href=""></a></span>
-<span id="cb5-19"><a href=""></a>    <span class="kw">def</span> follow(<span class="va">self</span>, target_x, target_y, dt, world_w, world_h):</span>
-<span id="cb5-20"><a href=""></a>        <span class="co">"""Smooth follow with lerp."""</span></span>
-<span id="cb5-21"><a href=""></a>        desired_x <span class="op">=</span> target_x <span class="op">-</span> <span class="va">self</span>.view_w <span class="op">/</span> (<span class="dv">2</span> <span class="op">*</span> <span class="va">self</span>.zoom)</span>
-<span id="cb5-22"><a href=""></a>        desired_y <span class="op">=</span> target_y <span class="op">-</span> <span class="va">self</span>.view_h <span class="op">/</span> (<span class="dv">2</span> <span class="op">*</span> <span class="va">self</span>.zoom)</span>
-<span id="cb5-23"><a href=""></a>        <span class="va">self</span>.x <span class="op">+=</span> (desired_x <span class="op">-</span> <span class="va">self</span>.x) <span class="op">*</span> <span class="fl">6.0</span> <span class="op">*</span> dt  <span class="co"># Lerp</span></span>
-<span id="cb5-24"><a href=""></a>        <span class="co"># Clamp to world bounds</span></span>
-<span id="cb5-25"><a href=""></a>        <span class="va">self</span>.x <span class="op">=</span> <span class="bu">max</span>(<span class="dv">0</span>, <span class="bu">min</span>(<span class="va">self</span>.x, world_w <span class="op">-</span> <span class="va">self</span>.view_w <span class="op">/</span> <span class="va">self</span>.zoom))</span>
-<span id="cb5-26"><a href=""></a>        <span class="va">self</span>.y <span class="op">=</span> <span class="bu">max</span>(<span class="dv">0</span>, <span class="bu">min</span>(<span class="va">self</span>.y, world_h <span class="op">-</span> <span class="va">self</span>.view_h <span class="op">/</span> <span class="va">self</span>.zoom))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="camera-dead-zone" class="slide level2">
-<h2>Camera Dead Zone</h2>
-<p>Una <strong>dead zone</strong> es una región alrededor del centro de la pantalla donde la Camera no se mueve. El jugador puede moverse libremente dentro de la dead zone; la Camera solo se mueve cuando el jugador llega a su borde.</p>
-<pre><code>Screen:
-┌──────────────────────────────────┐
-│                                  │
-│      ┌──────────────┐            │
-│      │  DEAD ZONE   │            │
-│      │   Player ●   │ ← camera   │
-│      │  moves here  │   doesn't  │
-│      │  freely      │   move     │
-│      └──────────────┘            │
-│                                  │
-└──────────────────────────────────┘</code></pre>
-</section>
-<section id="camera-shake" class="slide level2">
-<h2>Camera Shake</h2>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a><span class="kw">def</span> shake(<span class="va">self</span>, strength<span class="op">=</span><span class="fl">8.0</span>, duration<span class="op">=</span><span class="fl">0.4</span>):</span>
-<span id="cb7-2"><a href=""></a>    <span class="va">self</span>._shake_strength <span class="op">=</span> strength</span>
-<span id="cb7-3"><a href=""></a>    <span class="va">self</span>._shake_timer    <span class="op">=</span> duration</span>
-<span id="cb7-4"><a href=""></a></span>
-<span id="cb7-5"><a href=""></a><span class="kw">def</span> update_shake(<span class="va">self</span>, dt):</span>
-<span id="cb7-6"><a href=""></a>    <span class="cf">if</span> <span class="va">self</span>._shake_timer <span class="op">&gt;</span> <span class="dv">0</span>:</span>
-<span id="cb7-7"><a href=""></a>        <span class="va">self</span>._shake_timer <span class="op">-=</span> dt</span>
-<span id="cb7-8"><a href=""></a>        pct <span class="op">=</span> <span class="va">self</span>._shake_timer <span class="op">/</span> <span class="fl">0.4</span></span>
-<span id="cb7-9"><a href=""></a>        <span class="va">self</span>._shake_offset <span class="op">=</span> (</span>
-<span id="cb7-10"><a href=""></a>            random.uniform(<span class="op">-</span><span class="dv">1</span>, <span class="dv">1</span>) <span class="op">*</span> <span class="va">self</span>._shake_strength <span class="op">*</span> pct,</span>
-<span id="cb7-11"><a href=""></a>            random.uniform(<span class="op">-</span><span class="dv">1</span>, <span class="dv">1</span>) <span class="op">*</span> <span class="va">self</span>._shake_strength <span class="op">*</span> pct,</span>
-<span id="cb7-12"><a href=""></a>        )</span>
-<span id="cb7-13"><a href=""></a>    <span class="cf">else</span>:</span>
-<span id="cb7-14"><a href=""></a>        <span class="va">self</span>._shake_offset <span class="op">=</span> (<span class="dv">0</span>, <span class="dv">0</span>)</span>
-<span id="cb7-15"><a href=""></a></span>
-<span id="cb7-16"><a href=""></a><span class="co"># Apply offset in world_to_screen():</span></span>
-<span id="cb7-17"><a href=""></a>sx <span class="op">=</span> (wx <span class="op">-</span> <span class="va">self</span>.x) <span class="op">*</span> <span class="va">self</span>.zoom <span class="op">+</span> <span class="va">self</span>._shake_offset[<span class="dv">0</span>]</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="parallax-scrolling" class="slide level2">
-<h2>Parallax Scrolling</h2>
-<p>Parallax hace que el mundo se sienta <strong>profundo</strong> al hacer scroll de las diferentes capas de fondo a distintas velocidades.</p>
-<pre><code>Layer           Speed (% of camera)   Perceived depth
-─────           ───────────────────   ───────────────
-Stars              5%                   Very far away
-Distant mountains  15%                  Far
-Near mountains     25%                  Medium
-Clouds            30–50%                Near background</code></pre>
-<div class="sourceCode" id="cb9"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href=""></a><span class="kw">class</span> ParallaxLayer:</span>
-<span id="cb9-2"><a href=""></a>    <span class="co">"""</span></span>
-<span id="cb9-3"><a href=""></a><span class="co">    factor = 0.0 → stationary (sky)</span></span>
-<span id="cb9-4"><a href=""></a><span class="co">    factor = 1.0 → moves with the world (foreground)</span></span>
-<span id="cb9-5"><a href=""></a><span class="co">    """</span></span>
-<span id="cb9-6"><a href=""></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, factor):</span>
-<span id="cb9-7"><a href=""></a>        <span class="va">self</span>.factor <span class="op">=</span> factor</span>
-<span id="cb9-8"><a href=""></a></span>
-<span id="cb9-9"><a href=""></a>    <span class="kw">def</span> draw(<span class="va">self</span>, surface, camera_x):</span>
-<span id="cb9-10"><a href=""></a>        offset_x <span class="op">=</span> <span class="bu">int</span>(camera_x <span class="op">*</span> <span class="va">self</span>.factor)</span>
-<span id="cb9-11"><a href=""></a>        <span class="cf">for</span> element <span class="kw">in</span> <span class="va">self</span>.elements:</span>
-<span id="cb9-12"><a href=""></a>            screen_x <span class="op">=</span> element.x <span class="op">-</span> offset_x</span>
-<span id="cb9-13"><a href=""></a>            <span class="co"># Seamless horizontal wrap</span></span>
-<span id="cb9-14"><a href=""></a>            screen_x <span class="op">=</span> screen_x <span class="op">%</span> (WORLD_W <span class="op">+</span> SCREEN_W) <span class="op">-</span> SCREEN_W</span>
-<span id="cb9-15"><a href=""></a>            <span class="co"># Draw at screen_x...</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="parallax-scrolling-1" class="slide level2">
-<h2>Parallax Scrolling</h2>
-<div id="fd8a28ba" class="cell" data-execution_count="2">
-<div class="cell-output cell-output-stdout">
-<pre><code>Camera se desplazó 500px hacia la derecha
-
-  Capa                   Factor   Desplazamiento Ilusión
-  --------------------------------------------------------
-  Estrellas (lejos)      0.05     25           Estático
-  Montañas distantes     0.15     75           Muy lejos
-  Montañas cercanas      0.25     125          Lejos
-  Nubes lejanas          0.30     150          Lejos
-  Nubes cercanas         0.50     250          Medio
-  Árboles de fondo       0.70     350          Igual que el mundo
-  Objetos del mundo      1.00     500          Igual que el mundo</code></pre>
-</div>
-</div>
-</section>
-<section id="tilemaps-camera-resumen" class="slide level2 unnumbered">
-<h2>Tilemaps &amp; Camera — Resumen</h2>
+<section id="lo-que-aprenderás" class="slide level2">
+<h2>Lo que aprenderás</h2>
 <ul>
-<li>Tilemap = lista 2D de ints → compacto, serializable, eficiente</li>
-<li><strong>Culling</strong>: dibuja solo los tiles dentro del viewport — crítico para mapas grandes</li>
-<li>La Camera convierte coordenadas <strong>world ↔︎ screen</strong> para cada objeto</li>
-<li><strong>Smooth follow</strong>: lerp hacia la posición deseada de la Camera en cada frame</li>
-<li><strong>Dead zone</strong>: el jugador se mueve libremente en una región central antes de que la Camera lo siga</li>
-<li><strong>Parallax</strong>: las capas de fondo hacen scroll según <code>camera_x * factor</code>; menor = más lejos</li>
+<li>Los límites del Parquet puro</li>
+<li>El log de transacciones y las escrituras ACID</li>
+<li><code>MERGE</code>, time travel y schema enforcement</li>
+<li><code>DELETE</code>, <code>UPDATE</code>, <code>RESTORE</code>, <code>OPTIMIZE</code> y <code>VACUUM</code></li>
 </ul>
+</section>
+<section id="los-límites-del-parquet-puro" class="slide level2">
+<h2>Los límites del Parquet puro</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Problema</th>
+<th>Ejemplo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Sin atomicidad</strong></td>
+<td>Un job falla durante el <code>overwrite</code>: la tabla queda a medias</td>
+</tr>
+<tr class="even">
+<td><strong>Sin UPDATE/MERGE</strong></td>
+<td>Una actualización de estado obliga a reescribir la partición o la tabla</td>
+</tr>
+<tr class="odd">
+<td><strong>Lecturas inconsistentes</strong></td>
+<td>Un lector ve archivos antiguos y nuevos mezclados durante la escritura</td>
+</tr>
+<tr class="even">
+<td><strong>Sin historial</strong></td>
+<td>No se puede ver cómo estaba la tabla ayer</td>
+</tr>
+<tr class="odd">
+<td><strong>Schema sin protección</strong></td>
+<td>Un archivo con columnas distintas corrompe la tabla en silencio</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="el-log-de-transacciones" class="slide level2">
+<h2>El log de transacciones</h2>
+<pre><code>  silver_delta/
+  ├── _delta_log/
+  │   ├── 00000000000000000000.json   &lt;- v0: add files A, B, C
+  │   ├── 00000000000000000001.json   &lt;- v1: remove B, add D   (MERGE)
+  │   └── 00000000000000000002.json   &lt;- v2: remove A          (DELETE)
+  ├── order_date=2024-07-01/part-....parquet
+  └── order_date=2024-07-02/part-....parquet</code></pre>
+<p>Los datos siguen en Parquet. El log indica <strong>qué archivos forman cada versión</strong>. Escribir es atómico: o existe el archivo de log de la nueva versión, o la versión no ocurrió.</p>
+</section>
+<section id="merge-upsert" class="slide level2">
+<h2>MERGE (upsert)</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>(orders_dt.alias(<span class="st">"t"</span>)</span>
+<span id="cb2-2"><a href=""></a> .merge(updates.alias(<span class="st">"s"</span>), <span class="st">"t.order_id = s.order_id"</span>)</span>
+<span id="cb2-3"><a href=""></a> .whenMatchedUpdateAll(condition<span class="op">=</span><span class="st">"s.updated_at &gt; t.updated_at"</span>)</span>
+<span id="cb2-4"><a href=""></a> .whenNotMatchedInsertAll()</span>
+<span id="cb2-5"><a href=""></a> .execute())</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>La condición <code>s.updated_at &gt; t.updated_at</code> protege contra datos atrasados: un evento antiguo que llega después no sobrescribe un estado más nuevo.</p>
+</section>
+<section id="historial-y-time-travel" class="slide level2">
+<h2>Historial y time travel</h2>
+<p>Cada operación genera una nueva versión. Las antiguas siguen legibles hasta que <code>VACUUM</code> las elimina.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>orders_dt.history().select(<span class="st">"version"</span>, <span class="st">"timestamp"</span>, <span class="st">"operation"</span>).show()</span>
+<span id="cb3-2"><a href=""></a></span>
+<span id="cb3-3"><a href=""></a>v0 <span class="op">=</span> spark.read.<span class="bu">format</span>(<span class="st">"delta"</span>).option(<span class="st">"versionAsOf"</span>, <span class="dv">0</span>).load(SILVER_DELTA)</span>
+<span id="cb3-4"><a href=""></a></span>
+<span id="cb3-5"><a href=""></a>spark.sql(<span class="ss">f"SELECT status, COUNT(*) FROM delta.`</span><span class="sc">{</span>SILVER_DELTA<span class="sc">}</span><span class="ss">` "</span></span>
+<span id="cb3-6"><a href=""></a>          <span class="st">"VERSION AS OF 0 GROUP BY status"</span>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="schema-enforcement-evolution" class="slide level2">
+<h2>Schema enforcement &amp; evolution</h2>
+<p>Delta <strong>rechaza</strong> escrituras con un schema incompatible. Los cambios intencionales son explícitos:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>(with_coupon.write.<span class="bu">format</span>(<span class="st">"delta"</span>)</span>
+<span id="cb4-2"><a href=""></a> .mode(<span class="st">"append"</span>)</span>
+<span id="cb4-3"><a href=""></a> .option(<span class="st">"mergeSchema"</span>, <span class="st">"true"</span>)     <span class="co"># old rows get null</span></span>
+<span id="cb4-4"><a href=""></a> .save(SILVER_DELTA))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="delete-update-restore" class="slide level2">
+<h2>DELETE, UPDATE &amp; RESTORE</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>orders_dt.restoreToVersion(merge_version)</span>
+<span id="cb5-2"><a href=""></a>orders_dt.delete(F.col(<span class="st">"customer_id"</span>) <span class="op">==</span> customer)</span>
+<span id="cb5-3"><a href=""></a>orders_dt.update(</span>
+<span id="cb5-4"><a href=""></a>    condition<span class="op">=</span><span class="st">"status = 'created' AND created_at &lt; '2024-07-03'"</span>,</span>
+<span id="cb5-5"><a href=""></a>    <span class="bu">set</span><span class="op">=</span>{<span class="st">"status"</span>: F.lit(<span class="st">"expired"</span>)},</span>
+<span id="cb5-6"><a href=""></a>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-warning callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Advertencia</strong></p>
+</div>
+<div class="callout-content">
+<p>Tras un <code>DELETE</code>, los datos siguen en los archivos Parquet de versiones antiguas y el time travel puede leerlos. Para una eliminación real (p.&nbsp;ej. LGPD), hay que ejecutar <code>VACUUM</code>.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="optimize-vacuum" class="slide level2">
+<h2>OPTIMIZE &amp; VACUUM</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 30%">
+<col style="width: 43%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Comando</th>
+<th>Qué hace</th>
+<th>Cuándo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>OPTIMIZE</code></td>
+<td>Compacta archivos pequeños en otros mayores</td>
+<td>Tras muchos MERGE/append</td>
+</tr>
+<tr class="even">
+<td><code>OPTIMIZE ... ZORDER BY (col)</code></td>
+<td>También reorganiza los datos para saltar más bloques al filtrar por <code>col</code></td>
+<td>Columnas muy filtradas, fuera de la partición</td>
+</tr>
+<tr class="odd">
+<td><code>VACUUM</code></td>
+<td>Borra archivos que ninguna versión reciente usa</td>
+<td>Periódicamente; por defecto conserva 7 días</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="resumen" class="slide level2">
+<h2>Resumen</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 57%">
+<col style="width: 42%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Delta Lake</th>
+<th>Comando</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Upsert</td>
+<td><code>DeltaTable.merge(...).whenMatchedUpdateAll().whenNotMatchedInsertAll()</code></td>
+</tr>
+<tr class="even">
+<td>Historial</td>
+<td><code>.history()</code> / <code>DESCRIBE HISTORY</code></td>
+</tr>
+<tr class="odd">
+<td>Time travel</td>
+<td><code>.option("versionAsOf", n)</code> / <code>VERSION AS OF n</code></td>
+</tr>
+<tr class="even">
+<td>Deshacer</td>
+<td><code>.restoreToVersion(n)</code></td>
+</tr>
+<tr class="odd">
+<td>Evolucionar schema</td>
+<td><code>.option("mergeSchema", "true")</code></td>
+</tr>
+<tr class="even">
+<td>Compactar</td>
+<td><code>.optimize().executeCompaction()</code> / <code>.executeZOrderBy(col)</code></td>
+</tr>
+<tr class="odd">
+<td>Limpiar versiones antiguas</td>
+<td><code>.vacuum(horas)</code></td>
+</tr>
+</tbody>
+</table>
 
-</section></section>
+</section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

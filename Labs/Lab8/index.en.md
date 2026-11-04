@@ -8,11 +8,10 @@ nav_order: 8
 layout: default
 ---
 
-# Lab 8: Introduction to Game Physics
+# Lab 8: Structured Streaming
 
-Here, we have some pygame code samples.
+Process data that keeps arriving: windows, watermarks, checkpoints and triggers.
 
 ### Files
 
-* [Gravity](./files/01_gravity_jump.py)
-* [Physics](./files/02_platformer_physics.py)
+* [Sources, sinks, windows, watermark, checkpoint and exercises](./files/01_structured_streaming.ipynb)

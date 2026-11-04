@@ -8,18 +8,18 @@ nav_order: 10
 layout: default
 ---
 
-# Lecture 10: Introduction to IA and states
+# Lecture 10: Machine Learning with MLlib
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* Machine States
->* AI for enemies
->* Bots
+>* Transformers, Estimators and Pipelines
+>* Feature preparation
+>* Evaluation and decision threshold
+>* Cross-validation, saving models and scoring
 
 
 ### Slides
 
 * <a href="./slides/teoria.html" target="_blank">**Slides**</a>
-

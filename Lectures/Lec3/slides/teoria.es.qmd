@@ -1,6 +1,6 @@
 ---
-title: "Sprites, Collisions y Animations"
-subtitle: "Pygame Game Development Course"
+title: "De Pandas a Spark"
+subtitle: "Big Data con PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: es
 format:
@@ -15,195 +15,145 @@ format:
     fontsize: 30px
   html:
     allow-html: true
-jupyter: python3
 ---
 
-::: {.callout-note}
-En estos módulos aprenderás:
+## Lo que aprenderás
 
-- Qué es un Sprite, la clase `pygame.sprite.Sprite`, groups, y transparency
-- `pygame.Rect` en profundidad, tipos de collision, y collision response
-- Animation basada en frames, spritesheets, y la state machine de animation
+- Cómo funciona Spark: driver, executors y particiones
+- Crear una `SparkSession` en modo local
+- Crear y leer DataFrames, con schemas explícitos
+- Explorar, seleccionar, filtrar y transformar: Pandas vs Spark
+- UDFs y por qué evitarlas cuando sea posible
+
+---
+
+## Cómo funciona Spark
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                       SPARK CLUSTER                          │
+│   ┌───────────┐     ┌────────────┐     ┌────────────┐        │
+│   │  Driver   │────▶│  Executor  │     │  Executor  │        │
+│   │ (code &   │     │ (Worker 1) │     │ (Worker 2) │        │
+│   │  plans)   │     │ Partition1 │     │ Partition2 │        │
+│   └───────────┘     └────────────┘     └────────────┘        │
+│         local[*] mode → everything runs on ONE machine       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Los datos se dividen en **particiones** procesadas en paralelo. En **modo local**, todo ocurre en tu máquina.
+
+---
+
+## Pandas vs Spark
+
+| | Pandas | Spark |
+|-|--------|-------|
+| **Se ejecuta en** | 1 máquina, 1 proceso | Clúster de máquinas (o local) |
+| **Datos** | En RAM | Distribuidos en particiones |
+| **Ejecución** | Inmediata (eager) | Perezosa: solo corre con una acción |
+| **Escala** | Hasta unos pocos GB | Terabytes / petabytes |
+| **Punto de entrada** | `import pandas as pd` | `SparkSession` |
+
+---
+
+## SparkSession y schemas
+
+```python
+spark = (
+    SparkSession.builder
+    .appName("Spark vs Pandas")
+    .master("local[*]")                          # all CPU cores
+    .config("spark.sql.shuffle.partitions", "4")
+    .getOrCreate()
+)
+
+schema = StructType([
+    StructField("order_id", IntegerType(), nullable=False),
+    StructField("product",  StringType(),  nullable=False),
+    StructField("rating",   DoubleType(),  nullable=True),
+])
+```
+
+Un schema explícito se recomienda en producción: evita el costo de inferencia y deja clara la intención.
+
+---
+
+## Leer y convertir
+
+```python
+sdf = spark.read.csv("sales.csv", header=True, inferSchema=True)
+sdf = spark.read.parquet("sales.parquet")     # preferred columnar format
+sdf = spark.read.json("sales.json")
+
+pdf = sdf.toPandas()                          # Spark → Pandas
+sdf = spark.createDataFrame(pdf)              # Pandas → Spark
+```
+
+::: {.callout-warning}
+`toPandas()` lleva **todos los datos** al driver. Úsalo solo con DataFrames pequeños.
 :::
 
-# Sprites e Imágenes
+---
 
-## ¿Qué es un Sprite?
+## Exploración
 
-En el desarrollo de videojuegos, un **sprite** es cualquier objeto visual del juego: el jugador, un enemigo, una bala, un objeto recolectable. El término viene de los chips gráficos de los años 80 que manejaban objetos 2D independientes sobre un fondo.
+| Operación | Pandas | Spark |
+|-----------|--------|-------|
+| Dimensiones | `df.shape` | `df.count(), len(df.columns)` |
+| Primeras filas | `df.head(n)` | `df.show(n)` |
+| Tipos | `df.dtypes` | `df.printSchema()` |
+| Estadísticas | `df.describe()` | `df.describe()` |
+| Valores únicos | `df["c"].unique()` | `df.select("c").distinct()` |
+| Conteo de valores | `df["c"].value_counts()` | `df.groupBy("c").count()` |
 
-En Pygame, `pygame.sprite.Sprite` es una clase base que te da estructura para manejar los objetos del juego de forma organizada. Cada sprite tiene dos atributos obligatorios:
+---
 
-- **`self.image`** → la Surface visual (el dibujo)
-- **`self.rect`** → el rectángulo que define la posición y el tamaño
+## Selección y filtrado
 
-```
- self.image            self.rect
- ┌──────────┐          ┌──────────┐
- │  pixels  │          │ x, y     │  ← position on screen
- │  (Surface│          │ w, h     │  ← width and height
- │   2D)    │          │ center   │  ← and many helper props
- └──────────┘          └──────────┘
-```
+| Operación | Pandas | Spark |
+|-----------|--------|-------|
+| Seleccionar columnas | `df[["a", "b"]]` | `df.select("a", "b")` |
+| Filtrar filas | `df[df["c"] > x]` | `df.filter(df.c > x)` |
+| Filtro estilo SQL | `df.query("c > x")` | `df.filter("c > x")` |
+| Operador IN | `df[df["c"].isin([...])]` | `df.filter(df.c.isin([...]))` |
+| Filtro de nulos | `df[df["c"].isnull()]` | `df.filter(F.col("c").isNull())` |
+| Ordenar | `df.sort_values("c")` | `df.orderBy("c")` |
 
-## Anatomía de un Sprite
+---
 
-```python
-class Player(pygame.sprite.Sprite):
-    def __init__(self, x, y):
-        super().__init__()           # MANDATORY: call the parent __init__
-
-        # image: Surface with the drawing
-        self.image = pygame.Surface((48, 48))
-        self.image.fill((50, 120, 220))   # Solid blue
-
-        # rect: position and size on screen
-        self.rect = self.image.get_rect()
-        self.rect.topleft = (x, y)   # Place on screen
-
-        # Game-specific attributes
-        self.speed = 4
-
-    def update(self):                # Called by the group every frame
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:  self.rect.x -= self.speed
-        if keys[pygame.K_RIGHT]: self.rect.x += self.speed
-```
-
-## ¿Por qué usar Sprite en lugar de variables sueltas?
-
-| Sin Sprite | Con Sprite |
-|----------------|-------------|
-| `player_x`, `player_y`, `player_img`... | `player.rect.x`, `player.image` |
-| Lógica dispersa por todo el código | Encapsulada en la clase |
-| Collisions manuales complicadas | Automáticas con `spritecollide()` |
-| Dibujar objeto por objeto | `group.draw(screen)` |
-
-## Propiedades de Rect
-
-```{python}
-# Simulating Sprite attributes (without pygame)
-
-class SimulatedRect:
-    """Simulates the main attributes of pygame.Rect"""
-    def __init__(self, x, y, w, h):
-        self.x, self.y = x, y
-        self.width, self.height = w, h
-
-    @property
-    def center(self): return (self.x + self.width//2, self.y + self.height//2)
-    @property
-    def topleft(self): return (self.x, self.y)
-    @property
-    def topright(self): return (self.x + self.width, self.y)
-    @property
-    def bottomleft(self): return (self.x, self.y + self.height)
-    @property
-    def right(self): return self.x + self.width
-    @property
-    def bottom(self): return self.y + self.height
-    @property
-    def centerx(self): return self.x + self.width // 2
-    @property
-    def centery(self): return self.y + self.height // 2
-
-rect = SimulatedRect(100, 50, 48, 48)
-
-print("pygame.Rect properties:")
-print(f"  rect.x, rect.y      = {rect.x}, {rect.y}        ← esquina superior izquierda")
-print(f"  rect.width, height  = {rect.width}, {rect.height}       ← tamaño")
-print(f"  rect.center         = {rect.center}   ← punto central")
-print(f"  rect.topleft        = {rect.topleft}  ← alias de (x, y)")
-print(f"  rect.topright       = {rect.topright} ← esquina superior derecha")
-print(f"  rect.bottomleft     = {rect.bottomleft} ← esquina inferior izquierda")
-print(f"  rect.right          = {rect.right}       ← borde derecho")
-print(f"  rect.bottom         = {rect.bottom}       ← borde inferior")
-print()
-print("Mover asignando cualquier propiedad:")
-print("  rect.center = (400, 300)  → centra el sprite")
-print("  rect.topright = (800, 0)  → esquina superior derecha de la pantalla")
-```
-
-## Sprite Groups
-
-Un `pygame.sprite.Group` es una colección de sprites con superpoderes integrados:
+## Transformaciones
 
 ```python
-all_sprites = pygame.sprite.Group()    # General group
-bullets     = pygame.sprite.Group()    # Specific group
-enemies     = pygame.sprite.Group()
-
-# Adding sprites
-player = Player(400, 300)
-all_sprites.add(player)
-bullets.add(Bullet(400, 300))
-
-# Inside the Game Loop:
-all_sprites.update()          # Calls update() on ALL sprites
-all_sprites.draw(screen)      # Draws ALL sprites at once
-
-# Remove a sprite from ALL its groups
-sprite.kill()
+sdf2 = (
+    sdf
+    .withColumn("total", F.col("price") * F.col("quantity"))
+    .withColumn("price_range",
+        F.when(F.col("price") < 100, "Budget")
+         .when(F.col("price") < 500, "Mid-range")
+         .otherwise("Premium"))
+    .withColumn("product_upper", F.upper(F.col("product")))
+    .withColumn("sale_date", F.to_date(F.col("sale_date"), "yyyy-MM-dd"))
+    .withColumn("year", F.year(F.col("sale_date")))
+    .fillna({"rating": 4.3})
+    .withColumnRenamed("price", "price_usd")
+    .drop("product_upper")
+)
 ```
 
-Un sprite puede pertenecer a **múltiples groups** al mismo tiempo.
+---
 
-## Cargando Imágenes
+## UDFs
 
 ```python
-# Load from file
-image = pygame.image.load("player.png")
+def classify_price(price):
+    if price is None: return "Unknown"
+    return "Budget" if price < 100 else "Premium"
 
-# IMPORTANT: convert for better performance
-image = image.convert()         # No transparency
-image = image.convert_alpha()   # With transparency (PNG with alpha channel)
-
-# Make one color transparent (for sprites without an alpha channel)
-image.set_colorkey((255, 0, 255))  # Magenta = transparent
-
-# Scale
-image = pygame.transform.scale(image, (64, 64))
+classify_udf = F.udf(classify_price, StringType())
+sdf2 = sdf2.withColumn("price_class", classify_udf(F.col("price")))
 ```
 
-## Transparency y Surfaces
-
-Pygame tiene tres niveles de transparency:
-
-| Método | Cómo funciona | Uso típico |
-|--------|--------------|-------------|
-| `Surface.set_alpha(0-255)` | Transparency global de toda la Surface | Fade in/out, HUDs |
-| `Surface.set_colorkey(color)` | Un color específico se vuelve transparente | Sprites sin alpha en el PNG |
-| `convert_alpha()` + PNG | Canal alpha por píxel | Sprites con bordes suaves |
-
-
-## Transparency y Surfaces
-
-Pygame tiene tres niveles de transparency:
-
-| Método | Cómo funciona | Uso típico |
-|--------|--------------|-------------|
-| `Surface.set_alpha(0-255)` | Transparency global de toda la Surface | Fade in/out, HUDs |
-| `Surface.set_colorkey(color)` | Un color específico se vuelve transparente | Sprites sin alpha en el PNG |
-| `convert_alpha()` + PNG | Canal alpha por píxel | Sprites con bordes suaves |
-
-```python
-# Semi-transparent surface
-surf = pygame.Surface((200, 100))
-surf.set_alpha(128)   # 0 = invisible, 255 = solid
-surf.fill((0, 0, 0))  # Semi-transparent black overlay
-
-# Surface with per-pixel alpha support
-surf = pygame.Surface((64, 64), pygame.SRCALPHA)
-# Now you can draw with (R, G, B, A) colors
-pygame.draw.circle(surf, (255, 0, 0, 180), (32, 32), 30)
-```
-
-## Sprite — Resumen {.unnumbered}
-
-- `Sprite` = Clase base — self.image y self.rect son obligatorios
-- `Group` = Colección que maneja update() y draw() para todos los sprites
-- `kill()` = Elimina el sprite de todos sus groups (lo destruye del juego)
-- `convert()` = Optimiza la imagen para el display actual (mejor FPS)
-- `set_alpha` = Transparency global 0-255
-- `SRCALPHA` = Flag para una surface con canal alpha por píxel
-
+::: {.callout-warning}
+Las UDFs son el equivalente de `.apply()`, pero son más lentas que las funciones nativas `F.*` porque salen de la JVM. Prefiere las funciones nativas cuando existan.
+:::

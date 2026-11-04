@@ -8,13 +8,12 @@ nav_order: 1
 layout: default
 ---
 
-# Lab 1: Introduction to PyGame
+# Lab 1: Python and Pandas
 
-Here, we have some pygame code samples.
+Practice Python basics and the Pandas DataFrame API.
 
 ### Files
 
-* [Estructura basica](./files/01_estructura_basica.py)
-* [FPS y clock](./files/02_fps_y_clock.py)
-* [Eventos e input](./files/03_eventos_input.py)
-* [Special keys](./files/04_keydown_vs_getpressed.py)
+* [Python essentials](./files/01_python_essentials.ipynb)
+* [Pandas: exploration and filtering](./files/02_pandas_explore_filter.ipynb)
+* [Pandas: transformations, aggregations, joins and exercises](./files/03_pandas_transform_aggregate.ipynb)

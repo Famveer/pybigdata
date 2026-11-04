@@ -8,18 +8,19 @@ nav_order: 6
 layout: default
 ---
 
-# Clase 6: Introducción a Scenes
+# Clase 6: Skew, Cache, AQE y UDFs
 {: .no_toc }
 
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Scenes
->* Scene transitions
->* Events
+>* Data skew y salting
+>* Cache y persist
+>* Adaptive Query Execution
+>* Funciones nativas vs UDFs
+>* Spark UI
 
 
 ### Slides
 
 * <a href="./slides/teoria.es.html" target="_blank">**Slides**</a>
-

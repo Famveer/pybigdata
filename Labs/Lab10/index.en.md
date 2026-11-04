@@ -8,11 +8,10 @@ nav_order: 10
 layout: default
 ---
 
-# Lab 10: Complete Game demo
+# Lab 10: MLlib: Tuning and Deployment
 
-Here, we have some pygame code samples.
+Tune the model with cross-validation, save it and score customers in batch and streaming. The notebook retrains the Lab 9 pipeline.
 
 ### Files
 
-* [Neon Runner demo](./files/neon_runner.py)
-* [Shadow Vault demo](./files/shadow_vault.py)
+* [Cross-validation, saving models and streaming scoring](./files/01_mllib_tuning_deployment.ipynb)

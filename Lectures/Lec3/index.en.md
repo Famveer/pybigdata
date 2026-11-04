@@ -8,18 +8,17 @@ nav_order: 3
 layout: default
 ---
 
-# Lecture 3: Introduction to Sprites
+# Lecture 3: From Pandas to Spark
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* Sprites
->* Rects
->* FPS
+>* Driver, executors and partitions
+>* SparkSession, schemas and file reading
+>* Selection, filtering, transformations and UDFs
 
 
 ### Slides
 
 * <a href="./slides/teoria.html" target="_blank">**Slides**</a>
-

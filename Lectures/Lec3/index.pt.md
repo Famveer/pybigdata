@@ -8,18 +8,17 @@ nav_order: 3
 layout: default
 ---
 
-# Aula 3: Introdução a Sprites
+# Aula 3: De Pandas ao Spark
 {: .no_toc }
 
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* Sprites
->* Rects
->* FPS
+>* Driver, executors e partições
+>* SparkSession, schemas e leitura de arquivos
+>* Seleção, filtragem, transformações e UDFs
 
 
 ### Slides
 
 * <a href="./slides/teoria.pt.html" target="_blank">**Slides**</a>
-

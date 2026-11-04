@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Physics e AI de Inimigos</title>
+  <title>Machine Learning Distribuído com MLlib</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,8 +194,8 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Physics e AI de Inimigos</h1>
-  <p class="subtitle">Curso de Desenvolvimento de Jogos com Pygame</p>
+  <h1 class="title">Machine Learning Distribuído com MLlib</h1>
+  <p class="subtitle">Big Data com PySpark</p>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
@@ -206,234 +206,286 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section>
-<section id="inimigos-e-ai-básica" class="title-slide slide level1 center">
-<h1>🤖 Inimigos e AI Básica</h1>
-
-</section>
-<section id="steering-behaviors" class="slide level2">
-<h2>Steering Behaviors</h2>
-<p>Os steering behaviors são simples <strong>cálculos de força</strong> que, combinados, produzem um movimento de AI que parece complexo.</p>
-<pre><code>Desired Velocity = direction × max_speed
-Steering Force   = Desired Velocity - Current Velocity
-New Velocity     = Current Velocity + Steering Force × dt</code></pre>
-<h3 id="seek">Seek</h3>
-<p>Mova-se em direção a um alvo na velocidade máxima:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a><span class="kw">def</span> seek(ex, ey, evx, evy, tx, ty, max_speed, max_force):</span>
-<span id="cb2-2"><a href=""></a>    dx, dy   <span class="op">=</span> tx <span class="op">-</span> ex, ty <span class="op">-</span> ey</span>
-<span id="cb2-3"><a href=""></a>    dist     <span class="op">=</span> math.hypot(dx, dy)</span>
-<span id="cb2-4"><a href=""></a>    <span class="cf">if</span> dist <span class="op">&lt;</span> <span class="fl">0.1</span>: <span class="cf">return</span> <span class="dv">0</span>, <span class="dv">0</span></span>
-<span id="cb2-5"><a href=""></a>    desired_vx <span class="op">=</span> (dx <span class="op">/</span> dist) <span class="op">*</span> max_speed</span>
-<span id="cb2-6"><a href=""></a>    desired_vy <span class="op">=</span> (dy <span class="op">/</span> dist) <span class="op">*</span> max_speed</span>
-<span id="cb2-7"><a href=""></a>    fx <span class="op">=</span> desired_vx <span class="op">-</span> evx   <span class="co"># Steering = desired - current</span></span>
-<span id="cb2-8"><a href=""></a>    fy <span class="op">=</span> desired_vy <span class="op">-</span> evy</span>
-<span id="cb2-9"><a href=""></a>    <span class="co"># Clamp to max_force</span></span>
-<span id="cb2-10"><a href=""></a>    fmag <span class="op">=</span> math.hypot(fx, fy)</span>
-<span id="cb2-11"><a href=""></a>    <span class="cf">if</span> fmag <span class="op">&gt;</span> max_force:</span>
-<span id="cb2-12"><a href=""></a>        fx, fy <span class="op">=</span> fx <span class="op">/</span> fmag <span class="op">*</span> max_force, fy <span class="op">/</span> fmag <span class="op">*</span> max_force</span>
-<span id="cb2-13"><a href=""></a>    <span class="cf">return</span> fx, fy</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="flee" class="slide level2">
-<h2>Flee</h2>
-<p>O inverso de seek — afaste-se do alvo:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="kw">def</span> flee(ex, ey, evx, evy, tx, ty, max_speed, max_force):</span>
-<span id="cb3-2"><a href=""></a>    <span class="co"># Seek toward a point on the opposite side</span></span>
-<span id="cb3-3"><a href=""></a>    <span class="cf">return</span> seek(ex, ey, evx, evy,</span>
-<span id="cb3-4"><a href=""></a>                ex <span class="op">-</span> (tx <span class="op">-</span> ex),   <span class="co"># Mirrored target X</span></span>
-<span id="cb3-5"><a href=""></a>                ey <span class="op">-</span> (ty <span class="op">-</span> ey),   <span class="co"># Mirrored target Y</span></span>
-<span id="cb3-6"><a href=""></a>                max_speed, max_force)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="arrival-seek-with-deceleration" class="slide level2">
-<h2>Arrival (Seek with deceleration)</h2>
-<p>Reduza a velocidade conforme o enemy se aproxima do alvo, para evitar passar do ponto:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a><span class="kw">def</span> seek_with_arrival(ex, ey, evx, evy, tx, ty,</span>
-<span id="cb4-2"><a href=""></a>                      max_speed, max_force, slow_radius<span class="op">=</span><span class="dv">80</span>):</span>
-<span id="cb4-3"><a href=""></a>    dx, dy   <span class="op">=</span> tx <span class="op">-</span> ex, ty <span class="op">-</span> ey</span>
-<span id="cb4-4"><a href=""></a>    dist     <span class="op">=</span> math.hypot(dx, dy)</span>
-<span id="cb4-5"><a href=""></a>    speed    <span class="op">=</span> max_speed <span class="cf">if</span> dist <span class="op">&gt;</span> slow_radius <span class="cf">else</span> max_speed <span class="op">*</span> (dist <span class="op">/</span> slow_radius)</span>
-<span id="cb4-6"><a href=""></a>    desired_vx <span class="op">=</span> (dx <span class="op">/</span> dist) <span class="op">*</span> speed <span class="cf">if</span> dist <span class="op">&gt;</span> <span class="fl">0.1</span> <span class="cf">else</span> <span class="dv">0</span></span>
-<span id="cb4-7"><a href=""></a>    desired_vy <span class="op">=</span> (dy <span class="op">/</span> dist) <span class="op">*</span> speed <span class="cf">if</span> dist <span class="op">&gt;</span> <span class="fl">0.1</span> <span class="cf">else</span> <span class="dv">0</span></span>
-<span id="cb4-8"><a href=""></a>    fx <span class="op">=</span> desired_vx <span class="op">-</span> evx</span>
-<span id="cb4-9"><a href=""></a>    fy <span class="op">=</span> desired_vy <span class="op">-</span> evy</span>
-<span id="cb4-10"><a href=""></a>    fmag <span class="op">=</span> math.hypot(fx, fy)</span>
-<span id="cb4-11"><a href=""></a>    <span class="cf">if</span> fmag <span class="op">&gt;</span> max_force:</span>
-<span id="cb4-12"><a href=""></a>        fx, fy <span class="op">=</span> fx <span class="op">/</span> fmag <span class="op">*</span> max_force, fy <span class="op">/</span> fmag <span class="op">*</span> max_force</span>
-<span id="cb4-13"><a href=""></a>    <span class="cf">return</span> fx, fy</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="arrival-seek-with-deceleration-1" class="slide level2">
-<h2>Arrival (Seek with deceleration)</h2>
-<p>Reduza a velocidade conforme o enemy se aproxima do alvo, para evitar passar do ponto:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="kw">def</span> seek_with_arrival(ex, ey, evx, evy, tx, ty,</span>
-<span id="cb5-2"><a href=""></a>                      max_speed, max_force, slow_radius<span class="op">=</span><span class="dv">80</span>):</span>
-<span id="cb5-3"><a href=""></a>    dx, dy   <span class="op">=</span> tx <span class="op">-</span> ex, ty <span class="op">-</span> ey</span>
-<span id="cb5-4"><a href=""></a>    dist     <span class="op">=</span> math.hypot(dx, dy)</span>
-<span id="cb5-5"><a href=""></a>    speed    <span class="op">=</span> max_speed <span class="cf">if</span> dist <span class="op">&gt;</span> slow_radius <span class="cf">else</span> max_speed <span class="op">*</span> (dist <span class="op">/</span> slow_radius)</span>
-<span id="cb5-6"><a href=""></a>    desired_vx <span class="op">=</span> (dx <span class="op">/</span> dist) <span class="op">*</span> speed <span class="cf">if</span> dist <span class="op">&gt;</span> <span class="fl">0.1</span> <span class="cf">else</span> <span class="dv">0</span></span>
-<span id="cb5-7"><a href=""></a>    desired_vy <span class="op">=</span> (dy <span class="op">/</span> dist) <span class="op">*</span> speed <span class="cf">if</span> dist <span class="op">&gt;</span> <span class="fl">0.1</span> <span class="cf">else</span> <span class="dv">0</span></span>
-<span id="cb5-8"><a href=""></a>    fx <span class="op">=</span> desired_vx <span class="op">-</span> evx</span>
-<span id="cb5-9"><a href=""></a>    fy <span class="op">=</span> desired_vy <span class="op">-</span> evy</span>
-<span id="cb5-10"><a href=""></a>    fmag <span class="op">=</span> math.hypot(fx, fy)</span>
-<span id="cb5-11"><a href=""></a>    <span class="cf">if</span> fmag <span class="op">&gt;</span> max_force:</span>
-<span id="cb5-12"><a href=""></a>        fx, fy <span class="op">=</span> fx <span class="op">/</span> fmag <span class="op">*</span> max_force, fy <span class="op">/</span> fmag <span class="op">*</span> max_force</span>
-<span id="cb5-13"><a href=""></a>    <span class="cf">return</span> fx, fy</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div id="b4c4076a" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-stdout">
-<pre><code>Comportamento Arrival — speed vs distância até o alvo
-  max_speed=150 px/s   slow_radius=80 px
-
-  Distância    Velocidade   Comportamento
-  --------------------------------------
-  200          150.0        velocidade máxima
-  150          150.0        velocidade máxima
-  100          150.0        velocidade máxima
-  80           150.0        reduzindo
-  60           112.5        reduzindo
-  40           75.0         reduzindo
-  20           37.5         reduzindo
-  5            9.4          parado
-  0            0.0          parado</code></pre>
-</div>
-</div>
-</section>
-<section id="line-of-sight-los" class="slide level2">
-<h2>Line of Sight (LOS)</h2>
-<p>LOS verifica se existe um caminho livre entre dois pontos. Usa uma interseção paramétrica line-AABB:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a><span class="kw">def</span> line_of_sight(ax, ay, bx, by, wall_rects):</span>
-<span id="cb7-2"><a href=""></a>    <span class="co">"""Returns True if A can see B without hitting any wall."""</span></span>
-<span id="cb7-3"><a href=""></a>    dx, dy <span class="op">=</span> bx <span class="op">-</span> ax, by <span class="op">-</span> ay</span>
-<span id="cb7-4"><a href=""></a>    <span class="cf">for</span> wall <span class="kw">in</span> wall_rects:</span>
-<span id="cb7-5"><a href=""></a>        inv_dx <span class="op">=</span> <span class="dv">1</span> <span class="op">/</span> dx <span class="cf">if</span> dx <span class="op">!=</span> <span class="dv">0</span> <span class="cf">else</span> <span class="bu">float</span>(<span class="st">'inf'</span>)</span>
-<span id="cb7-6"><a href=""></a>        inv_dy <span class="op">=</span> <span class="dv">1</span> <span class="op">/</span> dy <span class="cf">if</span> dy <span class="op">!=</span> <span class="dv">0</span> <span class="cf">else</span> <span class="bu">float</span>(<span class="st">'inf'</span>)</span>
-<span id="cb7-7"><a href=""></a>        tx1 <span class="op">=</span> (wall.left   <span class="op">-</span> ax) <span class="op">*</span> inv_dx</span>
-<span id="cb7-8"><a href=""></a>        tx2 <span class="op">=</span> (wall.right  <span class="op">-</span> ax) <span class="op">*</span> inv_dx</span>
-<span id="cb7-9"><a href=""></a>        ty1 <span class="op">=</span> (wall.top    <span class="op">-</span> ay) <span class="op">*</span> inv_dy</span>
-<span id="cb7-10"><a href=""></a>        ty2 <span class="op">=</span> (wall.bottom <span class="op">-</span> ay) <span class="op">*</span> inv_dy</span>
-<span id="cb7-11"><a href=""></a>        tmin <span class="op">=</span> <span class="bu">max</span>(<span class="bu">min</span>(tx1, tx2), <span class="bu">min</span>(ty1, ty2))</span>
-<span id="cb7-12"><a href=""></a>        tmax <span class="op">=</span> <span class="bu">min</span>(<span class="bu">max</span>(tx1, tx2), <span class="bu">max</span>(ty1, ty2))</span>
-<span id="cb7-13"><a href=""></a>        <span class="cf">if</span> tmax <span class="op">&gt;=</span> <span class="dv">0</span> <span class="kw">and</span> tmin <span class="op">&lt;=</span> tmax <span class="kw">and</span> tmin <span class="op">&lt;=</span> <span class="dv">1</span>:</span>
-<span id="cb7-14"><a href=""></a>            <span class="cf">return</span> <span class="va">False</span>   <span class="co"># Blocked</span></span>
-<span id="cb7-15"><a href=""></a>    <span class="cf">return</span> <span class="va">True</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="vision-cone-field-of-view" class="slide level2">
-<h2>Vision Cone (Field of View)</h2>
-<p>Verifica se um alvo cai dentro do arco frontal do enemy:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href=""></a><span class="kw">def</span> in_fov(ex, ey, facing_angle, fov_degrees, tx, ty):</span>
-<span id="cb8-2"><a href=""></a>    dx, dy       <span class="op">=</span> tx <span class="op">-</span> ex, ty <span class="op">-</span> ey</span>
-<span id="cb8-3"><a href=""></a>    target_angle <span class="op">=</span> math.atan2(dy, dx)</span>
-<span id="cb8-4"><a href=""></a>    <span class="co"># Shortest angular distance (handles wraparound)</span></span>
-<span id="cb8-5"><a href=""></a>    delta <span class="op">=</span> <span class="bu">abs</span>(math.atan2(</span>
-<span id="cb8-6"><a href=""></a>        math.sin(target_angle <span class="op">-</span> facing_angle),</span>
-<span id="cb8-7"><a href=""></a>        math.cos(target_angle <span class="op">-</span> facing_angle)</span>
-<span id="cb8-8"><a href=""></a>    ))</span>
-<span id="cb8-9"><a href=""></a>    <span class="cf">return</span> delta <span class="op">&lt;=</span> math.radians(fov_degrees <span class="op">/</span> <span class="dv">2</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="the-finite-state-machine-fsm" class="slide level2">
-<h2>The Finite State Machine (FSM)</h2>
-<p>Uma FSM é um conjunto de <strong>estados</strong> e <strong>transições</strong> entre eles. Um enemy está sempre em exatamente um estado.</p>
-<pre><code>┌──────────────────────────────────────────────────────┐
-│                   ENEMY FSM                          │
-│                                                      │
-│  IDLE ──timer──► PATROL ──detect──► ALERT            │
-│   ▲                 ▲                  │             │
-│   │                 │             timer / lost       │
-│   │                 │                  ▼             │
-│   │                 └───lost──── CHASE ◄─── far      │
-│   │                                   │              │
-│   │                              close│              │
-│   │                                   ▼              │
-│   │                               ATTACK ──low HP──► │
-│   │                                                  │
-│   │                  FLEE ──safe / hp──► PATROL      │
-│   └────────────────────────────────────────────────  │
-└──────────────────────────────────────────────────────┘</code></pre>
-</section>
-<section id="state-base-class-pattern" class="slide level2">
-<h2>State base class pattern</h2>
-<div class="sourceCode" id="cb10"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href=""></a><span class="kw">class</span> State:</span>
-<span id="cb10-2"><a href=""></a>    <span class="kw">def</span> enter(<span class="va">self</span>, enemy): <span class="cf">pass</span></span>
-<span id="cb10-3"><a href=""></a>    <span class="kw">def</span> update(<span class="va">self</span>, enemy, dt, target): <span class="cf">pass</span></span>
-<span id="cb10-4"><a href=""></a>    <span class="kw">def</span> exit(<span class="va">self</span>, enemy):  <span class="cf">pass</span></span>
-<span id="cb10-5"><a href=""></a></span>
-<span id="cb10-6"><a href=""></a><span class="kw">class</span> IdleState(State):</span>
-<span id="cb10-7"><a href=""></a>    <span class="kw">def</span> enter(<span class="va">self</span>, enemy):</span>
-<span id="cb10-8"><a href=""></a>        enemy.vx <span class="op">=</span> enemy.vy <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb10-9"><a href=""></a></span>
-<span id="cb10-10"><a href=""></a>    <span class="kw">def</span> update(<span class="va">self</span>, enemy, dt, target):</span>
-<span id="cb10-11"><a href=""></a>        dist <span class="op">=</span> math.hypot(target.x <span class="op">-</span> enemy.x, target.y <span class="op">-</span> enemy.y)</span>
-<span id="cb10-12"><a href=""></a>        <span class="cf">if</span> dist <span class="op">&lt;</span> DETECT_RADIUS:</span>
-<span id="cb10-13"><a href=""></a>            enemy.transition_to(<span class="st">"ALERT"</span>)</span>
-<span id="cb10-14"><a href=""></a>        <span class="cf">elif</span> enemy.state_timer <span class="op">&gt;</span> IDLE_DURATION:</span>
-<span id="cb10-15"><a href=""></a>            enemy.transition_to(<span class="st">"PATROL"</span>)</span>
-<span id="cb10-16"><a href=""></a></span>
-<span id="cb10-17"><a href=""></a><span class="kw">class</span> ChaseState(State):</span>
-<span id="cb10-18"><a href=""></a>    <span class="kw">def</span> update(<span class="va">self</span>, enemy, dt, target):</span>
-<span id="cb10-19"><a href=""></a>        <span class="cf">if</span> math.hypot(target.x <span class="op">-</span> enemy.x, target.y <span class="op">-</span> enemy.y) <span class="op">&lt;</span> ATTACK_RADIUS:</span>
-<span id="cb10-20"><a href=""></a>            enemy.transition_to(<span class="st">"ATTACK"</span>)</span>
-<span id="cb10-21"><a href=""></a>        <span class="co"># Steer toward target</span></span>
-<span id="cb10-22"><a href=""></a>        fx, fy <span class="op">=</span> seek(enemy.x, enemy.y, enemy.vx, enemy.vy,</span>
-<span id="cb10-23"><a href=""></a>                      target.x, target.y, CHASE_SPEED, MAX_FORCE)</span>
-<span id="cb10-24"><a href=""></a>        enemy.vx <span class="op">+=</span> fx <span class="op">*</span> dt</span>
-<span id="cb10-25"><a href=""></a>        enemy.vy <span class="op">+=</span> fy <span class="op">*</span> dt</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="memory-last-seen-position" class="slide level2">
-<h2>Memory — last seen position</h2>
-<p>Quando o jogador sai do field of view, o enemy se move para a <strong>última posição conhecida</strong> em vez de desistir imediatamente:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href=""></a>MEMORY_DURATION <span class="op">=</span> <span class="fl">3.0</span>   <span class="co"># seconds</span></span>
-<span id="cb11-2"><a href=""></a></span>
-<span id="cb11-3"><a href=""></a><span class="co"># When player is visible:</span></span>
-<span id="cb11-4"><a href=""></a>last_seen_x   <span class="op">=</span> player.x</span>
-<span id="cb11-5"><a href=""></a>last_seen_y   <span class="op">=</span> player.y</span>
-<span id="cb11-6"><a href=""></a>memory_timer  <span class="op">=</span> MEMORY_DURATION</span>
-<span id="cb11-7"><a href=""></a></span>
-<span id="cb11-8"><a href=""></a><span class="co"># When player is not visible:</span></span>
-<span id="cb11-9"><a href=""></a>memory_timer <span class="op">-=</span> dt</span>
-<span id="cb11-10"><a href=""></a><span class="cf">if</span> memory_timer <span class="op">&gt;</span> <span class="dv">0</span>:</span>
-<span id="cb11-11"><a href=""></a>    steer_toward(last_seen_x, last_seen_y)   <span class="co"># Move to last known pos</span></span>
-<span id="cb11-12"><a href=""></a><span class="cf">else</span>:</span>
-<span id="cb11-13"><a href=""></a>    transition_to(<span class="st">"PATROL"</span>)                  <span class="co"># Give up</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="memory-last-seen-position-1" class="slide level2">
-<h2>Memory — last seen position</h2>
-<div id="b994f9e4" class="cell" data-execution_count="2">
-<div class="cell-output cell-output-stdout">
-<pre><code>Simulação de Enemy FSM
-================================================
-   Tempo  State         HP  Dist. jogador
-  ----------------------------------------
-    2.99  PATROL       100           400
-    3.98  PATROL       100           400
-    4.48  ALERT        100           180
-    4.98  ALERT        100           180
-    6.98  CHASE        100           120
-    7.47  ATTACK       100            30
-    7.97  ATTACK     80.15999999999998            30
-    8.46  ATTACK     60.319999999999965            30
-   10.46  CHASE      60.319999999999965           350
-
-Transitions:
-  IDLE → PATROL
-  PATROL → ALERT
-  ALERT → CHASE
-  CHASE → ATTACK
-  ATTACK → CHASE</code></pre>
-</div>
-</div>
-</section>
-<section id="enemy-ai-resumo" class="slide level2 unnumbered">
-<h2>Enemy AI — Resumo</h2>
+<section id="o-que-você-vai-aprender" class="slide level2">
+<h2>O que você vai aprender</h2>
 <ul>
-<li>Steering = <code>desired_velocity - current_velocity</code> → aplicado como força</li>
-<li><strong>Seek</strong>: dirigir-se ao alvo na velocidade máxima</li>
-<li><strong>Flee</strong>: afastar-se (seek inverso)</li>
-<li><strong>Arrival</strong>: seek com a velocidade escalada pela proximidade → sem passar do ponto</li>
-<li><strong>Wander</strong>: ruído aleatório sobre um círculo projetado → movimento idle natural</li>
-<li><strong>LOS</strong>: teste paramétrico ray–AABB → <code>True</code> se nenhuma wall bloquear o caminho</li>
-<li><strong>FOV</strong>: diferença angular entre para onde se olha e a direção do alvo</li>
-<li><strong>FSM</strong>: um único estado ativo por vez; transições explícitas com hooks <code>enter/exit</code></li>
-<li><strong>Memory</strong>: guarda a última posição vista; persegue-a antes de desistir</li>
+<li>Transformer, Estimator e Pipeline</li>
+<li>Preparação de features: nulos, categorias e vetores</li>
+<li>Treinar e avaliar um classificador (churn de clientes)</li>
+<li>Escolher o limiar de decisão</li>
+<li>Validação cruzada, salvar modelos, scoring em batch e streaming</li>
+</ul>
+</section>
+<section id="quando-usar-mllib" class="slide level2">
+<h2>Quando usar MLlib</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 3%">
+<col style="width: 48%">
+<col style="width: 48%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>scikit-learn</th>
+<th>Spark MLlib</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Dados</td>
+<td>Cabem na memória de uma máquina</td>
+<td>Distribuídos, sem limite prático</td>
+</tr>
+<tr class="even">
+<td>Entrada</td>
+<td>NumPy / Pandas</td>
+<td>Spark DataFrame</td>
+</tr>
+<tr class="odd">
+<td>Features</td>
+<td>Uma matriz <code>X</code></td>
+<td><strong>Uma coluna do tipo vetor</strong> (<code>features</code>)</td>
+</tr>
+<tr class="even">
+<td>Algoritmos</td>
+<td>Muito amplo</td>
+<td>Os principais: lineares, árvores, ensembles, clustering, ALS</td>
+</tr>
+</tbody>
+</table>
+<p>Regra prática: se os dados de treino cabem em uma máquina, scikit-learn costuma ser mais simples.</p>
+</section>
+<section id="três-conceitos-centrais" class="slide level2">
+<h2>Três conceitos centrais</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 32%">
+<col style="width: 39%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Conceito</th>
+<th>O que é</th>
+<th>Método</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Transformer</strong></td>
+<td>Recebe um DataFrame e devolve outro com colunas novas</td>
+<td><code>.transform(df)</code></td>
+</tr>
+<tr class="even">
+<td><strong>Estimator</strong></td>
+<td>Aprende dos dados e produz um Transformer</td>
+<td><code>.fit(df)</code></td>
+</tr>
+<tr class="odd">
+<td><strong>Pipeline</strong></td>
+<td>Sequência de estágios; ele próprio é um Estimator</td>
+<td><code>.fit(df)</code> gera um <code>PipelineModel</code></td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-important callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Importante</strong></p>
+</div>
+<div class="callout-content">
+<p>Tudo que aprende dos dados é ajustado <strong>só no treino</strong>. Caso contrário, a avaliação fica otimista (<em>data leakage</em>). O Pipeline garante isso.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="preparação-de-features" class="slide level2">
+<h2>Preparação de features</h2>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Coluna</th>
+<th>Problema</th>
+<th>Estágio</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>last_rating</code>, <code>monthly_spend</code></td>
+<td>Nulos</td>
+<td><code>Imputer</code> (mediana)</td>
+</tr>
+<tr class="even">
+<td><code>plan</code>, <code>region</code></td>
+<td>Texto</td>
+<td><code>StringIndexer</code> + <code>OneHotEncoder</code></td>
+</tr>
+<tr class="odd">
+<td>Todas</td>
+<td>Várias colunas</td>
+<td><code>VectorAssembler</code></td>
+</tr>
+<tr class="even">
+<td>Numéricas</td>
+<td>Escalas diferentes</td>
+<td><code>StandardScaler</code></td>
+</tr>
+</tbody>
+</table>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>train, test <span class="op">=</span> customers.randomSplit([<span class="fl">0.8</span>, <span class="fl">0.2</span>], seed<span class="op">=</span><span class="dv">42</span>)   <span class="co"># before any preparation</span></span>
+<span id="cb1-2"><a href=""></a></span>
+<span id="cb1-3"><a href=""></a>lr <span class="op">=</span> LogisticRegression(featuresCol<span class="op">=</span><span class="st">"features"</span>, labelCol<span class="op">=</span><span class="st">"churn"</span>, maxIter<span class="op">=</span><span class="dv">50</span>)</span>
+<span id="cb1-4"><a href=""></a>pipeline <span class="op">=</span> Pipeline(stages<span class="op">=</span>[imputer, indexer, encoder, assembler, scaler, lr])</span>
+<span id="cb1-5"><a href=""></a>model <span class="op">=</span> pipeline.fit(train)</span>
+<span id="cb1-6"><a href=""></a>pred  <span class="op">=</span> model.transform(test)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="avaliação" class="slide level2 smaller">
+<h2>Avaliação</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 22%">
+<col style="width: 28%">
+<col style="width: 48%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Métrica</th>
+<th>Pergunta</th>
+<th>Quando importa</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>AUC-ROC</strong></td>
+<td>O modelo ordena bem os clientes por risco?</td>
+<td>Comparar modelos, independente do limiar</td>
+</tr>
+<tr class="even">
+<td><strong>AUC-PR</strong></td>
+<td>Idem, focando na classe positiva</td>
+<td>Classes desbalanceadas</td>
+</tr>
+<tr class="odd">
+<td><strong>Precision</strong></td>
+<td>Dos que marquei como churn, quantos eram?</td>
+<td>Custo de abordar um cliente sem necessidade</td>
+</tr>
+<tr class="even">
+<td><strong>Recall</strong></td>
+<td>Dos que eram churn, quantos encontrei?</td>
+<td>Custo de perder um cliente</td>
+</tr>
+<tr class="odd">
+<td><strong>Accuracy</strong></td>
+<td>Quantos acertei no total?</td>
+<td>Enganosa com classes desbalanceadas</td>
+</tr>
+</tbody>
+</table>
+<p>O limiar de 0.5 raramente é o ideal: a escolha é uma <strong>decisão de negócio</strong>.</p>
+</section>
+<section id="comparando-modelos" class="slide level2">
+<h2>Comparando modelos</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 1%">
+<col style="width: 34%">
+<col style="width: 24%">
+<col style="width: 39%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Regressão logística</th>
+<th>Random Forest</th>
+<th>Gradient-Boosted Trees</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Relações</td>
+<td>Lineares</td>
+<td>Não-lineares</td>
+<td>Não-lineares</td>
+</tr>
+<tr class="even">
+<td>Interpretação</td>
+<td>Coeficientes</td>
+<td>Importância de features</td>
+<td>Importância de features</td>
+</tr>
+<tr class="odd">
+<td>Treino</td>
+<td>Rápido</td>
+<td>Paralelo (árvores independentes)</td>
+<td>Sequencial (mais lento)</td>
+</tr>
+<tr class="even">
+<td>Risco de overfitting</td>
+<td>Baixo</td>
+<td>Médio</td>
+<td>Maior, exige tuning</td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-tip callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Dica</strong></p>
+</div>
+<div class="callout-content">
+<p>O modelo mais complexo não é automaticamente o melhor: sempre compare com uma base simples.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="validação-cruzada" class="slide level2">
+<h2>Validação cruzada</h2>
+<pre><code>  params 1:  [train ][train ][valid ]  -&gt; AUC_1
+             [train ][valid ][train ]  -&gt; AUC_2
+             [valid ][train ][train ]  -&gt; AUC_3   =&gt; mean
+  params 2:  ...                                  =&gt; mean</code></pre>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>grid <span class="op">=</span> (ParamGridBuilder()</span>
+<span id="cb3-2"><a href=""></a>        .addGrid(lr.regParam, [<span class="fl">0.0</span>, <span class="fl">0.01</span>, <span class="fl">0.1</span>])</span>
+<span id="cb3-3"><a href=""></a>        .addGrid(lr.elasticNetParam, [<span class="fl">0.0</span>, <span class="fl">1.0</span>]).build())</span>
+<span id="cb3-4"><a href=""></a>cv <span class="op">=</span> CrossValidator(estimator<span class="op">=</span>pipeline, estimatorParamMaps<span class="op">=</span>grid,</span>
+<span id="cb3-5"><a href=""></a>                    evaluator<span class="op">=</span>BinaryClassificationEvaluator(labelCol<span class="op">=</span><span class="st">"churn"</span>),</span>
+<span id="cb3-6"><a href=""></a>                    numFolds<span class="op">=</span><span class="dv">3</span>, parallelism<span class="op">=</span><span class="dv">2</span>, seed<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb3-7"><a href=""></a>best <span class="op">=</span> cv.fit(train).bestModel</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="salvar-e-servir" class="slide level2">
+<h2>Salvar e servir</h2>
+<p>Um <code>PipelineModel</code> salvo contém <strong>todos os estágios</strong>: quem o carrega aplica a mesma preparação. Também funciona em DataFrames de streaming.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>best.write().overwrite().save(MODEL_PATH)</span>
+<span id="cb4-2"><a href=""></a>loaded <span class="op">=</span> PipelineModel.load(MODEL_PATH)</span>
+<span id="cb4-3"><a href=""></a></span>
+<span id="cb4-4"><a href=""></a>stream <span class="op">=</span> spark.readStream.schema(schema).json(STREAM_IN)</span>
+<span id="cb4-5"><a href=""></a>q <span class="op">=</span> (loaded.transform(stream)</span>
+<span id="cb4-6"><a href=""></a>     .select(<span class="st">"customer_id"</span>,</span>
+<span id="cb4-7"><a href=""></a>             F.<span class="bu">round</span>(vector_to_array(<span class="st">"probability"</span>)[<span class="dv">1</span>], <span class="dv">3</span>).alias(<span class="st">"p_churn"</span>))</span>
+<span id="cb4-8"><a href=""></a>     .<span class="bu">filter</span>(<span class="st">"p_churn &gt;= 0.5"</span>)</span>
+<span id="cb4-9"><a href=""></a>     .writeStream.<span class="bu">format</span>(<span class="st">"memory"</span>).queryName(<span class="st">"at_risk"</span>)</span>
+<span id="cb4-10"><a href=""></a>     .outputMode(<span class="st">"append"</span>).start())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="o-percurso-completo" class="slide level2">
+<h2>O percurso completo</h2>
+<pre><code>  raw files ─▶ Bronze ─▶ Silver ─▶ Gold ─▶ model ─▶ batch and streaming predictions</code></pre>
+<ul>
+<li><strong>API de DataFrames:</strong> Pandas vs Spark</li>
+<li><strong>Performance:</strong> shuffles, joins, skew, AQE, cache</li>
+<li><strong>ETL Medallion + Delta Lake</strong></li>
+<li><strong>Structured Streaming</strong></li>
+<li><strong>MLlib</strong></li>
 </ul>
 
-</section></section>
+</section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

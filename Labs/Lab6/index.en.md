@@ -8,11 +8,10 @@ nav_order: 6
 layout: default
 ---
 
-# Lab 6: Introduction to Audios
+# Lab 6: ETL with the Medallion Architecture
 
-Here, we have some pygame code samples.
+Build a Bronze, Silver and Gold pipeline from messy files, using Parquet.
 
 ### Files
 
-* [Music](./files/01_music_sfx.py)
-* [Spatial audios](./files/02_spatial_audio.py)
+* [Raw data, Bronze, Silver, quarantine, Gold and exercises](./files/01_etl_medallion_parquet.ipynb)

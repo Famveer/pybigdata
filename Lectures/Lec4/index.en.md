@@ -8,18 +8,18 @@ nav_order: 4
 layout: default
 ---
 
-# Lecture 4: Introduction to Collisions
+# Lecture 4: Aggregations, Joins and Spark SQL
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* Collides
->* Collisions
->* Overlappings
+>* GroupBy and window functions
+>* Joins and unions
+>* Spark SQL
+>* Lazy evaluation, transformations and actions
 
 
 ### Slides
 
 * <a href="./slides/teoria.html" target="_blank">**Slides**</a>
-

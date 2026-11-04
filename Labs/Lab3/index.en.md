@@ -8,11 +8,10 @@ nav_order: 3
 layout: default
 ---
 
-# Lab 3: Introduction to Collisions
+# Lab 3: Aggregations, Joins and Spark SQL
 
-Here, we have some pygame code samples.
+Group, join and query data with Spark SQL, and observe lazy evaluation.
 
 ### Files
 
-* [Colisiones - rects](./files/01_colisiones_rect.py)
-* [Colisiones - sprites](./files/02_colisiones_sprites.py)
+* [GroupBy, joins, Spark SQL, lazy evaluation and examples](./files/01_spark_aggregations_joins_sql.ipynb)

@@ -8,18 +8,18 @@ nav_order: 5
 layout: default
 ---
 
-# Aula 5: Introdução a Animations
+# Aula 5: Como o Spark Executa: Partições e Joins
 {: .no_toc }
 
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* Animations
->* Transitions
->* FPS and clock
+>* Jobs, stages, tasks e shuffles
+>* Ler planos com explain()
+>* Partições, repartition e coalesce
+>* Joins broadcast e sort-merge
 
 
 ### Slides
 
 * <a href="./slides/teoria.pt.html" target="_blank">**Slides**</a>
-

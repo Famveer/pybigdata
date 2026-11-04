@@ -1,6 +1,6 @@
 ---
-title: "Scenes, Audio, y Tilemaps"
-subtitle: "Curso de Desarrollo de Videojuegos con Pygame"
+title: "Delta Lake"
+subtitle: "Big Data con PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: es
 format:
@@ -15,261 +15,122 @@ format:
     fontsize: 30px
   html:
     allow-html: true
-jupyter: python3
 ---
 
+## Lo que aprenderás
 
-# 🗺️ Tilemaps & Scrolling
+- Los límites del Parquet puro
+- El log de transacciones y las escrituras ACID
+- `MERGE`, time travel y schema enforcement
+- `DELETE`, `UPDATE`, `RESTORE`, `OPTIMIZE` y `VACUUM`
 
-## ¿Qué es un Tilemap?
+---
 
-Un **tilemap** es una grilla 2D donde cada celda contiene un número entero pequeño (tile ID) que se asocia a una imagen de tile. Así es como casi todos los juegos 2D almacenan sus niveles — desde Super Mario Bros hasta los juegos indie modernos.
+## Los límites del Parquet puro
 
-## ¿Qué es un Tilemap?
+| Problema | Ejemplo |
+|---------|---------|
+| **Sin atomicidad** | Un job falla durante el `overwrite`: la tabla queda a medias |
+| **Sin UPDATE/MERGE** | Una actualización de estado obliga a reescribir la partición o la tabla |
+| **Lecturas inconsistentes** | Un lector ve archivos antiguos y nuevos mezclados durante la escritura |
+| **Sin historial** | No se puede ver cómo estaba la tabla ayer |
+| **Schema sin protección** | Un archivo con columnas distintas corrompe la tabla en silencio |
 
-Un **tilemap** es una grilla 2D donde cada celda contiene un número entero pequeño (tile ID) que se asocia a una imagen de tile. Así es como casi todos los juegos 2D almacenan sus niveles — desde Super Mario Bros hasta los juegos indie modernos.
+---
 
-```
-Level data (2D list of ints):     Rendered result:
-0 = air   1 = grass   2 = stone
-
- 0  0  0  0  0  0  0  0            ░░░░░░░░
- 0  0  0  1  1  0  0  0            ░░░🌿🌿░░░
- 0  0  0  0  0  0  0  0            ░░░░░░░░
- 1  1  1  2  2  1  1  1            🌿🌿🌿🪨🪨🌿🌿🌿
- 2  2  2  2  2  2  2  2            🪨🪨🪨🪨🪨🪨🪨🪨
-```
-
-## ¿Qué es un Tilemap?
-
-Un **tilemap** es una grilla 2D donde cada celda contiene un número entero pequeño (tile ID) que se asocia a una imagen de tile. Así es como casi todos los juegos 2D almacenan sus niveles — desde Super Mario Bros hasta los juegos indie modernos.
+## El log de transacciones
 
 ```
-Level data (2D list of ints):     Rendered result:
-0 = air   1 = grass   2 = stone
-
- 0  0  0  0  0  0  0  0            ░░░░░░░░
- 0  0  0  1  1  0  0  0            ░░░🌿🌿░░░
- 0  0  0  0  0  0  0  0            ░░░░░░░░
- 1  1  1  2  2  1  1  1            🌿🌿🌿🪨🪨🌿🌿🌿
- 2  2  2  2  2  2  2  2            🪨🪨🪨🪨🪨🪨🪨🪨
+  silver_delta/
+  ├── _delta_log/
+  │   ├── 00000000000000000000.json   <- v0: add files A, B, C
+  │   ├── 00000000000000000001.json   <- v1: remove B, add D   (MERGE)
+  │   └── 00000000000000000002.json   <- v2: remove A          (DELETE)
+  ├── order_date=2024-07-01/part-....parquet
+  └── order_date=2024-07-02/part-....parquet
 ```
 
-Beneficios de los tilemaps:
-- Los niveles son **compactos** — un mapa de 100×50 son solo 5,000 enteros
-- Fáciles de **serializar** (guardar/cargar niveles como archivos de texto)
-- **Renderizado eficiente** — dibuja solo los tiles visibles (culling)
-- **Assets reutilizables** — 10 imágenes de tile pueden construir niveles infinitos
+Los datos siguen en Parquet. El log indica **qué archivos forman cada versión**. Escribir es atómico: o existe el archivo de log de la nueva versión, o la versión no ocurrió.
 
-## Clase TileMap
+---
+
+## MERGE (upsert)
 
 ```python
-class TileMap:
-    def __init__(self, level_data, tile_size):
-        self.data      = level_data
-        self.tile_size = tile_size
-        self.rows      = len(data)
-        self.cols      = len(data[0])
-
-    def get_tile(self, col, row):
-        if 0 <= row < self.rows and 0 <= col < self.cols:
-            return self.data[row][col]
-        return -1   # Out of bounds
-
-    def set_tile(self, col, row, tile_id):
-        if 0 <= row < self.rows and 0 <= col < self.cols:
-            self.data[row][col] = tile_id
-
-    def world_to_tile(self, world_x, world_y):
-        return int(world_x // self.tile_size), int(world_y // self.tile_size)
-
-    def draw(self, surface, camera_x, camera_y):
-        ts = self.tile_size
-
-        # CULLING: only draw tiles visible in the viewport
-        col_start = max(0, int(camera_x // ts))
-        col_end   = min(self.cols, int((camera_x + SCREEN_W) // ts) + 1)
-        row_start = max(0, int(camera_y // ts))
-        row_end   = min(self.rows, int((camera_y + SCREEN_H) // ts) + 1)
-
-        for row in range(row_start, row_end):
-            for col in range(col_start, col_end):
-                tile_id  = self.data[row][col]
-                if tile_id == 0: continue
-                screen_x = col * ts - camera_x
-                screen_y = row * ts - camera_y
-                surface.blit(tile_images[tile_id], (screen_x, screen_y))
+(orders_dt.alias("t")
+ .merge(updates.alias("s"), "t.order_id = s.order_id")
+ .whenMatchedUpdateAll(condition="s.updated_at > t.updated_at")
+ .whenNotMatchedInsertAll()
+ .execute())
 ```
 
-```{python}
-# Demonstrate culling savings
+La condición `s.updated_at > t.updated_at` protege contra datos atrasados: un evento antiguo que llega después no sobrescribe un estado más nuevo.
 
-def culling_stats(map_cols, map_rows, screen_w, screen_h, tile_size):
-    """How many tiles do we skip by culling?"""
-    total      = map_cols * map_rows
-    visible_c  = screen_w  // tile_size + 2
-    visible_r  = screen_h // tile_size + 2
-    visible    = min(visible_c, map_cols) * min(visible_r, map_rows)
-    skipped    = total - visible
-    savings    = skipped / total * 100
-    return total, visible, skipped, savings
+---
 
-print("Culling savings — tiles omitidos vs dibujados por frame")
-print("=" * 60)
-print(f"  {'Tamaño de mapa':<16} {'Total':<8} {'Visible':<10} {'Omitidos':<10} {'Ahorrado'}")
-print("  " + "-" * 56)
+## Historial y time travel
 
-configs = [
-    (20,  15, 900, 600, 40, "Pequeño (20×15)"),
-    (50,  30, 900, 600, 40, "Mediano (50×30)"),
-    (100, 50, 900, 600, 40, "Grande (100×50)"),
-    (200, 80, 900, 600, 40, "Enorme (200×80)"),
-]
-for cols, rows, sw, sh, ts, label in configs:
-    total, vis, skip, savings = culling_stats(cols, rows, sw, sh, ts)
-    print(f"  {label:<16} {total:<8} {vis:<10} {skip:<10} {savings:.0f}%")
-```
-
-## La Camera
-
-La Camera representa el **viewport hacia el mundo**. Todo se dibuja en **world space** y se convierte a **screen space** para el rendering.
+Cada operación genera una nueva versión. Las antiguas siguen legibles hasta que `VACUUM` las elimina.
 
 ```python
-class Camera:
-    def __init__(self, view_w, view_h):
-        self.x    = 0.0   # Camera top-left in world space
-        self.y    = 0.0
-        self.zoom = 1.0
+orders_dt.history().select("version", "timestamp", "operation").show()
 
-    def world_to_screen(self, wx, wy):
-        """What screen pixel does this world coordinate map to?"""
-        sx = (wx - self.x) * self.zoom
-        sy = (wy - self.y) * self.zoom
-        return int(sx), int(sy)
+v0 = spark.read.format("delta").option("versionAsOf", 0).load(SILVER_DELTA)
 
-    def screen_to_world(self, sx, sy):
-        """What world coordinate is under this screen pixel?"""
-        wx = sx / self.zoom + self.x
-        wy = sy / self.zoom + self.y
-        return wx, wy
-
-    def follow(self, target_x, target_y, dt, world_w, world_h):
-        """Smooth follow with lerp."""
-        desired_x = target_x - self.view_w / (2 * self.zoom)
-        desired_y = target_y - self.view_h / (2 * self.zoom)
-        self.x += (desired_x - self.x) * 6.0 * dt  # Lerp
-        # Clamp to world bounds
-        self.x = max(0, min(self.x, world_w - self.view_w / self.zoom))
-        self.y = max(0, min(self.y, world_h - self.view_h / self.zoom))
+spark.sql(f"SELECT status, COUNT(*) FROM delta.`{SILVER_DELTA}` "
+          "VERSION AS OF 0 GROUP BY status")
 ```
 
-## Camera Dead Zone
+---
 
-Una **dead zone** es una región alrededor del centro de la pantalla donde la Camera no se mueve. El jugador puede moverse libremente dentro de la dead zone; la Camera solo se mueve cuando el jugador llega a su borde.
+## Schema enforcement & evolution
 
-```
-Screen:
-┌──────────────────────────────────┐
-│                                  │
-│      ┌──────────────┐            │
-│      │  DEAD ZONE   │            │
-│      │   Player ●   │ ← camera   │
-│      │  moves here  │   doesn't  │
-│      │  freely      │   move     │
-│      └──────────────┘            │
-│                                  │
-└──────────────────────────────────┘
-```
-
-## Camera Shake
+Delta **rechaza** escrituras con un schema incompatible. Los cambios intencionales son explícitos:
 
 ```python
-def shake(self, strength=8.0, duration=0.4):
-    self._shake_strength = strength
-    self._shake_timer    = duration
-
-def update_shake(self, dt):
-    if self._shake_timer > 0:
-        self._shake_timer -= dt
-        pct = self._shake_timer / 0.4
-        self._shake_offset = (
-            random.uniform(-1, 1) * self._shake_strength * pct,
-            random.uniform(-1, 1) * self._shake_strength * pct,
-        )
-    else:
-        self._shake_offset = (0, 0)
-
-# Apply offset in world_to_screen():
-sx = (wx - self.x) * self.zoom + self._shake_offset[0]
+(with_coupon.write.format("delta")
+ .mode("append")
+ .option("mergeSchema", "true")     # old rows get null
+ .save(SILVER_DELTA))
 ```
 
-## Parallax Scrolling
+---
 
-Parallax hace que el mundo se sienta **profundo** al hacer scroll de las diferentes capas de fondo a distintas velocidades.
-
-```
-Layer           Speed (% of camera)   Perceived depth
-─────           ───────────────────   ───────────────
-Stars              5%                   Very far away
-Distant mountains  15%                  Far
-Near mountains     25%                  Medium
-Clouds            30–50%                Near background
-```
+## DELETE, UPDATE & RESTORE
 
 ```python
-class ParallaxLayer:
-    """
-    factor = 0.0 → stationary (sky)
-    factor = 1.0 → moves with the world (foreground)
-    """
-    def __init__(self, factor):
-        self.factor = factor
-
-    def draw(self, surface, camera_x):
-        offset_x = int(camera_x * self.factor)
-        for element in self.elements:
-            screen_x = element.x - offset_x
-            # Seamless horizontal wrap
-            screen_x = screen_x % (WORLD_W + SCREEN_W) - SCREEN_W
-            # Draw at screen_x...
+orders_dt.restoreToVersion(merge_version)
+orders_dt.delete(F.col("customer_id") == customer)
+orders_dt.update(
+    condition="status = 'created' AND created_at < '2024-07-03'",
+    set={"status": F.lit("expired")},
+)
 ```
 
-## Parallax Scrolling
+::: {.callout-warning}
+Tras un `DELETE`, los datos siguen en los archivos Parquet de versiones antiguas y el time travel puede leerlos. Para una eliminación real (p. ej. LGPD), hay que ejecutar `VACUUM`.
+:::
 
-```{python}
-# Simulate parallax offset for different layers at the same camera position
+---
 
-camera_x = 500  # Camera scrolled 500px to the right
+## OPTIMIZE & VACUUM
 
-layers = [
-    ("Estrellas (lejos)",       0.05),
-    ("Montañas distantes",      0.15),
-    ("Montañas cercanas",       0.25),
-    ("Nubes lejanas",           0.30),
-    ("Nubes cercanas",          0.50),
-    ("Árboles de fondo",        0.70),
-    ("Objetos del mundo",       1.00),
-]
+| Comando | Qué hace | Cuándo |
+|---------|-------------|--------|
+| `OPTIMIZE` | Compacta archivos pequeños en otros mayores | Tras muchos MERGE/append |
+| `OPTIMIZE ... ZORDER BY (col)` | También reorganiza los datos para saltar más bloques al filtrar por `col` | Columnas muy filtradas, fuera de la partición |
+| `VACUUM` | Borra archivos que ninguna versión reciente usa | Periódicamente; por defecto conserva 7 días |
 
-print(f"Camera se desplazó {camera_x}px hacia la derecha")
-print()
-print(f"  {'Capa':<22} {'Factor':<8} {'Desplazamiento':<12} {'Ilusión'}")
-print("  " + "-" * 56)
-for name, factor in layers:
-    scrolled = camera_x * factor
-    illusion = "Estático"    if factor < 0.1 else \
-               "Muy lejos"   if factor < 0.2 else \
-               "Lejos"       if factor < 0.4 else \
-               "Medio"       if factor < 0.7 else "Igual que el mundo"
-    print(f"  {name:<22} {factor:<8.2f} {scrolled:<12.0f} {illusion}")
-```
+---
 
-## Tilemaps & Camera — Resumen {.unnumbered}
+## Resumen
 
-- Tilemap = lista 2D de ints → compacto, serializable, eficiente
-- **Culling**: dibuja solo los tiles dentro del viewport — crítico para mapas grandes
-- La Camera convierte coordenadas **world ↔ screen** para cada objeto
-- **Smooth follow**: lerp hacia la posición deseada de la Camera en cada frame
-- **Dead zone**: el jugador se mueve libremente en una región central antes de que la Camera lo siga
-- **Parallax**: las capas de fondo hacen scroll según `camera_x * factor`; menor = más lejos
-
+| Delta Lake | Comando |
+|------------|---------|
+| Upsert | `DeltaTable.merge(...).whenMatchedUpdateAll().whenNotMatchedInsertAll()` |
+| Historial | `.history()` / `DESCRIBE HISTORY` |
+| Time travel | `.option("versionAsOf", n)` / `VERSION AS OF n` |
+| Deshacer | `.restoreToVersion(n)` |
+| Evolucionar schema | `.option("mergeSchema", "true")` |
+| Compactar | `.optimize().executeCompaction()` / `.executeZOrderBy(col)` |
+| Limpiar versiones antiguas | `.vacuum(horas)` |

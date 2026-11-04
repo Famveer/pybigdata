@@ -8,18 +8,18 @@ nav_order: 9
 layout: default
 ---
 
-# Lecture 9: Introduction to Game Physics
+# Lecture 9: Structured Streaming
 {: .no_toc }
 
 {: .summary}
 >In this lecture, we will learn:
 >
->* Physics in games
->* delta and euler formula
->* Accelerations
+>* Unbounded tables and micro-batches
+>* Output modes and triggers
+>* Windows and watermarks
+>* Checkpoints and exactly-once
 
 
 ### Slides
 
 * <a href="./slides/teoria.html" target="_blank">**Slides**</a>
-

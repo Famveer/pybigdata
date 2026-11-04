@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>Sprites, Collisions y Animations</title>
+  <title>De Pandas a Spark</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,8 +194,8 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">Sprites, Collisions y Animations</h1>
-  <p class="subtitle">Pygame Game Development Course</p>
+  <h1 class="title">De Pandas a Spark</h1>
+  <p class="subtitle">Big Data con PySpark</p>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
@@ -206,248 +206,250 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section class="slide level2">
-
-<div class="callout callout-note callout-titled callout-style-default">
+<section id="lo-que-aprenderás" class="slide level2">
+<h2>Lo que aprenderás</h2>
+<ul>
+<li>Cómo funciona Spark: driver, executors y particiones</li>
+<li>Crear una <code>SparkSession</code> en modo local</li>
+<li>Crear y leer DataFrames, con schemas explícitos</li>
+<li>Explorar, seleccionar, filtrar y transformar: Pandas vs Spark</li>
+<li>UDFs y por qué evitarlas cuando sea posible</li>
+</ul>
+</section>
+<section id="cómo-funciona-spark" class="slide level2">
+<h2>Cómo funciona Spark</h2>
+<pre><code>┌──────────────────────────────────────────────────────────────┐
+│                       SPARK CLUSTER                          │
+│   ┌───────────┐     ┌────────────┐     ┌────────────┐        │
+│   │  Driver   │────▶│  Executor  │     │  Executor  │        │
+│   │ (code &amp;   │     │ (Worker 1) │     │ (Worker 2) │        │
+│   │  plans)   │     │ Partition1 │     │ Partition2 │        │
+│   └───────────┘     └────────────┘     └────────────┘        │
+│         local[*] mode → everything runs on ONE machine       │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<p>Los datos se dividen en <strong>particiones</strong> procesadas en paralelo. En <strong>modo local</strong>, todo ocurre en tu máquina.</p>
+</section>
+<section id="pandas-vs-spark" class="slide level2">
+<h2>Pandas vs Spark</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 50%">
+<col style="width: 43%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Pandas</th>
+<th>Spark</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Se ejecuta en</strong></td>
+<td>1 máquina, 1 proceso</td>
+<td>Clúster de máquinas (o local)</td>
+</tr>
+<tr class="even">
+<td><strong>Datos</strong></td>
+<td>En RAM</td>
+<td>Distribuidos en particiones</td>
+</tr>
+<tr class="odd">
+<td><strong>Ejecución</strong></td>
+<td>Inmediata (eager)</td>
+<td>Perezosa: solo corre con una acción</td>
+</tr>
+<tr class="even">
+<td><strong>Escala</strong></td>
+<td>Hasta unos pocos GB</td>
+<td>Terabytes / petabytes</td>
+</tr>
+<tr class="odd">
+<td><strong>Punto de entrada</strong></td>
+<td><code>import pandas as pd</code></td>
+<td><code>SparkSession</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="sparksession-y-schemas" class="slide level2">
+<h2>SparkSession y schemas</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>spark <span class="op">=</span> (</span>
+<span id="cb2-2"><a href=""></a>    SparkSession.builder</span>
+<span id="cb2-3"><a href=""></a>    .appName(<span class="st">"Spark vs Pandas"</span>)</span>
+<span id="cb2-4"><a href=""></a>    .master(<span class="st">"local[*]"</span>)                          <span class="co"># all CPU cores</span></span>
+<span id="cb2-5"><a href=""></a>    .config(<span class="st">"spark.sql.shuffle.partitions"</span>, <span class="st">"4"</span>)</span>
+<span id="cb2-6"><a href=""></a>    .getOrCreate()</span>
+<span id="cb2-7"><a href=""></a>)</span>
+<span id="cb2-8"><a href=""></a></span>
+<span id="cb2-9"><a href=""></a>schema <span class="op">=</span> StructType([</span>
+<span id="cb2-10"><a href=""></a>    StructField(<span class="st">"order_id"</span>, IntegerType(), nullable<span class="op">=</span><span class="va">False</span>),</span>
+<span id="cb2-11"><a href=""></a>    StructField(<span class="st">"product"</span>,  StringType(),  nullable<span class="op">=</span><span class="va">False</span>),</span>
+<span id="cb2-12"><a href=""></a>    StructField(<span class="st">"rating"</span>,   DoubleType(),  nullable<span class="op">=</span><span class="va">True</span>),</span>
+<span id="cb2-13"><a href=""></a>])</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Un schema explícito se recomienda en producción: evita el costo de inferencia y deja clara la intención.</p>
+</section>
+<section id="leer-y-convertir" class="slide level2">
+<h2>Leer y convertir</h2>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>sdf <span class="op">=</span> spark.read.csv(<span class="st">"sales.csv"</span>, header<span class="op">=</span><span class="va">True</span>, inferSchema<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb3-2"><a href=""></a>sdf <span class="op">=</span> spark.read.parquet(<span class="st">"sales.parquet"</span>)     <span class="co"># preferred columnar format</span></span>
+<span id="cb3-3"><a href=""></a>sdf <span class="op">=</span> spark.read.json(<span class="st">"sales.json"</span>)</span>
+<span id="cb3-4"><a href=""></a></span>
+<span id="cb3-5"><a href=""></a>pdf <span class="op">=</span> sdf.toPandas()                          <span class="co"># Spark → Pandas</span></span>
+<span id="cb3-6"><a href=""></a>sdf <span class="op">=</span> spark.createDataFrame(pdf)              <span class="co"># Pandas → Spark</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-warning callout-titled callout-style-default">
 <div class="callout-body">
 <div class="callout-title">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
 </div>
-<p><strong>Nota</strong></p>
+<p><strong>Advertencia</strong></p>
 </div>
 <div class="callout-content">
-<p>En estos módulos aprenderás:</p>
-<ul>
-<li>Qué es un Sprite, la clase <code>pygame.sprite.Sprite</code>, groups, y transparency</li>
-<li><code>pygame.Rect</code> en profundidad, tipos de collision, y collision response</li>
-<li>Animation basada en frames, spritesheets, y la state machine de animation</li>
-</ul>
+<p><code>toPandas()</code> lleva <strong>todos los datos</strong> al driver. Úsalo solo con DataFrames pequeños.</p>
 </div>
 </div>
 </div>
 </section>
-<section>
-<section id="sprites-e-imágenes" class="title-slide slide level1 center">
-<h1>Sprites e Imágenes</h1>
-
-</section>
-<section id="qué-es-un-sprite" class="slide level2">
-<h2>¿Qué es un Sprite?</h2>
-<p>En el desarrollo de videojuegos, un <strong>sprite</strong> es cualquier objeto visual del juego: el jugador, un enemigo, una bala, un objeto recolectable. El término viene de los chips gráficos de los años 80 que manejaban objetos 2D independientes sobre un fondo.</p>
-<p>En Pygame, <code>pygame.sprite.Sprite</code> es una clase base que te da estructura para manejar los objetos del juego de forma organizada. Cada sprite tiene dos atributos obligatorios:</p>
-<ul>
-<li><strong><code>self.image</code></strong> → la Surface visual (el dibujo)</li>
-<li><strong><code>self.rect</code></strong> → el rectángulo que define la posición y el tamaño</li>
-</ul>
-<pre><code> self.image            self.rect
- ┌──────────┐          ┌──────────┐
- │  pixels  │          │ x, y     │  ← position on screen
- │  (Surface│          │ w, h     │  ← width and height
- │   2D)    │          │ center   │  ← and many helper props
- └──────────┘          └──────────┘</code></pre>
-</section>
-<section id="anatomía-de-un-sprite" class="slide level2">
-<h2>Anatomía de un Sprite</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a><span class="kw">class</span> Player(pygame.sprite.Sprite):</span>
-<span id="cb2-2"><a href=""></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, x, y):</span>
-<span id="cb2-3"><a href=""></a>        <span class="bu">super</span>().<span class="fu">__init__</span>()           <span class="co"># MANDATORY: call the parent __init__</span></span>
-<span id="cb2-4"><a href=""></a></span>
-<span id="cb2-5"><a href=""></a>        <span class="co"># image: Surface with the drawing</span></span>
-<span id="cb2-6"><a href=""></a>        <span class="va">self</span>.image <span class="op">=</span> pygame.Surface((<span class="dv">48</span>, <span class="dv">48</span>))</span>
-<span id="cb2-7"><a href=""></a>        <span class="va">self</span>.image.fill((<span class="dv">50</span>, <span class="dv">120</span>, <span class="dv">220</span>))   <span class="co"># Solid blue</span></span>
-<span id="cb2-8"><a href=""></a></span>
-<span id="cb2-9"><a href=""></a>        <span class="co"># rect: position and size on screen</span></span>
-<span id="cb2-10"><a href=""></a>        <span class="va">self</span>.rect <span class="op">=</span> <span class="va">self</span>.image.get_rect()</span>
-<span id="cb2-11"><a href=""></a>        <span class="va">self</span>.rect.topleft <span class="op">=</span> (x, y)   <span class="co"># Place on screen</span></span>
-<span id="cb2-12"><a href=""></a></span>
-<span id="cb2-13"><a href=""></a>        <span class="co"># Game-specific attributes</span></span>
-<span id="cb2-14"><a href=""></a>        <span class="va">self</span>.speed <span class="op">=</span> <span class="dv">4</span></span>
-<span id="cb2-15"><a href=""></a></span>
-<span id="cb2-16"><a href=""></a>    <span class="kw">def</span> update(<span class="va">self</span>):                <span class="co"># Called by the group every frame</span></span>
-<span id="cb2-17"><a href=""></a>        keys <span class="op">=</span> pygame.key.get_pressed()</span>
-<span id="cb2-18"><a href=""></a>        <span class="cf">if</span> keys[pygame.K_LEFT]:  <span class="va">self</span>.rect.x <span class="op">-=</span> <span class="va">self</span>.speed</span>
-<span id="cb2-19"><a href=""></a>        <span class="cf">if</span> keys[pygame.K_RIGHT]: <span class="va">self</span>.rect.x <span class="op">+=</span> <span class="va">self</span>.speed</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="por-qué-usar-sprite-en-lugar-de-variables-sueltas" class="slide level2">
-<h2>¿Por qué usar Sprite en lugar de variables sueltas?</h2>
+<section id="exploración" class="slide level2">
+<h2>Exploración</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 55%">
-<col style="width: 44%">
+<col style="width: 42%">
+<col style="width: 30%">
+<col style="width: 26%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Sin Sprite</th>
-<th>Con Sprite</th>
+<th>Operación</th>
+<th>Pandas</th>
+<th>Spark</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>player_x</code>, <code>player_y</code>, <code>player_img</code>…</td>
-<td><code>player.rect.x</code>, <code>player.image</code></td>
+<td>Dimensiones</td>
+<td><code>df.shape</code></td>
+<td><code>df.count(), len(df.columns)</code></td>
 </tr>
 <tr class="even">
-<td>Lógica dispersa por todo el código</td>
-<td>Encapsulada en la clase</td>
+<td>Primeras filas</td>
+<td><code>df.head(n)</code></td>
+<td><code>df.show(n)</code></td>
 </tr>
 <tr class="odd">
-<td>Collisions manuales complicadas</td>
-<td>Automáticas con <code>spritecollide()</code></td>
+<td>Tipos</td>
+<td><code>df.dtypes</code></td>
+<td><code>df.printSchema()</code></td>
 </tr>
 <tr class="even">
-<td>Dibujar objeto por objeto</td>
-<td><code>group.draw(screen)</code></td>
+<td>Estadísticas</td>
+<td><code>df.describe()</code></td>
+<td><code>df.describe()</code></td>
+</tr>
+<tr class="odd">
+<td>Valores únicos</td>
+<td><code>df["c"].unique()</code></td>
+<td><code>df.select("c").distinct()</code></td>
+</tr>
+<tr class="even">
+<td>Conteo de valores</td>
+<td><code>df["c"].value_counts()</code></td>
+<td><code>df.groupBy("c").count()</code></td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="propiedades-de-rect" class="slide level2">
-<h2>Propiedades de Rect</h2>
-<div id="20774482" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-stdout">
-<pre><code>pygame.Rect properties:
-  rect.x, rect.y      = 100, 50        ← esquina superior izquierda
-  rect.width, height  = 48, 48       ← tamaño
-  rect.center         = (124, 74)   ← punto central
-  rect.topleft        = (100, 50)  ← alias de (x, y)
-  rect.topright       = (148, 50) ← esquina superior derecha
-  rect.bottomleft     = (100, 98) ← esquina inferior izquierda
-  rect.right          = 148       ← borde derecho
-  rect.bottom         = 98       ← borde inferior
-
-Mover asignando cualquier propiedad:
-  rect.center = (400, 300)  → centra el sprite
-  rect.topright = (800, 0)  → esquina superior derecha de la pantalla</code></pre>
-</div>
-</div>
-</section>
-<section id="sprite-groups" class="slide level2">
-<h2>Sprite Groups</h2>
-<p>Un <code>pygame.sprite.Group</code> es una colección de sprites con superpoderes integrados:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>all_sprites <span class="op">=</span> pygame.sprite.Group()    <span class="co"># General group</span></span>
-<span id="cb4-2"><a href=""></a>bullets     <span class="op">=</span> pygame.sprite.Group()    <span class="co"># Specific group</span></span>
-<span id="cb4-3"><a href=""></a>enemies     <span class="op">=</span> pygame.sprite.Group()</span>
-<span id="cb4-4"><a href=""></a></span>
-<span id="cb4-5"><a href=""></a><span class="co"># Adding sprites</span></span>
-<span id="cb4-6"><a href=""></a>player <span class="op">=</span> Player(<span class="dv">400</span>, <span class="dv">300</span>)</span>
-<span id="cb4-7"><a href=""></a>all_sprites.add(player)</span>
-<span id="cb4-8"><a href=""></a>bullets.add(Bullet(<span class="dv">400</span>, <span class="dv">300</span>))</span>
-<span id="cb4-9"><a href=""></a></span>
-<span id="cb4-10"><a href=""></a><span class="co"># Inside the Game Loop:</span></span>
-<span id="cb4-11"><a href=""></a>all_sprites.update()          <span class="co"># Calls update() on ALL sprites</span></span>
-<span id="cb4-12"><a href=""></a>all_sprites.draw(screen)      <span class="co"># Draws ALL sprites at once</span></span>
-<span id="cb4-13"><a href=""></a></span>
-<span id="cb4-14"><a href=""></a><span class="co"># Remove a sprite from ALL its groups</span></span>
-<span id="cb4-15"><a href=""></a>sprite.kill()</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Un sprite puede pertenecer a <strong>múltiples groups</strong> al mismo tiempo.</p>
-</section>
-<section id="cargando-imágenes" class="slide level2">
-<h2>Cargando Imágenes</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="co"># Load from file</span></span>
-<span id="cb5-2"><a href=""></a>image <span class="op">=</span> pygame.image.load(<span class="st">"player.png"</span>)</span>
-<span id="cb5-3"><a href=""></a></span>
-<span id="cb5-4"><a href=""></a><span class="co"># IMPORTANT: convert for better performance</span></span>
-<span id="cb5-5"><a href=""></a>image <span class="op">=</span> image.convert()         <span class="co"># No transparency</span></span>
-<span id="cb5-6"><a href=""></a>image <span class="op">=</span> image.convert_alpha()   <span class="co"># With transparency (PNG with alpha channel)</span></span>
-<span id="cb5-7"><a href=""></a></span>
-<span id="cb5-8"><a href=""></a><span class="co"># Make one color transparent (for sprites without an alpha channel)</span></span>
-<span id="cb5-9"><a href=""></a>image.set_colorkey((<span class="dv">255</span>, <span class="dv">0</span>, <span class="dv">255</span>))  <span class="co"># Magenta = transparent</span></span>
-<span id="cb5-10"><a href=""></a></span>
-<span id="cb5-11"><a href=""></a><span class="co"># Scale</span></span>
-<span id="cb5-12"><a href=""></a>image <span class="op">=</span> pygame.transform.scale(image, (<span class="dv">64</span>, <span class="dv">64</span>))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="transparency-y-surfaces" class="slide level2">
-<h2>Transparency y Surfaces</h2>
-<p>Pygame tiene tres niveles de transparency:</p>
+<section id="selección-y-filtrado" class="slide level2">
+<h2>Selección y filtrado</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 22%">
-<col style="width: 40%">
-<col style="width: 37%">
+<col style="width: 42%">
+<col style="width: 30%">
+<col style="width: 26%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Método</th>
-<th>Cómo funciona</th>
-<th>Uso típico</th>
+<th>Operación</th>
+<th>Pandas</th>
+<th>Spark</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>Surface.set_alpha(0-255)</code></td>
-<td>Transparency global de toda la Surface</td>
-<td>Fade in/out, HUDs</td>
+<td>Seleccionar columnas</td>
+<td><code>df[["a", "b"]]</code></td>
+<td><code>df.select("a", "b")</code></td>
 </tr>
 <tr class="even">
-<td><code>Surface.set_colorkey(color)</code></td>
-<td>Un color específico se vuelve transparente</td>
-<td>Sprites sin alpha en el PNG</td>
+<td>Filtrar filas</td>
+<td><code>df[df["c"] &gt; x]</code></td>
+<td><code>df.filter(df.c &gt; x)</code></td>
 </tr>
 <tr class="odd">
-<td><code>convert_alpha()</code> + PNG</td>
-<td>Canal alpha por píxel</td>
-<td>Sprites con bordes suaves</td>
+<td>Filtro estilo SQL</td>
+<td><code>df.query("c &gt; x")</code></td>
+<td><code>df.filter("c &gt; x")</code></td>
+</tr>
+<tr class="even">
+<td>Operador IN</td>
+<td><code>df[df["c"].isin([...])]</code></td>
+<td><code>df.filter(df.c.isin([...]))</code></td>
+</tr>
+<tr class="odd">
+<td>Filtro de nulos</td>
+<td><code>df[df["c"].isnull()]</code></td>
+<td><code>df.filter(F.col("c").isNull())</code></td>
+</tr>
+<tr class="even">
+<td>Ordenar</td>
+<td><code>df.sort_values("c")</code></td>
+<td><code>df.orderBy("c")</code></td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="transparency-y-surfaces-1" class="slide level2">
-<h2>Transparency y Surfaces</h2>
-<p>Pygame tiene tres niveles de transparency:</p>
-<table class="caption-top">
-<colgroup>
-<col style="width: 22%">
-<col style="width: 40%">
-<col style="width: 37%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Método</th>
-<th>Cómo funciona</th>
-<th>Uso típico</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>Surface.set_alpha(0-255)</code></td>
-<td>Transparency global de toda la Surface</td>
-<td>Fade in/out, HUDs</td>
-</tr>
-<tr class="even">
-<td><code>Surface.set_colorkey(color)</code></td>
-<td>Un color específico se vuelve transparente</td>
-<td>Sprites sin alpha en el PNG</td>
-</tr>
-<tr class="odd">
-<td><code>convert_alpha()</code> + PNG</td>
-<td>Canal alpha por píxel</td>
-<td>Sprites con bordes suaves</td>
-</tr>
-</tbody>
-</table>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a><span class="co"># Semi-transparent surface</span></span>
-<span id="cb6-2"><a href=""></a>surf <span class="op">=</span> pygame.Surface((<span class="dv">200</span>, <span class="dv">100</span>))</span>
-<span id="cb6-3"><a href=""></a>surf.set_alpha(<span class="dv">128</span>)   <span class="co"># 0 = invisible, 255 = solid</span></span>
-<span id="cb6-4"><a href=""></a>surf.fill((<span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">0</span>))  <span class="co"># Semi-transparent black overlay</span></span>
-<span id="cb6-5"><a href=""></a></span>
-<span id="cb6-6"><a href=""></a><span class="co"># Surface with per-pixel alpha support</span></span>
-<span id="cb6-7"><a href=""></a>surf <span class="op">=</span> pygame.Surface((<span class="dv">64</span>, <span class="dv">64</span>), pygame.SRCALPHA)</span>
-<span id="cb6-8"><a href=""></a><span class="co"># Now you can draw with (R, G, B, A) colors</span></span>
-<span id="cb6-9"><a href=""></a>pygame.draw.circle(surf, (<span class="dv">255</span>, <span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">180</span>), (<span class="dv">32</span>, <span class="dv">32</span>), <span class="dv">30</span>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="transformaciones" class="slide level2">
+<h2>Transformaciones</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>sdf2 <span class="op">=</span> (</span>
+<span id="cb4-2"><a href=""></a>    sdf</span>
+<span id="cb4-3"><a href=""></a>    .withColumn(<span class="st">"total"</span>, F.col(<span class="st">"price"</span>) <span class="op">*</span> F.col(<span class="st">"quantity"</span>))</span>
+<span id="cb4-4"><a href=""></a>    .withColumn(<span class="st">"price_range"</span>,</span>
+<span id="cb4-5"><a href=""></a>        F.when(F.col(<span class="st">"price"</span>) <span class="op">&lt;</span> <span class="dv">100</span>, <span class="st">"Budget"</span>)</span>
+<span id="cb4-6"><a href=""></a>         .when(F.col(<span class="st">"price"</span>) <span class="op">&lt;</span> <span class="dv">500</span>, <span class="st">"Mid-range"</span>)</span>
+<span id="cb4-7"><a href=""></a>         .otherwise(<span class="st">"Premium"</span>))</span>
+<span id="cb4-8"><a href=""></a>    .withColumn(<span class="st">"product_upper"</span>, F.upper(F.col(<span class="st">"product"</span>)))</span>
+<span id="cb4-9"><a href=""></a>    .withColumn(<span class="st">"sale_date"</span>, F.to_date(F.col(<span class="st">"sale_date"</span>), <span class="st">"yyyy-MM-dd"</span>))</span>
+<span id="cb4-10"><a href=""></a>    .withColumn(<span class="st">"year"</span>, F.year(F.col(<span class="st">"sale_date"</span>)))</span>
+<span id="cb4-11"><a href=""></a>    .fillna({<span class="st">"rating"</span>: <span class="fl">4.3</span>})</span>
+<span id="cb4-12"><a href=""></a>    .withColumnRenamed(<span class="st">"price"</span>, <span class="st">"price_usd"</span>)</span>
+<span id="cb4-13"><a href=""></a>    .drop(<span class="st">"product_upper"</span>)</span>
+<span id="cb4-14"><a href=""></a>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="sprite-resumen" class="slide level2 unnumbered">
-<h2>Sprite — Resumen</h2>
-<ul>
-<li><code>Sprite</code> = Clase base — self.image y self.rect son obligatorios</li>
-<li><code>Group</code> = Colección que maneja update() y draw() para todos los sprites</li>
-<li><code>kill()</code> = Elimina el sprite de todos sus groups (lo destruye del juego)</li>
-<li><code>convert()</code> = Optimiza la imagen para el display actual (mejor FPS)</li>
-<li><code>set_alpha</code> = Transparency global 0-255</li>
-<li><code>SRCALPHA</code> = Flag para una surface con canal alpha por píxel</li>
-</ul>
+<section id="udfs" class="slide level2">
+<h2>UDFs</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="kw">def</span> classify_price(price):</span>
+<span id="cb5-2"><a href=""></a>    <span class="cf">if</span> price <span class="kw">is</span> <span class="va">None</span>: <span class="cf">return</span> <span class="st">"Unknown"</span></span>
+<span id="cb5-3"><a href=""></a>    <span class="cf">return</span> <span class="st">"Budget"</span> <span class="cf">if</span> price <span class="op">&lt;</span> <span class="dv">100</span> <span class="cf">else</span> <span class="st">"Premium"</span></span>
+<span id="cb5-4"><a href=""></a></span>
+<span id="cb5-5"><a href=""></a>classify_udf <span class="op">=</span> F.udf(classify_price, StringType())</span>
+<span id="cb5-6"><a href=""></a>sdf2 <span class="op">=</span> sdf2.withColumn(<span class="st">"price_class"</span>, classify_udf(F.col(<span class="st">"price"</span>)))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-warning callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Advertencia</strong></p>
+</div>
+<div class="callout-content">
+<p>Las UDFs son el equivalente de <code>.apply()</code>, pero son más lentas que las funciones nativas <code>F.*</code> porque salen de la JVM. Prefiere las funciones nativas cuando existan.</p>
+</div>
+</div>
+</div>
 
-</section></section>
+</section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

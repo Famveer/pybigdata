@@ -10,7 +10,7 @@
   <meta name="generator" content="quarto-1.6.42">
 
   <meta name="author" content="Felipe A. Moreno-Vera">
-  <title>The Game Loop and the Structure of a Game</title>
+  <title>Python and Pandas</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
@@ -194,8 +194,8 @@
     <div class="slides">
 
 <section id="title-slide" class="quarto-title-block center">
-  <h1 class="title">The Game Loop and the Structure of a Game</h1>
-  <p class="subtitle">Game Development with Pygame Course</p>
+  <h1 class="title">Python and Pandas</h1>
+  <p class="subtitle">BigData with PySpark</p>
 
 <div class="quarto-title-authors">
 <div class="quarto-title-author">
@@ -206,349 +206,93 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="in-this-module-you-will-learn" class="slide level2">
-<h2>In this module you will learn</h2>
+<section id="what-you-will-learn" class="slide level2">
+<h2>What you will learn</h2>
 <ul>
-<li>What the <strong>Game Loop</strong> is and why it is the heart of every game</li>
-<li>The <strong>three phases</strong> that repeat every frame</li>
-<li>How to control <strong>FPS</strong> with Pygame’s Clock</li>
-<li>How to handle <strong>input events</strong> (keyboard and mouse)</li>
-<li>The minimal structure of a functional game</li>
+<li>Python essentials: types, collections, control flow and functions</li>
+<li>Pandas: <strong>Series</strong> and <strong>DataFrame</strong></li>
+<li>Explore, filter, transform and clean data</li>
+<li>Aggregations, joins and method chaining</li>
+<li>How all of this carries over to Spark</li>
 </ul>
 </section>
-<section id="what-is-the-game-loop" class="slide level2">
-<h2>1. What is the Game Loop?</h2>
-<p>Every game, no matter how simple or complex, runs on a <strong>cycle that repeats endlessly</strong> while the game is active. This cycle is called the <strong>Game Loop</strong>.</p>
-</section>
-<section id="what-is-the-game-loop-1" class="slide level2">
-<h2>1. What is the Game Loop?</h2>
-<p>Every game, no matter how simple or complex, runs on a <strong>cycle that repeats endlessly</strong> while the game is active. This cycle is called the <strong>Game Loop</strong>.</p>
-<pre><code>┌────────────────────────────────────────────────────┐
-│                   GAME LOOP                        │
-│                                                    │
-│   ┌──────────┐   ┌──────────┐   ┌──────────┐       │
-│   │  INPUT   │ → │  UPDATE  │ → │  RENDER  │ ──┐   │
-│   └──────────┘   └──────────┘   └──────────┘   │   │
-│         ↑                                      │   │
-│         └──────────────────────────────────────┘   │
-│                                                    │
-│   Repeats ~60 times per second (60 FPS)            │
-└────────────────────────────────────────────────────┘</code></pre>
-</section>
-<section id="what-is-the-game-loop-2" class="slide level2">
-<h2>1. What is the Game Loop?</h2>
-<p>Every game, no matter how simple or complex, runs on a <strong>cycle that repeats endlessly</strong> while the game is active. This cycle is called the <strong>Game Loop</strong>.</p>
-<pre><code>┌────────────────────────────────────────────────────┐
-│                   GAME LOOP                        │
-│                                                    │
-│   ┌──────────┐   ┌──────────┐   ┌──────────┐       │
-│   │  INPUT   │ → │  UPDATE  │ → │  RENDER  │ ──┐   │
-│   └──────────┘   └──────────┘   └──────────┘   │   │
-│         ↑                                      │   │
-│         └──────────────────────────────────────┘   │
-│                                                    │
-│   Repeats ~60 times per second (60 FPS)            │
-└────────────────────────────────────────────────────┘</code></pre>
-<p>Each iteration of the loop is called a <strong>frame</strong> and produces one image on screen. At 60 FPS, it creates the illusion of smooth motion — just like a flipbook.</p>
-</section>
-<section id="the-three-phases-of-the-game-loop" class="slide level2">
-<h2>2. The three phases of the Game Loop</h2>
-<h3 id="phase-1-input">Phase 1 — INPUT</h3>
-<p>Detects what the player is doing:</p>
-<ul>
-<li>Keys pressed or released</li>
-<li>Mouse movement and clicks</li>
-<li>The window close event (<code>QUIT</code>)</li>
-</ul>
-<div class="callout callout-warning callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Warning</strong></p>
-</div>
-<div class="callout-content">
-<p><strong>Critical rule:</strong> If you don’t process events every frame, the queue fills up and the window freezes.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="the-three-phases-of-the-game-loop-1" class="slide level2">
-<h2>2. The three phases of the Game Loop</h2>
-<h3 id="phase-2-update">Phase 2 — UPDATE</h3>
-<p>All <strong>game logic</strong> happens here:</p>
-<ul>
-<li>Moving characters and enemies</li>
-<li>Detecting collisions</li>
-<li>Updating score and lives</li>
-<li>Applying basic physics (gravity, velocity)</li>
-</ul>
-</section>
-<section id="the-three-phases-of-the-game-loop-2" class="slide level2">
-<h2>2. The three phases of the Game Loop</h2>
-<h3 id="phase-3-render">Phase 3 — RENDER</h3>
-<p>Draws the current state on screen:</p>
-<ol type="1">
-<li>Clear the screen with <code>fill()</code></li>
-<li>Draw all objects</li>
-<li>Display the frame with <code>pygame.display.flip()</code></li>
-</ol>
-<div class="callout callout-note callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Note</strong></p>
-</div>
-<div class="callout-content">
-<p><strong>Why clear before drawing?</strong> Without clearing, objects leave “trails” on screen because previous frames remain visible.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="key-technical-concepts-fps" class="slide level2">
-<h2>3. Key technical concepts — FPS</h2>
-<p>FPS indicates how many times per second the Game Loop executes.</p>
+<section id="python-collections" class="slide level2">
+<h2>Python collections</h2>
 <table class="caption-top">
 <thead>
 <tr class="header">
-<th>FPS</th>
-<th>Perception</th>
+<th>Type</th>
+<th>Properties</th>
+<th>Example</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>&lt; 15</td>
-<td>Noticeably choppy</td>
+<td><code>list</code></td>
+<td>Ordered, mutable</td>
+<td><code>[150, 230, 90]</code></td>
 </tr>
 <tr class="even">
-<td>30</td>
-<td>Playable, standard on older consoles</td>
+<td><code>dict</code></td>
+<td>Key-value, mutable</td>
+<td><code>{"nome": "Notebook"}</code></td>
 </tr>
 <tr class="odd">
-<td>60</td>
-<td>Smooth, current standard</td>
+<td><code>tuple</code></td>
+<td>Ordered, <strong>immutable</strong></td>
+<td><code>(-23.55, -46.63)</code></td>
 </tr>
 <tr class="even">
-<td>120+</td>
-<td>Very smooth, for high-refresh-rate monitors</td>
+<td><code>set</code></td>
+<td>No duplicates, no order</td>
+<td><code>{"Audio", "Cables"}</code></td>
 </tr>
 </tbody>
 </table>
-<p><strong>Without FPS control</strong>, the game runs as fast as the CPU allows — the same game would run at completely different speeds on different hardware.</p>
 </section>
-<section id="double-buffering" class="slide level2">
-<h2>Double Buffering</h2>
-<p>Pygame uses two image buffers:</p>
-<ul>
-<li><strong>Back buffer:</strong> where you draw (not visible)</li>
-<li><strong>Front buffer:</strong> what the user sees</li>
-</ul>
-<p><code>pygame.display.flip()</code> swaps both buffers. This prevents <strong>tearing</strong> (seeing a half-drawn frame).</p>
+<section id="comprehensions-and-functions" class="slide level2">
+<h2>Comprehensions and functions</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>numeros <span class="op">=</span> [<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">4</span>, <span class="dv">5</span>]</span>
+<span id="cb1-2"><a href=""></a>quadrados <span class="op">=</span> [n <span class="op">**</span> <span class="dv">2</span> <span class="cf">for</span> n <span class="kw">in</span> numeros]</span>
+<span id="cb1-3"><a href=""></a>pares <span class="op">=</span> [n <span class="cf">for</span> n <span class="kw">in</span> numeros <span class="cf">if</span> n <span class="op">%</span> <span class="dv">2</span> <span class="op">==</span> <span class="dv">0</span>]</span>
+<span id="cb1-4"><a href=""></a></span>
+<span id="cb1-5"><a href=""></a><span class="kw">def</span> classificar_receita(valor, limite_alto<span class="op">=</span><span class="dv">10000</span>, limite_medio<span class="op">=</span><span class="dv">5000</span>):</span>
+<span id="cb1-6"><a href=""></a>    <span class="cf">if</span> valor <span class="op">&gt;</span> limite_alto:</span>
+<span id="cb1-7"><a href=""></a>        <span class="cf">return</span> <span class="st">"Alta"</span></span>
+<span id="cb1-8"><a href=""></a>    <span class="cf">elif</span> valor <span class="op">&gt;</span> limite_medio:</span>
+<span id="cb1-9"><a href=""></a>        <span class="cf">return</span> <span class="st">"Média"</span></span>
+<span id="cb1-10"><a href=""></a>    <span class="cf">return</span> <span class="st">"Baixa"</span></span>
+<span id="cb1-11"><a href=""></a></span>
+<span id="cb1-12"><a href=""></a>desconto <span class="op">=</span> <span class="kw">lambda</span> preco, pct: preco <span class="op">*</span> (<span class="dv">1</span> <span class="op">-</span> pct)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="two-ways-to-capture-input" class="slide level2">
-<h2>Two ways to capture input</h2>
+<section id="why-pandas" class="slide level2">
+<h2>Why Pandas?</h2>
 <table class="caption-top">
 <thead>
 <tr class="header">
-<th>Method</th>
-<th>When it fires</th>
-<th>Typical use</th>
+<th>Pandas</th>
+<th>Apache Spark</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>pygame.event.get()</code></td>
-<td>Once when pressed</td>
-<td>Jump, shoot, open menu</td>
+<td>Data in local memory</td>
+<td>Data distributed across a cluster</td>
 </tr>
 <tr class="even">
-<td><code>pygame.key.get_pressed()</code></td>
-<td>Every frame while held</td>
-<td>Move character</td>
+<td><code>DataFrame</code> (rows × columns)</td>
+<td><code>DataFrame</code> (same idea, huge scale)</td>
+</tr>
+<tr class="odd">
+<td><code>df.groupby()</code>, <code>df.merge()</code></td>
+<td>Same concepts: <code>groupBy</code>, <code>join</code></td>
+</tr>
+<tr class="even">
+<td>Ideal up to ~1 GB</td>
+<td>Terabytes / petabytes</td>
 </tr>
 </tbody>
 </table>
-</section>
-<section id="two-ways-to-capture-input-1" class="slide level2">
-<h2>Two ways to capture input</h2>
-<p><strong>Common mistake:</strong> using <code>KEYDOWN</code> for movement. The character moves one step, stops, and only then starts moving smoothly (the delay comes from the OS). The solution is <code>get_pressed()</code> for continuous movement.</p>
-</section>
-<section id="pygames-coordinate-system" class="slide level2">
-<h2>4. Pygame’s coordinate system</h2>
-<p>The origin <code>(0, 0)</code> is at the <strong>top-left</strong> corner, and the Y axis grows <strong>downward</strong>.</p>
-<pre><code>(0,0) ──────────────────→ X+
-  │
-  │     (100, 50) ●
-  │
-  │                (400, 300) ●
-  ↓
- Y+</code></pre>
-</section>
-<section id="pygames-coordinate-system-1" class="slide level2">
-<h2>4. Pygame’s coordinate system</h2>
-<p>The origin <code>(0, 0)</code> is at the <strong>top-left</strong> corner, and the Y axis grows <strong>downward</strong>.</p>
-<pre><code>(0,0) ──────────────────→ X+
-  │
-  │     (100, 50) ●
-  │
-  │                (400, 300) ●
-  ↓
- Y+</code></pre>
-<div class="callout callout-important callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Important</strong></p>
-</div>
-<div class="callout-content">
-<p>To move an object <strong>upward</strong> on screen, you must <strong>subtract</strong> from Y. This differs from conventional math where Y grows upward.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="code-structure" class="slide level2">
-<h2>5. Code structure</h2>
-<p>Every Pygame game follows this structure:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="im">import</span> pygame</span>
-<span id="cb5-2"><a href=""></a><span class="im">import</span> sys</span>
-<span id="cb5-3"><a href=""></a></span>
-<span id="cb5-4"><a href=""></a><span class="co"># ── BLOCK 1: Initialization ───────────────────────────────</span></span>
-<span id="cb5-5"><a href=""></a>pygame.init()</span>
-<span id="cb5-6"><a href=""></a></span>
-<span id="cb5-7"><a href=""></a>WIDTH, HEIGHT <span class="op">=</span> <span class="dv">800</span>, <span class="dv">600</span></span>
-<span id="cb5-8"><a href=""></a>FPS   <span class="op">=</span> <span class="dv">60</span></span>
-<span id="cb5-9"><a href=""></a>BLACK <span class="op">=</span> (<span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">0</span>)</span>
-<span id="cb5-10"><a href=""></a>WHITE <span class="op">=</span> (<span class="dv">255</span>, <span class="dv">255</span>, <span class="dv">255</span>)</span>
-<span id="cb5-11"><a href=""></a>BLUE  <span class="op">=</span> (<span class="dv">50</span>, <span class="dv">120</span>, <span class="dv">220</span>)</span>
-<span id="cb5-12"><a href=""></a></span>
-<span id="cb5-13"><a href=""></a>screen <span class="op">=</span> pygame.display.set_mode((WIDTH, HEIGHT))</span>
-<span id="cb5-14"><a href=""></a>pygame.display.set_caption(<span class="st">"Module 1 — Game Loop"</span>)</span>
-<span id="cb5-15"><a href=""></a>clock <span class="op">=</span> pygame.time.Clock()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="code-structure-cont." class="slide level2">
-<h2>Code structure (cont.)</h2>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a><span class="co"># ── BLOCK 2: Initial state ────────────────────────────────</span></span>
-<span id="cb6-2"><a href=""></a>x, y <span class="op">=</span> WIDTH <span class="op">//</span> <span class="dv">2</span>, HEIGHT <span class="op">//</span> <span class="dv">2</span></span>
-<span id="cb6-3"><a href=""></a>speed <span class="op">=</span> <span class="dv">4</span></span>
-<span id="cb6-4"><a href=""></a></span>
-<span id="cb6-5"><a href=""></a><span class="co"># ── BLOCK 3: Game Loop ────────────────────────────────────</span></span>
-<span id="cb6-6"><a href=""></a><span class="cf">while</span> <span class="va">True</span>:</span>
-<span id="cb6-7"><a href=""></a></span>
-<span id="cb6-8"><a href=""></a>    <span class="co"># PHASE 1 — INPUT</span></span>
-<span id="cb6-9"><a href=""></a>    <span class="cf">for</span> event <span class="kw">in</span> pygame.event.get():</span>
-<span id="cb6-10"><a href=""></a>        <span class="cf">if</span> event.<span class="bu">type</span> <span class="op">==</span> pygame.QUIT:</span>
-<span id="cb6-11"><a href=""></a>            pygame.quit()</span>
-<span id="cb6-12"><a href=""></a>            sys.exit()</span>
-<span id="cb6-13"><a href=""></a></span>
-<span id="cb6-14"><a href=""></a>    keys <span class="op">=</span> pygame.key.get_pressed()</span>
-<span id="cb6-15"><a href=""></a>    <span class="cf">if</span> keys[pygame.K_LEFT]:  x <span class="op">-=</span> speed</span>
-<span id="cb6-16"><a href=""></a>    <span class="cf">if</span> keys[pygame.K_RIGHT]: x <span class="op">+=</span> speed</span>
-<span id="cb6-17"><a href=""></a>    <span class="cf">if</span> keys[pygame.K_UP]:    y <span class="op">-=</span> speed</span>
-<span id="cb6-18"><a href=""></a>    <span class="cf">if</span> keys[pygame.K_DOWN]:  y <span class="op">+=</span> speed</span>
-<span id="cb6-19"><a href=""></a></span>
-<span id="cb6-20"><a href=""></a>    <span class="co"># PHASE 2 — UPDATE</span></span>
-<span id="cb6-21"><a href=""></a>    x <span class="op">=</span> <span class="bu">max</span>(<span class="dv">0</span>, <span class="bu">min</span>(x, WIDTH <span class="op">-</span> <span class="dv">40</span>))</span>
-<span id="cb6-22"><a href=""></a>    y <span class="op">=</span> <span class="bu">max</span>(<span class="dv">0</span>, <span class="bu">min</span>(y, HEIGHT <span class="op">-</span> <span class="dv">40</span>))</span>
-<span id="cb6-23"><a href=""></a></span>
-<span id="cb6-24"><a href=""></a>    <span class="co"># PHASE 3 — RENDER</span></span>
-<span id="cb6-25"><a href=""></a>    screen.fill(BLACK)</span>
-<span id="cb6-26"><a href=""></a>    pygame.draw.rect(screen, BLUE, (x, y, <span class="dv">40</span>, <span class="dv">40</span>))</span>
-<span id="cb6-27"><a href=""></a>    pygame.display.flip()</span>
-<span id="cb6-28"><a href=""></a></span>
-<span id="cb6-29"><a href=""></a>    clock.tick(FPS)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="available-events-in-pygame" class="slide level2">
-<h2>6. Available events in Pygame</h2>
-<table class="caption-top">
-<thead>
-<tr class="header">
-<th>Event</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>pygame.QUIT</code></td>
-<td>Click on the window’s X button</td>
-</tr>
-<tr class="even">
-<td><code>pygame.KEYDOWN</code></td>
-<td>Key just pressed</td>
-</tr>
-<tr class="odd">
-<td><code>pygame.KEYUP</code></td>
-<td>Key released</td>
-</tr>
-<tr class="even">
-<td><code>pygame.MOUSEBUTTONDOWN</code></td>
-<td>Mouse button pressed</td>
-</tr>
-<tr class="odd">
-<td><code>pygame.MOUSEBUTTONUP</code></td>
-<td>Mouse button released</td>
-</tr>
-<tr class="even">
-<td><code>pygame.MOUSEMOTION</code></td>
-<td>Mouse moved (includes position and delta)</td>
-</tr>
-<tr class="odd">
-<td><code>pygame.MOUSEWHEEL</code></td>
-<td>Mouse scroll</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="most-commonly-used-keys-in-games" class="slide level2">
-<h2>Most commonly used keys in games</h2>
-<table class="caption-top">
-<thead>
-<tr class="header">
-<th>Category</th>
-<th>Keys</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Movement</td>
-<td><code>K_LEFT</code>, <code>K_RIGHT</code>, <code>K_UP</code>, <code>K_DOWN</code></td>
-</tr>
-<tr class="even">
-<td>Actions</td>
-<td><code>K_SPACE</code>, <code>K_RETURN</code>, <code>K_ESCAPE</code></td>
-</tr>
-<tr class="odd">
-<td>Letters</td>
-<td><code>K_a</code> … <code>K_z</code></td>
-</tr>
-<tr class="even">
-<td>Numbers</td>
-<td><code>K_0</code> … <code>K_9</code></td>
-</tr>
-<tr class="odd">
-<td>Modifiers</td>
-<td><code>K_LSHIFT</code>, <code>K_RSHIFT</code>, <code>K_LCTRL</code>, <code>K_RCTRL</code></td>
-</tr>
-</tbody>
-</table>
-<p>All are constants from the <code>pygame</code> module.</p>
-</section>
-<section id="input-event-vs-get_pressed" class="slide level2">
-<h2>7. Input: event vs get_pressed</h2>
-<p><strong><code>KEYDOWN</code> (event):</strong> fires only once when pressed</p>
-<pre><code>Frame 0: KEYDOWN detected → character moves 1 time
-Frame 1: no event (key still held but nothing happens)
-Frame 2: no event
-...</code></pre>
-<p><strong><code>get_pressed()</code>:</strong> fires EVERY frame while the key is held</p>
-<pre><code>Frame 0: get_pressed → character moves (smooth movement)
-Frame 1: get_pressed → character moves (smooth movement)
-Frame 2: get_pressed → character moves (smooth movement)
-...</code></pre>
 <div class="callout callout-tip callout-titled callout-style-default">
 <div class="callout-body">
 <div class="callout-title">
@@ -558,82 +302,128 @@ Frame 2: get_pressed → character moves (smooth movement)
 <p><strong>Tip</strong></p>
 </div>
 <div class="callout-content">
-<p>Use <code>KEYDOWN</code> for single actions (jump, shoot) and <code>get_pressed()</code> for continuous movement.</p>
+<p>Learning Pandas means learning to <strong>think in DataFrames</strong>, a skill that transfers directly to Spark.</p>
 </div>
 </div>
 </div>
 </section>
-<section id="the-clock-and-fps" class="slide level2">
-<h2>8. The Clock and FPS</h2>
-<p>Pygame’s <code>Clock</code> limits how fast the game loop runs.</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href=""></a><span class="im">import</span> time</span>
-<span id="cb9-2"><a href=""></a></span>
-<span id="cb9-3"><a href=""></a><span class="kw">def</span> simulate_clock_tick(target_fps, frames<span class="op">=</span><span class="dv">5</span>):</span>
-<span id="cb9-4"><a href=""></a>    <span class="co">"""</span></span>
-<span id="cb9-5"><a href=""></a><span class="co">    Simulates how clock.tick(fps) controls the loop speed.</span></span>
-<span id="cb9-6"><a href=""></a><span class="co">    In Pygame, clock.tick(60) blocks until 1/60 seconds have passed.</span></span>
-<span id="cb9-7"><a href=""></a><span class="co">    """</span></span>
-<span id="cb9-8"><a href=""></a>    frame_duration <span class="op">=</span> <span class="fl">1.0</span> <span class="op">/</span> target_fps  <span class="co"># seconds per frame</span></span>
-<span id="cb9-9"><a href=""></a></span>
-<span id="cb9-10"><a href=""></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(frames):</span>
-<span id="cb9-11"><a href=""></a>        start <span class="op">=</span> time.time()</span>
-<span id="cb9-12"><a href=""></a></span>
-<span id="cb9-13"><a href=""></a>        time.sleep(<span class="fl">0.002</span>)  <span class="co"># Simulates 2ms of game work</span></span>
-<span id="cb9-14"><a href=""></a></span>
-<span id="cb9-15"><a href=""></a>        work_time <span class="op">=</span> time.time() <span class="op">-</span> start</span>
-<span id="cb9-16"><a href=""></a>        wait <span class="op">=</span> frame_duration <span class="op">-</span> work_time</span>
-<span id="cb9-17"><a href=""></a>        <span class="cf">if</span> wait <span class="op">&gt;</span> <span class="dv">0</span>:</span>
-<span id="cb9-18"><a href=""></a>            time.sleep(wait)</span>
-<span id="cb9-19"><a href=""></a></span>
-<span id="cb9-20"><a href=""></a>        total_time <span class="op">=</span> time.time() <span class="op">-</span> start</span>
-<span id="cb9-21"><a href=""></a>        real_fps <span class="op">=</span> <span class="fl">1.0</span> <span class="op">/</span> total_time</span>
-<span id="cb9-22"><a href=""></a>        <span class="bu">print</span>(<span class="ss">f"Frame </span><span class="sc">{</span>i<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="ss">: work=</span><span class="sc">{</span>work_time<span class="op">*</span><span class="dv">1000</span><span class="sc">:.1f}</span><span class="ss">ms, "</span></span>
-<span id="cb9-23"><a href=""></a>              <span class="ss">f"wait=</span><span class="sc">{</span>wait<span class="op">*</span><span class="dv">1000</span><span class="sc">:.1f}</span><span class="ss">ms, real FPS≈</span><span class="sc">{</span>real_fps<span class="sc">:.0f}</span><span class="ss">"</span>)</span>
-<span id="cb9-24"><a href=""></a></span>
-<span id="cb9-25"><a href=""></a>simulate_clock_tick(target_fps<span class="op">=</span><span class="dv">30</span>, frames<span class="op">=</span><span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="explore-and-select" class="slide level2">
+<h2>Explore and select</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>df.shape<span class="op">;</span> df.head(<span class="dv">5</span>)<span class="op">;</span> df.info()<span class="op">;</span> df.describe()</span>
+<span id="cb2-2"><a href=""></a>df[<span class="st">"categoria"</span>].value_counts()</span>
+<span id="cb2-3"><a href=""></a>df.isnull().<span class="bu">sum</span>()</span>
+<span id="cb2-4"><a href=""></a></span>
+<span id="cb2-5"><a href=""></a>df[[<span class="st">"produto"</span>, <span class="st">"preco"</span>]]                    <span class="co"># columns</span></span>
+<span id="cb2-6"><a href=""></a>df.loc[<span class="dv">0</span>:<span class="dv">2</span>, [<span class="st">"produto"</span>, <span class="st">"preco"</span>]]           <span class="co"># label</span></span>
+<span id="cb2-7"><a href=""></a>df.iloc[<span class="dv">0</span>:<span class="dv">3</span>, <span class="dv">0</span>:<span class="dv">3</span>]                           <span class="co"># position</span></span>
+<span id="cb2-8"><a href=""></a></span>
+<span id="cb2-9"><a href=""></a>df[(df[<span class="st">"preco"</span>] <span class="op">&gt;</span> <span class="dv">200</span>) <span class="op">&amp;</span> (df[<span class="st">"avaliacao"</span>] <span class="op">&gt;=</span> <span class="fl">4.5</span>)]</span>
+<span id="cb2-10"><a href=""></a>df[df[<span class="st">"categoria"</span>].isin([<span class="st">"Periféricos"</span>, <span class="st">"Áudio"</span>])]</span>
+<span id="cb2-11"><a href=""></a>df.query(<span class="st">"preco &gt; 100 and categoria == 'Periféricos'"</span>)</span>
+<span id="cb2-12"><a href=""></a>df.sort_values(<span class="st">"preco"</span>, ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="coordinate-system-exercise" class="slide level2">
-<h2>9. Coordinate system — exercise</h2>
-<p>Calculate the coordinates to place objects at different positions on screen.</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href=""></a>WIDTH  <span class="op">=</span> <span class="dv">800</span></span>
-<span id="cb10-2"><a href=""></a>HEIGHT <span class="op">=</span> <span class="dv">600</span></span>
-<span id="cb10-3"><a href=""></a>SIZE   <span class="op">=</span> <span class="dv">40</span>   <span class="co"># Object size</span></span>
-<span id="cb10-4"><a href=""></a></span>
-<span id="cb10-5"><a href=""></a>positions <span class="op">=</span> {</span>
-<span id="cb10-6"><a href=""></a>    <span class="st">'Top-left corner'</span>:      (<span class="dv">0</span>, <span class="dv">0</span>),</span>
-<span id="cb10-7"><a href=""></a>    <span class="st">'Top-right corner'</span>:     (WIDTH <span class="op">-</span> SIZE, <span class="dv">0</span>),</span>
-<span id="cb10-8"><a href=""></a>    <span class="st">'Bottom-left corner'</span>:   (<span class="dv">0</span>, HEIGHT <span class="op">-</span> SIZE),</span>
-<span id="cb10-9"><a href=""></a>    <span class="st">'Bottom-right corner'</span>:  (WIDTH <span class="op">-</span> SIZE, HEIGHT <span class="op">-</span> SIZE),</span>
-<span id="cb10-10"><a href=""></a>    <span class="st">'Exact center'</span>:         (WIDTH <span class="op">//</span> <span class="dv">2</span> <span class="op">-</span> SIZE <span class="op">//</span> <span class="dv">2</span>, HEIGHT <span class="op">//</span> <span class="dv">2</span> <span class="op">-</span> SIZE <span class="op">//</span> <span class="dv">2</span>),</span>
-<span id="cb10-11"><a href=""></a>    <span class="st">'Horizontal center, top'</span>: (WIDTH <span class="op">//</span> <span class="dv">2</span> <span class="op">-</span> SIZE <span class="op">//</span> <span class="dv">2</span>, <span class="dv">20</span>),</span>
-<span id="cb10-12"><a href=""></a>}</span>
-<span id="cb10-13"><a href=""></a></span>
-<span id="cb10-14"><a href=""></a><span class="cf">for</span> name, coords <span class="kw">in</span> positions.items():</span>
-<span id="cb10-15"><a href=""></a>    <span class="bu">print</span>(<span class="ss">f"  </span><span class="sc">{</span>name<span class="sc">:&lt;35}</span><span class="ss"> → </span><span class="sc">{</span>coords<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="transform-and-clean" class="slide level2">
+<h2>Transform and clean</h2>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>df[<span class="st">"valor_estoque"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>] <span class="op">*</span> df[<span class="st">"estoque"</span>]</span>
+<span id="cb3-2"><a href=""></a>df[<span class="st">"caro"</span>] <span class="op">=</span> np.where(df[<span class="st">"preco"</span>] <span class="op">&gt;</span> <span class="dv">500</span>, <span class="st">"Sim"</span>, <span class="st">"Não"</span>)</span>
+<span id="cb3-3"><a href=""></a>df[<span class="st">"faixa_preco"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>].<span class="bu">apply</span>(classificar_preco)</span>
+<span id="cb3-4"><a href=""></a></span>
+<span id="cb3-5"><a href=""></a>df[<span class="st">"avaliacao"</span>] <span class="op">=</span> df[<span class="st">"avaliacao"</span>].fillna(df[<span class="st">"avaliacao"</span>].mean())</span>
+<span id="cb3-6"><a href=""></a>df[<span class="st">"preco"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>].astype(<span class="bu">float</span>)</span>
+<span id="cb3-7"><a href=""></a>df <span class="op">=</span> df.rename(columns<span class="op">=</span>{<span class="st">"preco"</span>: <span class="st">"preco_brl"</span>})</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-note callout-titled callout-style-default">
+<div class="callout-body">
+<div class="callout-title">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<p><strong>Note</strong></p>
+</div>
+<div class="callout-content">
+<p><code>.apply()</code> is the Pandas counterpart of Spark UDFs.</p>
+</div>
+</div>
+</div>
 </section>
-<section id="summary" class="slide level2">
-<h2>Summary</h2>
-<div class="columns">
-<div class="column" style="width:50%;">
-<p><strong>Key concepts:</strong></p>
-<ul>
-<li>The <strong>Game Loop</strong> is the heart of every game</li>
-<li>Three phases: <strong>INPUT → UPDATE → RENDER</strong></li>
-<li><strong>FPS</strong> controls the loop speed</li>
-<li><strong>Double Buffering</strong> prevents tearing</li>
-</ul>
-</div><div class="column" style="width:50%;">
-<p><strong>Input:</strong></p>
-<ul>
-<li><code>event.get()</code> → single actions</li>
-<li><code>get_pressed()</code> → continuous movement</li>
-</ul>
-<p><strong>Coordinates:</strong></p>
-<ul>
-<li>Origin at the <strong>top-left</strong> corner</li>
-<li>Y axis grows <strong>downward</strong></li>
-</ul>
-</div></div>
+<section id="groupby-joins" class="slide level2">
+<h2>GroupBy &amp; joins</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>resumo <span class="op">=</span> df.groupby(<span class="st">"categoria"</span>).agg(</span>
+<span id="cb4-2"><a href=""></a>    qtd_produtos <span class="op">=</span> (<span class="st">"produto"</span>,   <span class="st">"count"</span>),</span>
+<span id="cb4-3"><a href=""></a>    preco_medio  <span class="op">=</span> (<span class="st">"preco_brl"</span>, <span class="st">"mean"</span>),</span>
+<span id="cb4-4"><a href=""></a>    estoque_total<span class="op">=</span> (<span class="st">"estoque"</span>,   <span class="st">"sum"</span>),</span>
+<span id="cb4-5"><a href=""></a>).<span class="bu">round</span>(<span class="dv">2</span>).reset_index()</span>
+<span id="cb4-6"><a href=""></a></span>
+<span id="cb4-7"><a href=""></a>df[<span class="st">"media_cat"</span>] <span class="op">=</span> df.groupby(<span class="st">"categoria"</span>)[<span class="st">"preco_brl"</span>].transform(<span class="st">"mean"</span>)</span>
+<span id="cb4-8"><a href=""></a></span>
+<span id="cb4-9"><a href=""></a>df.merge(fornecedores, on<span class="op">=</span><span class="st">"categoria"</span>, how<span class="op">=</span><span class="st">"left"</span>)   <span class="co"># inner, left, right, outer</span></span>
+<span id="cb4-10"><a href=""></a>pd.concat([df_a, df_b], ignore_index<span class="op">=</span><span class="va">True</span>)           <span class="co"># UNION</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="pipeline-with-method-chaining" class="slide level2">
+<h2>Pipeline with method chaining</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>resultado <span class="op">=</span> (</span>
+<span id="cb5-2"><a href=""></a>    df_raw</span>
+<span id="cb5-3"><a href=""></a>    .fillna({<span class="st">"avaliacao"</span>: df_raw[<span class="st">"avaliacao"</span>].mean()})</span>
+<span id="cb5-4"><a href=""></a>    .assign(valor_estoque<span class="op">=</span><span class="kw">lambda</span> d: d[<span class="st">"preco"</span>] <span class="op">*</span> d[<span class="st">"estoque"</span>])</span>
+<span id="cb5-5"><a href=""></a>    .query(<span class="st">"avaliacao &gt;= 4.0"</span>)</span>
+<span id="cb5-6"><a href=""></a>    [[<span class="st">"produto"</span>, <span class="st">"categoria"</span>, <span class="st">"preco"</span>, <span class="st">"valor_estoque"</span>]]</span>
+<span id="cb5-7"><a href=""></a>    .sort_values(<span class="st">"valor_estoque"</span>, ascending<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb5-8"><a href=""></a>    .reset_index(drop<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb5-9"><a href=""></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The same style of writing is used in PySpark.</p>
+</section>
+<section id="from-pandas-to-spark" class="slide level2">
+<h2>From Pandas to Spark</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 29%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Concept</th>
+<th>Pandas</th>
+<th>PySpark</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Read CSV</td>
+<td><code>pd.read_csv("f.csv")</code></td>
+<td><code>spark.read.csv("f.csv", header=True)</code></td>
+</tr>
+<tr class="even">
+<td>Select</td>
+<td><code>df[["a", "b"]]</code></td>
+<td><code>df.select("a", "b")</code></td>
+</tr>
+<tr class="odd">
+<td>Filter</td>
+<td><code>df[df["p"] &gt; 100]</code></td>
+<td><code>df.filter(df.p &gt; 100)</code></td>
+</tr>
+<tr class="even">
+<td>New column</td>
+<td><code>df["c"] = ...</code></td>
+<td><code>df.withColumn("c", ...)</code></td>
+</tr>
+<tr class="odd">
+<td>GroupBy</td>
+<td><code>df.groupby("c").agg(...)</code></td>
+<td><code>df.groupBy("c").agg(...)</code></td>
+</tr>
+<tr class="even">
+<td>Join</td>
+<td><code>df.merge(d2, on="k", how="left")</code></td>
+<td><code>df.join(d2, on="k", how="left")</code></td>
+</tr>
+<tr class="odd">
+<td>Execution</td>
+<td>Immediate</td>
+<td><strong>Lazy</strong></td>
+</tr>
+</tbody>
+</table>
 
 </section>
     </div>

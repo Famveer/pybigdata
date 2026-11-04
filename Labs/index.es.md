@@ -10,7 +10,9 @@ has_toc: false
 
 # Laboratorios
 
-Las sesiones de laboratorio de programación te ayudarán a comprender las bases de Python y Pygame.
+Las sesiones de laboratorio de programación te ayudarán a practicar Python, Pandas y PySpark con notebooks de Jupyter.
+
+Necesitas Python 3.12 y Java 17+ con `JAVA_HOME` configurado.
 
 Para configurar el entorno, puedes usar pyenv o conda (recomendado). Luego, instala las dependencias:
 
@@ -22,32 +24,32 @@ Descarga el archivo de requirements [aquí](./../requirements.txt).
 
 ---
 
-**Laboratorio 1**: [Introducción a PyGame](./Lab1)
+**Laboratorio 1**: [Python y Pandas](./Lab1)
 
 
-**Laboratorio 2**: [Introducción a Sprites](./Lab2)
+**Laboratorio 2**: [La API de DataFrames de Spark](./Lab2)
 
 
-**Laboratorio 3**: [Introducción a Collisions](./Lab3)
+**Laboratorio 3**: [Agregaciones, Joins y Spark SQL](./Lab3)
 
 
-**Laboratorio 4**: [Introducción a Animations](./Lab4)
+**Laboratorio 4**: [Ejecución, Particiones y Joins](./Lab4)
 
 
-**Laboratorio 5**: [Introducción a Scenes](./Lab5)
+**Laboratorio 5**: [Skew, Cache, AQE y UDFs](./Lab5)
 
 
-**Laboratorio 6**: [Introducción a Audio](./Lab6)
+**Laboratorio 6**: [ETL con Arquitectura Medallion](./Lab6)
 
 
-**Laboratorio 7**: [Introducción a Tilemap](./Lab7)
+**Laboratorio 7**: [Delta Lake](./Lab7)
 
 
-**Laboratorio 8**: [Introducción a Game Physics](./Lab8)
+**Laboratorio 8**: [Structured Streaming](./Lab8)
 
 
-**Laboratorio 9**: [Introducción a IA and states](./Lab9)
+**Laboratorio 9**: [MLlib: Pipelines y Modelos](./Lab9)
 
 
-**Laboratorio 10**: [Demo de juego completo](./Lab10)
+**Laboratorio 10**: [MLlib: Ajuste y Despliegue](./Lab10)
 

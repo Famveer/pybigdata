@@ -8,11 +8,10 @@ nav_order: 2
 layout: default
 ---
 
-# Laboratorio 2: Introducción a Sprites
+# Laboratorio 2: La API de DataFrames de Spark
 
-Aquí tenemos algunos ejemplos de código de pygame.
+Ejecuta las mismas operaciones en Pandas y Spark, lado a lado.
 
 ### Archivos
 
-* [Sprite básica](./files/01_sprite_basico.py)
-* [Sprite por grupos](./files/02_sprite_grupos.py)
+* [Setup, DataFrames, selección, transformaciones y UDFs](./files/01_spark_dataframe_api.ipynb)

@@ -1,6 +1,6 @@
 ---
-title: "Scenes, Audio e Tilemaps"
-subtitle: "Curso de Desenvolvimento de Jogos com Pygame"
+title: "Skew, Cache, AQE e UDFs"
+subtitle: "Big Data com PySpark"
 author: "Felipe A. Moreno-Vera"
 lang: pt
 format:
@@ -15,223 +15,114 @@ format:
     fontsize: 30px
   html:
     allow-html: true
-jupyter: python3
 ---
 
-::: {.callout-note}
-Nestes módulos você vai aprender:
+## O que você vai aprender
 
-- Scene management, game state machines e transitions
-- Música de fundo, sound effects, channels e spatial audio
-- Tile maps, sistemas de camera, scrolling e fundos com parallax
+- Detectar e corrigir *data skew*
+- Decidir quando usar cache
+- O que o Adaptive Query Execution faz automaticamente
+- Funções nativas vs Pandas UDF vs UDF Python
+- Onde olhar na Spark UI
+
+---
+
+## Data skew
+
+Poucas chaves concentram grande parte das linhas. Depois do shuffle, **uma partição fica enorme** e o job inteiro espera pela sua task.
+
+```
+   T1 ███
+   T2 ███
+   T3 ████████████████████████████████   <- hot key
+   T4 ███
+```
+
+Sintoma típico: duração máxima das tasks muito maior que a mediana, job parado em "199/200 tasks".
+
+---
+
+## Corrigindo o skew {.smaller}
+
+| Técnica | Ideia | Quando |
+|---------|------|--------|
+| **Broadcast** | Elimina o shuffle, então o skew deixa de importar | O outro lado cabe em memória |
+| **Salting** | Divide a chave quente em N subchaves artificiais | Os dois lados são grandes |
+| **AQE skew join** | O Spark detecta partições enormes e as divide | Spark 3+ |
+| **Separar a chave** | Processa a chave quente à parte e faz `union` | Poucas chaves conhecidas |
+
+```python
+orders_salted = orders_skew.withColumn("salt", (F.rand(8) * SALT).cast("int"))
+customers_salted = customers.crossJoin(
+    spark.range(SALT).select(F.col("id").cast("int").alias("salt")))
+orders_salted.join(customers_salted, ["customer_id", "salt"])
+```
+
+---
+
+## Cache e persist
+
+Cada ação recalcula o plano desde a leitura. O cache evita esse retrabalho.
+
+| Nível | Onde | Observação |
+|-------|-------|------|
+| `MEMORY_AND_DISK` | Memória, transbordando para disco | Padrão de `df.cache()` |
+| `MEMORY_ONLY` | Só memória | O que não cabe é recalculado |
+| `DISK_ONLY` | Só disco | Útil quando o cálculo é muito caro |
+
+**Use:** o mesmo DataFrame alimenta várias ações, e é caro de calcular e pequeno para guardar.
+
+**Evite:** o DataFrame é usado uma única vez, ou é só uma leitura de Parquet. O cache ocupa memória que os shuffles poderiam usar.
+
+---
+
+## Adaptive Query Execution
+
+Sem AQE, o plano é decidido **antes** da execução, com estimativas. Com AQE (padrão desde o Spark 3.2), o Spark **reotimiza entre os stages** com estatísticas reais.
+
+| Recurso | O que faz |
+|---------|-------------|
+| Coalescer partições | Junta partições pequenas após o shuffle (200 vira poucas) |
+| Trocar estratégia de join | Converte sort-merge em broadcast se um lado ficou pequeno após filtros |
+| Skew join | Divide partições gigantes em pedaços menores |
+
+::: {.callout-tip}
+Em produção, mantenha o AQE ligado. Ele não substitui um bom desenho, mas resolve boa parte dos ajustes de partição.
 :::
 
-# Scenes & Game States
+---
 
-## O problema: o que é um "game state"?
-
-Um jogo nunca está em apenas um modo. Ele alterna entre states:
+## Funções nativas vs UDFs
 
 ```
-┌─────────┐   ENTER    ┌──────────┐   PAUSE    ┌─────────┐
-│  MENU   │ ─────────► │   GAME   │ ─────────► │  PAUSE  │
-└─────────┘            └──────────┘            └─────────┘
-                            │                       │ RESUME
-                          DEAD                      ▼
-                            │                  ┌──────────┐
-                            └────────────────► │ GAME     │
-                                               └──────────┘
-                                                    │ 0 lives
-                                                    ▼
-                                               ┌──────────┐
-                                               │ GAME OVER│
-                                               └──────────┘
+  F.when(...)     JVM ──────────────────────────────▶ JVM            (fast)
+  @udf            JVM ─▶ row-by-row serialization ─▶ Python ─▶ JVM   (slow)
+  @pandas_udf     JVM ─▶ Arrow batches (columnar) ─▶ Pandas ─▶ JVM   (middle)
 ```
 
-Sem um state system adequado, você acaba com uma selva de checks `if game_state == "menu"` espalhados por todo lado. O **Scene pattern** resolve isso de forma limpa.
+Ordem de preferência: **função nativa > Pandas UDF > UDF Python**. Antes de escrever uma UDF, procure na lista de funções: quase sempre já existe.
 
-## The Scene Base Class
+---
 
-Cada tela do jogo é uma **Scene**. Cada scene sabe como:
+## Spark UI: onde olhar
 
-```python
-class Scene:
-    def enter(self):        # Called once when scene becomes active
-        pass
+| Aba | O que procurar |
+|-----|-----------------|
+| **Jobs** | Quais ações demoraram mais |
+| **Stages** | Shuffle Read/Write, duração **máxima vs mediana** das tasks (skew) |
+| **Storage** | DataFrames em cache e quanto ocupam |
+| **SQL / DataFrame** | Plano visual com linhas e tempo por operador |
+| **Executors** | Memória, tempo de GC, tasks com falha |
 
-    def exit(self):         # Called once when scene is deactivated
-        pass
+---
 
-    def handle_event(self, event):   # Process pygame events
-        pass
+## Resumo: sintoma, causa e ação {.smaller}
 
-    def update(self, dt):   # Update logic; dt = delta time in seconds
-        pass
-
-    def draw(self, surface): # Render to the screen
-        pass
-```
-
-Essa interface obriga você a manter a lógica de cada scene **self-contained**. Uma `MenuScene` nunca toca nas variáveis da `GameScene`.
-
-## The Scene Manager
-
-O Scene Manager possui uma **stack** de scenes. A scene que está no topo da stack é a que é executada.
-
-```python
-class SceneManager:
-    def __init__(self):
-        self._stack = []
-
-    def push(self, scene):
-        """Add a scene on top — previous scene stays in memory."""
-        if self._stack:
-            self._stack[-1].exit()
-        self._stack.append(scene)
-        scene.enter()
-
-    def pop(self):
-        """Remove the top scene — reveals the scene below."""
-        self._stack.pop().exit()
-        if self._stack:
-            self._stack[-1].enter()
-
-    def replace(self, scene):
-        """Swap the current scene — no going back."""
-        if self._stack:
-            self._stack.pop().exit()
-        self._stack.append(scene)
-        scene.enter()
-```
-
-## Push vs Replace vs Pop
-
-| Method | Efeito na stack | Caso de uso |
-|--------|-------------|----------|
-| `push(PauseScene)` | `[Menu, Game, Pause]` | Overlay — o jogo permanece em memória |
-| `pop()` | `[Menu, Game]` | Resume — volta para a scene anterior |
-| `replace(GameOver)` | `[Menu, GameOver]` | Transição completa — sem volta |
-
-## Push vs Replace vs Pop
-
-```{python}
-# Simulate the scene stack behavior (without pygame)
-
-class FakeScene:
-    def __init__(self, name):
-        self.name = name
-    def enter(self): print(f"  ► {self.name}.enter()")
-    def exit(self):  print(f"  ◄ {self.name}.exit()")
-
-class FakeManager:
-    def __init__(self):
-        self._stack = []
-
-    def push(self, scene):
-        if self._stack: self._stack[-1].exit()
-        self._stack.append(scene)
-        scene.enter()
-        print(f"  Stack: {[s.name for s in self._stack]}\n")
-
-    def pop(self):
-        self._stack.pop().exit()
-        if self._stack: self._stack[-1].enter()
-        print(f"  Stack: {[s.name for s in self._stack]}\n")
-
-    def replace(self, scene):
-        if self._stack: self._stack.pop().exit()
-        self._stack.append(scene)
-        scene.enter()
-        print(f"  Stack: {[s.name for s in self._stack]}\n")
-
-mgr = FakeManager()
-print("=== PUSH Menu ===")
-mgr.push(FakeScene("MenuScene"))
-print("=== PUSH Game ===")
-mgr.push(FakeScene("GameScene"))
-print("=== PUSH Pause (overlay) ===")
-mgr.push(FakeScene("PauseScene"))
-print("=== POP (resume) ===")
-mgr.pop()
-print("=== REPLACE with GameOver ===")
-mgr.replace(FakeScene("GameOverScene"))
-```
-
-## Compartilhando dados entre scenes
-
-As scenes são decoupled — elas não mantêm referências entre si. Use o `shared` dict do manager para passar dados:
-
-```python
-# In GameScene — store the score when dying
-self.manager.shared['score'] = self.score
-self.manager.replace(GameOverScene(self.manager))
-
-# In GameOverScene — read it back
-self.score = self.manager.shared.get('score', 0)
-```
-
-## Scene Transitions
-
-Uma transition é um efeito visual que é reproduzido enquanto as scenes são trocadas. A ideia principal: **renderizar ambas as scenes em surfaces e depois fazer blend entre elas**.
-
-```python
-class TransitionEngine:
-    def start(self, surf_from, surf_to, mode="fade", duration=0.5):
-        self.surf_from = surf_from.copy()
-        self.surf_to   = surf_to.copy()
-        self.progress  = 0.0
-        self.active    = True
-
-    def update(self, dt):
-        self.progress += dt / self.duration
-        if self.progress >= 1.0:
-            self.active = False
-
-    def draw(self, surface):
-        p = self.progress * self.progress * (3 - 2 * self.progress)  # Ease
-
-        if self.mode == "fade":
-            if p < 0.5:
-                alpha = int(255 * (1 - p * 2))
-                self.surf_from.set_alpha(alpha)
-                surface.blit(self.surf_from, (0, 0))
-            else:
-                alpha = int(255 * ((p - 0.5) * 2))
-                self.surf_to.set_alpha(alpha)
-                surface.blit(self.surf_to, (0, 0))
-
-        elif self.mode == "slide_left":
-            offset = int((1 - p) * WIDTH)
-            surface.blit(self.surf_from, (-offset, 0))
-            surface.blit(self.surf_to, (WIDTH - offset, 0))
-```
-
-## Scene Transitions
-
-```{python}
-# Demonstrate easing functions used in transitions
-
-import math
-
-def ease_linear(t):  return t
-def ease_in(t):      return t * t
-def ease_out(t):     return 1 - (1 - t) ** 2
-def ease_inout(t):   return t * t * (3 - 2 * t)
-
-print("t        linear   ease_in  ease_out  ease_inout")
-print("-" * 52)
-for i in range(11):
-    t = i / 10
-    print(f"  {t:.1f}     {ease_linear(t):.2f}    {ease_in(t):.2f}     "
-          f"{ease_out(t):.2f}      {ease_inout(t):.2f}")
-```
-
-## Scene transitions — Resumo
-
-- A base class `Scene` obriga a implementar `enter / exit / handle_event / update / draw`
-- `SceneManager` possui uma **stack**: `push` sobrepõe, `pop` retorna, `replace` substitui
-- Compartilhe dados entre scenes através do `manager.shared` dict
-- As transitions pré-renderizam ambas as scenes em surfaces, e depois fazem blend entre elas
-- As easing functions (`ease_inout`) fazem as transitions parecerem smooth
-
-
+| Sintoma | Causa provável | O que fazer |
+|---------|--------------|------------|
+| Muitos `Exchange` no plano | Joins e agregações em excesso | Broadcast de dimensões, agregar antes de juntar |
+| Job parado em "199/200 tasks" | Data skew | Broadcast, salting, AQE skew join |
+| Milhares de tasks de milissegundos | Partições demais | AQE ligado, ajustar `shuffle.partitions` |
+| Mesmo cálculo repetido | Reuso sem cache | `cache()` + `unpersist()` |
+| Coluna calculada muito lenta | UDF Python | Função nativa ou Pandas UDF |
+| Leitura lenta | CSV/JSON, sem pruning | Parquet/Delta, filtrar e selecionar cedo |
