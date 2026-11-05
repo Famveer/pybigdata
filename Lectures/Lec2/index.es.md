@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Python esencial
+>* El modelo de datos de Python: referencias, mutabilidad, funciones y generadores
 >* Por qué Pandas: origen y motivación
->* Series y DataFrames en Pandas
->* Filtrado, limpieza, GroupBy y joins
+>* Por qué vectorizar es más rápido: disposición en memoria y números reales
+>* El DataFrame: columnas tipadas, memoria y NaN
+>* Vista o copia: el error clásico, y Copy-on-Write
+>* Costo de las operaciones: split-apply-combine, merge, un núcleo
 
 
 ### Slides

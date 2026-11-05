@@ -28,71 +28,6 @@
       margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
       vertical-align: middle;
     }
-    /* CSS for syntax highlighting */
-    pre > code.sourceCode { white-space: pre; position: relative; }
-    pre > code.sourceCode > span { line-height: 1.25; }
-    pre > code.sourceCode > span:empty { height: 1.2em; }
-    .sourceCode { overflow: visible; }
-    code.sourceCode > span { color: inherit; text-decoration: inherit; }
-    div.sourceCode { margin: 1em 0; }
-    pre.sourceCode { margin: 0; }
-    @media screen {
-    div.sourceCode { overflow: auto; }
-    }
-    @media print {
-    pre > code.sourceCode { white-space: pre-wrap; }
-    pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
-    }
-    pre.numberSource code
-      { counter-reset: source-line 0; }
-    pre.numberSource code > span
-      { position: relative; left: -4em; counter-increment: source-line; }
-    pre.numberSource code > span > a:first-child::before
-      { content: counter(source-line);
-        position: relative; left: -1em; text-align: right; vertical-align: baseline;
-        border: none; display: inline-block;
-        -webkit-touch-callout: none; -webkit-user-select: none;
-        -khtml-user-select: none; -moz-user-select: none;
-        -ms-user-select: none; user-select: none;
-        padding: 0 4px; width: 4em;
-      }
-    pre.numberSource { margin-left: 3em;  padding-left: 4px; }
-    div.sourceCode
-      { color: #e1e4e8; background-color: #24292e; }
-    @media screen {
-    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
-    }
-    code span { color: #e1e4e8; } /* Normal */
-    code span.al { color: #ff5555; font-weight: bold; } /* Alert */
-    code span.an { color: #6a737d; } /* Annotation */
-    code span.at { color: #f97583; } /* Attribute */
-    code span.bn { color: #79b8ff; } /* BaseN */
-    code span.bu { color: #f97583; } /* BuiltIn */
-    code span.cf { color: #f97583; } /* ControlFlow */
-    code span.ch { color: #9ecbff; } /* Char */
-    code span.cn { color: #79b8ff; } /* Constant */
-    code span.co { color: #6a737d; } /* Comment */
-    code span.cv { color: #6a737d; } /* CommentVar */
-    code span.do { color: #6a737d; } /* Documentation */
-    code span.dt { color: #f97583; } /* DataType */
-    code span.dv { color: #79b8ff; } /* DecVal */
-    code span.er { color: #ff5555; text-decoration: underline; } /* Error */
-    code span.ex { color: #f97583; font-weight: bold; } /* Extension */
-    code span.fl { color: #79b8ff; } /* Float */
-    code span.fu { color: #b392f0; } /* Function */
-    code span.im { color: #9ecbff; } /* Import */
-    code span.in { color: #6a737d; } /* Information */
-    code span.kw { color: #f97583; } /* Keyword */
-    code span.op { color: #e1e4e8; } /* Operator */
-    code span.ot { color: #b392f0; } /* Other */
-    code span.pp { color: #f97583; } /* Preprocessor */
-    code span.re { color: #6a737d; } /* RegionMarker */
-    code span.sc { color: #79b8ff; } /* SpecialChar */
-    code span.ss { color: #9ecbff; } /* SpecialString */
-    code span.st { color: #9ecbff; } /* String */
-    code span.va { color: #ffab70; } /* Variable */
-    code span.vs { color: #9ecbff; } /* VerbatimString */
-    code span.wa { color: #ff5555; } /* Warning */
   </style>
   <link rel="stylesheet" href="teoria.pt_files/libs/revealjs/dist/theme/quarto-939dac980516321e8ca7f2ac425f5b62.css">
   <link href="teoria.pt_files/libs/revealjs/plugin/quarto-line-highlight/line-highlight.css" rel="stylesheet">
@@ -188,6 +123,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,192 +142,556 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="o-que-você-vai-aprender" class="slide level2">
-<h2>O que você vai aprender</h2>
+<section id="o-que-você-poderá-fazer" class="slide level2 smaller">
+<h2>O que você poderá fazer</h2>
 <ul>
-<li>Os limites do Parquet puro</li>
-<li>O log de transações e as escritas ACID</li>
-<li><code>MERGE</code>, time travel e schema enforcement</li>
-<li><code>DELETE</code>, <code>UPDATE</code>, <code>RESTORE</code>, <code>OPTIMIZE</code> e <code>VACUUM</code></li>
+<li>Explicar como uma tabela obtém garantias ACID só com arquivos em armazenamento de objetos</li>
+<li>Reconstruir o estado de uma tabela a partir do log, à mão</li>
+<li>Prever quais operações concorrentes entram em conflito, e por quê</li>
+<li>Estimar quantos arquivos um <code>MERGE</code> reescreve</li>
+<li>Estimar quanto o Z-order ganha, e como se degrada com mais colunas</li>
+<li>Saber exatamente quando dados apagados saem do disco</li>
 </ul>
-</section>
-<section id="os-limites-do-parquet-puro" class="slide level2">
-<h2>Os limites do Parquet puro</h2>
 <table class="caption-top">
-<colgroup>
-<col style="width: 50%">
-<col style="width: 50%">
-</colgroup>
 <thead>
 <tr class="header">
-<th>Problema</th>
-<th>Exemplo</th>
+<th>Bloco</th>
+<th>Tema</th>
+<th>Min</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Sem atomicidade</strong></td>
-<td>O job falha no meio do <code>overwrite</code>: a tabela fica pela metade</td>
+<td>1</td>
+<td>O que Parquet puro não pode fazer</td>
+<td>15</td>
 </tr>
 <tr class="even">
-<td><strong>Sem UPDATE/MERGE</strong></td>
-<td>Uma atualização de status obriga a reescrever a partição ou a tabela</td>
+<td>2</td>
+<td>O log de transações</td>
+<td>30</td>
 </tr>
 <tr class="odd">
-<td><strong>Leituras inconsistentes</strong></td>
-<td>Um leitor vê arquivos antigos e novos misturados durante a escrita</td>
+<td>3</td>
+<td>Controle de concorrência</td>
+<td>25</td>
 </tr>
 <tr class="even">
-<td><strong>Sem histórico</strong></td>
-<td>Não dá para ver como a tabela estava ontem</td>
+<td>4</td>
+<td>O custo de <code>UPDATE</code> e <code>MERGE</code></td>
+<td>20</td>
 </tr>
 <tr class="odd">
-<td><strong>Schema sem proteção</strong></td>
-<td>Um arquivo com colunas diferentes corrompe a tabela silenciosamente</td>
+<td>5</td>
+<td>Ler menos: salto de dados e Z-order</td>
+<td>15</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Versões, retenção e exclusão</td>
+<td>10</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Problema integrador</td>
+<td>5</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="o-log-de-transações" class="slide level2">
-<h2>O log de transações</h2>
-<pre><code>  silver_delta/
-  ├── _delta_log/
-  │   ├── 00000000000000000000.json   &lt;- v0: add files A, B, C
-  │   ├── 00000000000000000001.json   &lt;- v1: remove B, add D   (MERGE)
-  │   └── 00000000000000000002.json   &lt;- v2: remove A          (DELETE)
-  ├── order_date=2024-07-01/part-....parquet
-  └── order_date=2024-07-02/part-....parquet</code></pre>
-<p>Os dados continuam em Parquet. O log diz <strong>quais arquivos formam cada versão</strong>. Escrever é atômico: ou o arquivo de log da nova versão existe, ou a versão não aconteceu.</p>
-</section>
-<section id="merge-upsert" class="slide level2">
-<h2>MERGE (upsert)</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>(orders_dt.alias(<span class="st">"t"</span>)</span>
-<span id="cb2-2"><a href=""></a> .merge(updates.alias(<span class="st">"s"</span>), <span class="st">"t.order_id = s.order_id"</span>)</span>
-<span id="cb2-3"><a href=""></a> .whenMatchedUpdateAll(condition<span class="op">=</span><span class="st">"s.updated_at &gt; t.updated_at"</span>)</span>
-<span id="cb2-4"><a href=""></a> .whenNotMatchedInsertAll()</span>
-<span id="cb2-5"><a href=""></a> .execute())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>A condição <code>s.updated_at &gt; t.updated_at</code> protege contra dados atrasados: um evento antigo que chega depois não sobrescreve um estado mais novo.</p>
-</section>
-<section id="histórico-e-time-travel" class="slide level2">
-<h2>Histórico e time travel</h2>
-<p>Cada operação gera uma nova versão. As antigas continuam legíveis até serem removidas pelo <code>VACUUM</code>.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>orders_dt.history().select(<span class="st">"version"</span>, <span class="st">"timestamp"</span>, <span class="st">"operation"</span>).show()</span>
-<span id="cb3-2"><a href=""></a></span>
-<span id="cb3-3"><a href=""></a>v0 <span class="op">=</span> spark.read.<span class="bu">format</span>(<span class="st">"delta"</span>).option(<span class="st">"versionAsOf"</span>, <span class="dv">0</span>).load(SILVER_DELTA)</span>
-<span id="cb3-4"><a href=""></a></span>
-<span id="cb3-5"><a href=""></a>spark.sql(<span class="ss">f"SELECT status, COUNT(*) FROM delta.`</span><span class="sc">{</span>SILVER_DELTA<span class="sc">}</span><span class="ss">` "</span></span>
-<span id="cb3-6"><a href=""></a>          <span class="st">"VERSION AS OF 0 GROUP BY status"</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="schema-enforcement-evolution" class="slide level2">
-<h2>Schema enforcement &amp; evolution</h2>
-<p>O Delta <strong>recusa</strong> escritas com schema incompatível. Mudanças intencionais são explícitas:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>(with_coupon.write.<span class="bu">format</span>(<span class="st">"delta"</span>)</span>
-<span id="cb4-2"><a href=""></a> .mode(<span class="st">"append"</span>)</span>
-<span id="cb4-3"><a href=""></a> .option(<span class="st">"mergeSchema"</span>, <span class="st">"true"</span>)     <span class="co"># old rows get null</span></span>
-<span id="cb4-4"><a href=""></a> .save(SILVER_DELTA))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="delete-update-restore" class="slide level2">
-<h2>DELETE, UPDATE &amp; RESTORE</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>orders_dt.restoreToVersion(merge_version)</span>
-<span id="cb5-2"><a href=""></a>orders_dt.delete(F.col(<span class="st">"customer_id"</span>) <span class="op">==</span> customer)</span>
-<span id="cb5-3"><a href=""></a>orders_dt.update(</span>
-<span id="cb5-4"><a href=""></a>    condition<span class="op">=</span><span class="st">"status = 'created' AND created_at &lt; '2024-07-03'"</span>,</span>
-<span id="cb5-5"><a href=""></a>    <span class="bu">set</span><span class="op">=</span>{<span class="st">"status"</span>: F.lit(<span class="st">"expired"</span>)},</span>
-<span id="cb5-6"><a href=""></a>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-warning callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Aviso</strong></p>
-</div>
-<div class="callout-content">
-<p>Depois de um <code>DELETE</code>, os dados ainda existem nos arquivos Parquet das versões antigas e o time travel consegue lê-los. Para a exclusão ser real (ex.: LGPD), é preciso rodar <code>VACUUM</code>.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="optimize-vacuum" class="slide level2">
-<h2>OPTIMIZE &amp; VACUUM</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 30%">
-<col style="width: 43%">
-<col style="width: 26%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Comando</th>
-<th>O que faz</th>
-<th>Quando</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>OPTIMIZE</code></td>
-<td>Compacta arquivos pequenos em maiores</td>
-<td>Após muitos MERGEs/appends</td>
-</tr>
-<tr class="even">
-<td><code>OPTIMIZE ... ZORDER BY (col)</code></td>
-<td>Também reorganiza os dados para pular mais blocos em filtros por <code>col</code></td>
-<td>Colunas muito filtradas, fora da partição</td>
-</tr>
-<tr class="odd">
-<td><code>VACUUM</code></td>
-<td>Apaga arquivos que nenhuma versão recente usa</td>
-<td>Periodicamente; o padrão mantém 7 dias</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="resumo" class="slide level2">
-<h2>Resumo</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 57%">
-<col style="width: 42%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Delta Lake</th>
-<th>Comando</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Upsert</td>
-<td><code>DeltaTable.merge(...).whenMatchedUpdateAll().whenNotMatchedInsertAll()</code></td>
-</tr>
-<tr class="even">
-<td>Histórico</td>
-<td><code>.history()</code> / <code>DESCRIBE HISTORY</code></td>
-</tr>
-<tr class="odd">
-<td>Time travel</td>
-<td><code>.option("versionAsOf", n)</code> / <code>VERSION AS OF n</code></td>
-</tr>
-<tr class="even">
-<td>Desfazer</td>
-<td><code>.restoreToVersion(n)</code></td>
-</tr>
-<tr class="odd">
-<td>Evoluir schema</td>
-<td><code>.option("mergeSchema", "true")</code></td>
-</tr>
-<tr class="even">
-<td>Compactar</td>
-<td><code>.optimize().executeCompaction()</code> / <code>.executeZOrderBy(col)</code></td>
-</tr>
-<tr class="odd">
-<td>Limpar versões antigas</td>
-<td><code>.vacuum(horas)</code></td>
-</tr>
-</tbody>
-</table>
+<section>
+<section id="o-que-parquet-puro-não-pode-fazer" class="title-slide slide level1 center">
+<h1>1. O que Parquet puro não pode fazer</h1>
 
 </section>
+<section id="uma-tabela-como-uma-pasta-de-arquivos" class="slide level2 smaller">
+<h2>Uma tabela como “uma pasta de arquivos”</h2>
+<p>O conteúdo da pasta <strong>define</strong> a tabela. Em um object store, sem operações atômicas sobre vários arquivos, isso causa anomalias concretas:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 22%">
+<col style="width: 20%">
+<col style="width: 57%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Anomalia</th>
+<th>Cenário</th>
+<th>Propriedade ACID violada</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Escrita parcial</strong></td>
+<td>Um job morre com 60 de seus 100 arquivos gravados</td>
+<td>Atomicidade</td>
+</tr>
+<tr class="even">
+<td><strong>Leitura suja</strong></td>
+<td>Um leitor lista a pasta durante um overwrite: arquivos velhos e novos juntos</td>
+<td>Isolamento</td>
+</tr>
+<tr class="odd">
+<td><strong>Atualização perdida</strong></td>
+<td>Dois jobs reescrevem uma partição: o último apaga o trabalho do outro</td>
+<td>Isolamento</td>
+</tr>
+<tr class="even">
+<td><strong>Dados inválidos</strong></td>
+<td>Um arquivo com outras colunas</td>
+<td>Consistência</td>
+</tr>
+</tbody>
+</table>
+<p>E há custo de desempenho: <strong>listar a pasta</strong> no S3 custa uma requisição a cada 1.000 objetos (Armbrust et al., 2020).</p>
+<p><strong>A ideia do Delta Lake:</strong> não mudar o armazenamento. Adicionar <strong>um nível de indireção</strong>: a tabela não é “o que há na pasta”, mas “o que um log diz que há na pasta”.</p>
+</section></section>
+<section>
+<section id="o-log-de-transações" class="title-slide slide level1 center">
+<h1>2. O log de transações</h1>
+
+</section>
+<section id="a-tabela-é-a-reprodução-do-seu-log" class="slide level2 smaller">
+<h2>A tabela é a reprodução do seu log</h2>
+<p>Cada commit <span class="math inline">\(v\)</span> é um arquivo JSON que lista os arquivos que adiciona (<span class="math inline">\(A_v\)</span>) e remove (<span class="math inline">\(R_v\)</span>). O estado da tabela é uma função pura do log:</p>
+<p><span class="math display">\[S_v = (S_{v-1} \setminus R_v) \cup A_v\]</span></p>
+<pre><code> _delta_log/
+   00000000000000000000.json    add a, add b, add c, metaData(schema)
+   00000000000000000001.json    add d
+   00000000000000000002.json    remove b, add e         (an UPDATE)
+   00000000000000000003.json    remove a, remove c, add f   (OPTIMIZE, dataChange=false)
+ a.parquet  b.parquet  c.parquet  d.parquet  e.parquet  f.parquet</code></pre>
+<p><strong>Exercício: quais arquivos formam a versão 2? E a 3?</strong></p>
+<div class="fragment">
+<ul>
+<li><span class="math inline">\(S_0 = \{a, b, c\}\)</span>, <span class="math inline">\(S_1 = \{a, b, c, d\}\)</span>, <span class="math inline">\(S_2 =\)</span> <strong><span class="math inline">\(\{a, c, d, e\}\)</span></strong>, <span class="math inline">\(S_3 =\)</span> <strong><span class="math inline">\(\{d, e, f\}\)</span></strong>.</li>
+<li><code>b.parquet</code> continua no disco, mas não pertence mais à tabela: um leitor da versão 3 nunca o abre.</li>
+<li><strong>Por que isso dá atomicidade:</strong> um job primeiro grava todos os seus arquivos de dados, invisíveis porque nenhuma entrada do log os nomeia, e depois confirma com um só arquivo. Uma queda antes do commit só deixa arquivos órfãos.</li>
+<li><strong>O time travel não precisa de mais nada:</strong> reproduzir até <span class="math inline">\(v\)</span> dá a tabela na versão <span class="math inline">\(v\)</span>.</li>
+</ul>
+</div>
+</section>
+<section id="a-única-primitiva-que-precisa-put-if-absent" class="slide level2 smaller">
+<h2>A única primitiva que precisa: put-if-absent</h2>
+<p><strong>Protocolo de escrita</strong> (Armbrust et al., 2020, §3.2.2):</p>
+<ol type="1">
+<li>Encontre a última versão <span class="math inline">\(r\)</span>, e leia a tabela em <span class="math inline">\(r\)</span> se necessário.</li>
+<li>Grave os novos arquivos de dados, com nomes únicos, em paralelo.</li>
+<li>Tente criar o arquivo de log <span class="math inline">\(r + 1\)</span>, <strong>só se não existir</strong>.</li>
+<li>Se outro escritor chegou antes: verifique conflitos, e repita na versão seguinte.</li>
+</ol>
+<p><strong>O passo 3 é o único ponto de coordenação.</strong> Toda a transação se reduz a uma operação atômica sobre um objeto pequeno: <em>crie esta chave se não existir</em>.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 34%">
+<col style="width: 65%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Armazenamento</th>
+<th>Como se obtém put-if-absent</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>HDFS, Azure</td>
+<td>Rename atômico, ou operações condicionais nativas</td>
+</tr>
+<tr class="even">
+<td>S3</td>
+<td><strong>Não existia</strong> no artigo: exigia coordenação. As escritas condicionais chegaram em 2024</td>
+</tr>
+<tr class="odd">
+<td>Google Cloud Storage</td>
+<td>Escritas condicionais nativas</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Isso explica o limite do sistema:</strong> um commit por escrita no object store. Com dezenas a centenas de milissegundos por escrita, o artigo reporta <strong>várias transações por segundo</strong>. Serve para lotes e micro-batches, e o torna a ferramenta errada para OLTP por linha.</p>
+</section>
+<section id="acid-propriedade-por-propriedade" class="slide level2 smaller">
+<h2>ACID, propriedade por propriedade</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 28%">
+<col style="width: 32%">
+<col style="width: 39%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Propriedade</th>
+<th>Como se obtém</th>
+<th>O que <strong>não</strong> dá</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Atomicidade</strong></td>
+<td>Um arquivo de log por commit: tudo ou nada</td>
+<td>Entre <strong>várias tabelas</strong> não há atomicidade</td>
+</tr>
+<tr class="even">
+<td><strong>Consistência</strong></td>
+<td>Schema enforcement, e restrições na escrita</td>
+<td>Suas regras de negócio são suas</td>
+</tr>
+<tr class="odd">
+<td><strong>Isolamento</strong></td>
+<td>Leitores leem uma versão fixa; escritores validam ao confirmar</td>
+<td>Sem transações de várias instruções</td>
+</tr>
+<tr class="even">
+<td><strong>Durabilidade</strong></td>
+<td>A durabilidade do object store</td>
+<td>Depende do armazenamento e de <code>VACUUM</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Checkpoints: manter as leituras rápidas.</strong> Reproduzir milhares de JSON seria lento. Por isso, por padrão a cada <strong>10 commits</strong>, o estado é gravado em um checkpoint Parquet, e um leitor só precisa de:</p>
+<p><span class="math display">\[\text{último checkpoint} + \text{os JSON posteriores}\]</span></p>
+<p>O checkpoint é em si uma tabela analítica sobre a tabela: como guarda estatísticas por arquivo em forma colunar, encontrar quais arquivos ler costuma ser <strong>mais rápido que <code>LIST</code> mais ler footers</strong> (Armbrust et al., 2020, §3.1.3).</p>
+<p><strong>Um checkpoint só afeta o desempenho:</strong> uma queda ao gravá-lo não pode corromper nada.</p>
+</section></section>
+<section>
+<section id="controle-de-concorrência" class="title-slide slide level1 center">
+<h1>3. Controle de concorrência</h1>
+
+</section>
+<section id="otimista-supor-que-não-há-conflito-e-depois-verificar" class="slide level2 smaller">
+<h2>Otimista: supor que não há conflito, e depois verificar</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 21%">
+<col style="width: 45%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Abordagem</th>
+<th>Ideia</th>
+<th>Convém quando</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Pessimista (locks)</td>
+<td>Pedir permissão antes de trabalhar</td>
+<td>Transações curtas, conflitos frequentes</td>
+</tr>
+<tr class="even">
+<td><strong>Otimista</strong></td>
+<td>Trabalhar primeiro, e validar ao confirmar</td>
+<td><strong>Transações longas, conflitos raros</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Um job Spark pode durar horas e tocar milhares de arquivos, então manter locks por tanto tempo está descartado. Além disso, um object store não oferece serviço de locks.</p>
+<p><strong>Leitores nunca bloqueiam ninguém.</strong> Leem o snapshot em <span class="math inline">\(v\)</span>, cujos arquivos seguem imutáveis, então podem rodar quantos forem durante uma escrita.</p>
+<p><strong>O preço do otimismo é o trabalho perdido:</strong> em um conflito, o que o job gravou é descartado e é preciso repetir. Com uma probabilidade de conflito <span class="math inline">\(p\)</span> por tentativa, o número esperado de tentativas é:</p>
+<p><span class="math display">\[E[\text{tentativas}] = \frac{1}{1 - p}\]</span></p>
+<p>Com <span class="math inline">\(p = 50\%\)</span>: 2 tentativas, ou seja <strong>o dobro do custo</strong>, em um job que pode levar uma hora. Projete para que os escritores não toquem os mesmos dados, em vez de confiar nas repetições.</p>
+</section>
+<section id="o-que-conflita-com-o-quê-e-por-quê" class="slide level2 smaller">
+<h2>O que conflita com o quê, e por quê</h2>
+<p>A matriz da documentação do Delta:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th></th>
+<th><code>INSERT</code></th>
+<th><code>UPDATE</code>, <code>DELETE</code>, <code>MERGE</code></th>
+<th>Compactação</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>INSERT</code></td>
+<td><strong>Não pode haver conflito</strong></td>
+<td>Pode</td>
+<td><strong>Não pode</strong></td>
+</tr>
+<tr class="even">
+<td><code>UPDATE</code>, <code>DELETE</code>, <code>MERGE</code></td>
+<td></td>
+<td>Pode</td>
+<td>Pode</td>
+</tr>
+<tr class="odd">
+<td>Compactação</td>
+<td></td>
+<td></td>
+<td>Pode</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Tudo decorre de uma pergunta: o outro commit mudou o que eu li?</strong></p>
+<p><strong>Exercício: por que esses resultados fazem sentido?</strong></p>
+<div class="fragment">
+<ul>
+<li><strong>Dois <code>INSERT</code> às cegas:</strong> nenhum leu nada, e os arquivos novos têm nomes únicos. Ambas as ordens dão o mesmo.</li>
+<li><strong><code>INSERT</code> vs <code>MERGE</code>:</strong> o <code>MERGE</code> buscou coincidências na tabela, e as linhas novas podem ser coincidências que não viu (<code>ConcurrentAppendException</code>).</li>
+<li><strong>Dois <code>MERGE</code> nos mesmos arquivos:</strong> ambos removem um arquivo que o outro usou (<code>ConcurrentDeleteReadException</code>).</li>
+<li><strong><code>MERGE</code> vs compactação:</strong> a compactação marca arquivos como removidos, mesmo que os dados não mudem.</li>
+</ul>
+<p><strong>A correção habitual:</strong> tornar disjuntas as condições, com um predicado de partição explícito, <code>MERGE ... ON t.id = s.id AND t.date = '2024-07-04'</code>, para que a operação só leia essa partição.</p>
+</div>
+</section></section>
+<section>
+<section id="o-custo-de-update-e-merge" class="title-slide slide level1 center">
+<h1>4. O custo de UPDATE e MERGE</h1>
+
+</section>
+<section id="parquet-é-imutável-mudar-uma-linha-reescreve-um-arquivo" class="slide level2 smaller">
+<h2>Parquet é imutável: mudar uma linha reescreve um arquivo</h2>
+<p><code>UPDATE</code> não atualiza nada: <strong>encontra</strong> os arquivos afetados, <strong>reescreve cada um inteiro</strong>, e confirma <code>remove velho</code> + <code>add novo</code>. Isso é <strong>copy-on-write</strong>.</p>
+<p><strong>Quantos arquivos um <code>MERGE</code> toca?</strong> Com <span class="math inline">\(k\)</span> atualizações distribuídas ao acaso em <span class="math inline">\(F\)</span> arquivos, o número esperado de arquivos tocados é (bolas e urnas):</p>
+<p><span class="math display">\[F\left(1 - \left(1 - \frac{1}{F}\right)^{k}\right) \approx F\left(1 - e^{-k/F}\right)\]</span></p>
+<table class="caption-top" style="width:100%;">
+<colgroup>
+<col style="width: 31%">
+<col style="width: 18%">
+<col style="width: 27%">
+<col style="width: 23%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Linhas atualizadas <span class="math inline">\(k\)</span></th>
+<th>Arquivos <span class="math inline">\(F\)</span></th>
+<th>Arquivos reescritos</th>
+<th>Fração da tabela</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>100</td>
+<td>1.000</td>
+<td>95</td>
+<td>10%</td>
+</tr>
+<tr class="even">
+<td>1.000</td>
+<td>1.000</td>
+<td><strong>632</strong></td>
+<td><strong>63%</strong></td>
+</tr>
+<tr class="odd">
+<td>5.000</td>
+<td>1.000</td>
+<td>993</td>
+<td>99%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>1.000 linhas podem forçar a reescrever 63% de uma tabela.</strong> Se a tabela tem 1 TB, são 630 GB gravados para talvez alguns KB de mudanças reais.</p>
+<p><strong>O que salva é a correlação.</strong> Se as atualizações se concentram em dados recentes, e a tabela está particionada ou ordenada por data, tocam poucos arquivos. A fórmula supõe posicionamento aleatório: <strong>a disposição dos dados é o que você pode mudar</strong>.</p>
+</section>
+<section id="merge-passo-a-passo-e-sua-alternativa" class="slide level2 smaller">
+<h2><code>MERGE</code> passo a passo, e sua alternativa</h2>
+<pre><code> 1. Une fonte e destino, para saber quais arquivos têm coincidências  (lê: candidatos)
+ 2. Reescreve cada arquivo com coincidência: novas + sem mudança      (grava: inteiros)
+ 3. Confirma: remove os arquivos velhos, adiciona os novos            (uma entrada atômica)</code></pre>
+<table class="caption-top">
+<colgroup>
+<col style="width: 70%">
+<col style="width: 30%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Para baixar o custo</th>
+<th>Por quê</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Predicado de partição no <code>ON</code></td>
+<td>Reduz os candidatos do passo 1</td>
+</tr>
+<tr class="even">
+<td>Deduplicar a fonte</td>
+<td>Duas linhas para um mesmo destino <strong>fazem o <code>MERGE</code> falhar</strong>: qual ganharia?</td>
+</tr>
+</tbody>
+</table>
+<table class="caption-top">
+<colgroup>
+<col style="width: 2%">
+<col style="width: 30%">
+<col style="width: 68%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Copy-on-write</th>
+<th>Merge-on-read (deletion vectors)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Atualizar</td>
+<td>Reescreve o arquivo</td>
+<td><strong>Marca as linhas como apagadas</strong> em um arquivo à parte</td>
+</tr>
+<tr class="even">
+<td>Custo de escrita</td>
+<td><strong>Alto</strong></td>
+<td>Baixo</td>
+</tr>
+<tr class="odd">
+<td>Custo de leitura</td>
+<td>Nenhum</td>
+<td><strong>Deve filtrar</strong> as linhas marcadas, até compactar</td>
+</tr>
+<tr class="even">
+<td>Convém</td>
+<td>Lotes grandes e poucos</td>
+<td>Atualizações pequenas e frequentes</td>
+</tr>
+</tbody>
+</table>
+<p>O custo não desaparece: passa da escrita para a leitura.</p>
+</section></section>
+<section>
+<section id="ler-menos-salto-de-dados-e-z-order" class="title-slide slide level1 center">
+<h1>5. Ler menos: salto de dados e Z-order</h1>
+
+</section>
+<section id="o-salto-de-dados-precisa-de-dados-agrupados" class="slide level2 smaller">
+<h2>O salto de dados precisa de dados agrupados</h2>
+<p>O log guarda min, max e contagens de nulos por arquivo, por padrão das primeiras <strong>32 colunas</strong>. Um filtro pula todo arquivo cuja faixa não possa coincidir. Assim, <strong>o salto só funciona se cada arquivo tem uma faixa estreita</strong>, ou seja, se as linhas relacionadas estão juntas.</p>
+<p><strong>Ordenar só ajuda uma coluna.</strong> Como servir várias ao mesmo tempo? O Z-order intercala os bits das colunas:</p>
+<p><span class="math display">\[x = \color{#7cc}{1}\color{#7cc}{0},\ \ y = \color{#fc8}{1}\color{#fc8}{1} \quad\Longrightarrow\quad z = \color{#7cc}{1}\color{#fc8}{1}\color{#7cc}{0}\color{#fc8}{1}\]</span></p>
+<p>Ordenar por <span class="math inline">\(z\)</span> deixa pontos próximos juntos em <strong>todas</strong> as dimensões, de forma aproximada. Com <span class="math inline">\(F\)</span> arquivos e <span class="math inline">\(d\)</span> colunas, um filtro em uma coluna toca cerca de <span class="math inline">\(F^{\,1 - 1/d}\)</span> arquivos:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Colunas em Z-order</th>
+<th>Arquivos tocados (<span class="math inline">\(F = 10.000\)</span>)</th>
+<th>Fração lida</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1 (ordem simples)</td>
+<td>1</td>
+<td>0,01%, só nessa coluna</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>100</td>
+<td><strong>1%</strong></td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>464</td>
+<td>4,6%</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>1.000</td>
+<td><strong>10%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>A documentação avisa que “a eficácia da localidade cai a cada coluna extra”.</strong> O artigo mede isso com 4 colunas: pôde pular pelo menos <strong>43%</strong> dos arquivos por dimensão, e 54% em média.</p>
+</section></section>
+<section>
+<section id="versões-retenção-e-exclusão" class="title-slide slide level1 center">
+<h1>6. Versões, retenção e exclusão</h1>
+
+</section>
+<section id="quando-os-dados-realmente-vão-embora" class="slide level2 smaller">
+<h2>Quando os dados realmente vão embora?</h2>
+<p><code>DELETE</code> só grava um <code>remove</code> no log: <strong>os dados continuam no disco</strong>, e o time travel pode lê-los. Duas retenções decidem o que acontece depois:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 31%">
+<col style="width: 17%">
+<col style="width: 22%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Configuração</th>
+<th>Padrão</th>
+<th>Controla</th>
+<th>Quem aplica</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>delta.deletedFileRetentionDuration</code></td>
+<td><strong>1 semana</strong></td>
+<td>Quanto tempo os <strong>arquivos de dados</strong> removidos ficam</td>
+<td><code>VACUUM</code> manual</td>
+</tr>
+<tr class="even">
+<td><code>delta.logRetentionDuration</code></td>
+<td><strong>30 dias</strong></td>
+<td>Quanto tempo as <strong>entradas do log</strong> ficam</td>
+<td>Automático, após checkpoints</td>
+</tr>
+</tbody>
+</table>
+<p><strong>O time travel para a versão <span class="math inline">\(v\)</span> precisa de ambos</strong>, suas entradas de log e seus arquivos, então a janela real é a <strong>menor</strong> das duas.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 39%">
+<col style="width: 60%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Cenário</th>
+<th>Consequência</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>VACUUM</code> nunca roda</td>
+<td>O armazenamento cresce sem fim, e dados pessoais “apagados” seguem legíveis</td>
+</tr>
+<tr class="even">
+<td><code>VACUUM</code> com retenção curta</td>
+<td>Leitores concorrentes em uma versão velha <strong>perdem seus arquivos</strong>: daí a verificação de segurança</td>
+</tr>
+<tr class="odd">
+<td>Pedido legal de apagar dados de um cliente</td>
+<td><code>DELETE</code> <strong>não basta</strong>: requer <code>VACUUM</code> após a retenção</td>
+</tr>
+</tbody>
+</table>
+<p><code>RESTORE</code> grava um commit novo: não rebobina a história, então pode ser desfeito.</p>
+</section></section>
+<section>
+<section id="problema-integrador" class="title-slide slide level1 center">
+<h1>7. Problema integrador</h1>
+
+</section>
+<section id="um-merge-que-ficou-caro-demais" class="slide level2 smaller">
+<h2>Um <code>MERGE</code> que ficou caro demais</h2>
+<p>Silver: 2 TB em 2.000 arquivos de 1 GB. Todo dia: um <code>MERGE</code> de 20.000 atualizações e linhas novas, e um <code>OPTIMIZE</code> noturno. Ultimamente o <code>MERGE</code> leva 3 horas e às vezes falha com <code>ConcurrentDeleteReadException</code>.</p>
+<ol type="1">
+<li>Quanto o <code>MERGE</code> reescreve, com atualizações distribuídas ao acaso? 2. O que explica a exceção? 3. 95% das atualizações caem nos últimos 7 dias: o que você mudaria? 4. Quanto reescreveria então?</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li><span class="math inline">\(k/F = 10\)</span>, então <span class="math inline">\(F(1 - e^{-10}) \approx\)</span> <strong>2.000 arquivos: toda a tabela</strong>, 2 TB reescritos por dia.</li>
+<li><code>OPTIMIZE</code> remove arquivos que o longo <code>MERGE</code> leu. Eles se sobrepõem no tempo, e a matriz diz que a compactação <strong>pode conflitar</strong>.</li>
+<li><strong>Particione por data</strong>, e adicione <code>t.order_date &gt;= current_date() - 7</code> ao <code>ON</code> (com uma passada à parte para atualizações antigas). Além disso, agende <code>OPTIMIZE</code> para não sobrepor, ou limite-o a partições antigas.</li>
+<li>Um ano em 2.000 arquivos são cerca de 5,5 arquivos por dia, então 7 dias têm cerca de <strong>38 arquivos</strong>, ou <strong>38 GB</strong>: cerca de <strong>50× menos</strong>. <span class="math inline">\(k\)</span> continua grande, então todos esses arquivos são tocados, mas <span class="math inline">\(F\)</span> encolheu.</li>
+</ol>
+<p><strong>A lição:</strong> nenhuma configuração resolve isso tanto quanto a disposição dos dados.</p>
+</div>
+</section>
+<section id="referências" class="slide level2 smaller">
+<h2>Referências</h2>
+<ul>
+<li>Armbrust, M., Das, T., Sun, L., et al.&nbsp;(2020). <em>Delta Lake: High-Performance ACID Table Storage over Cloud Object Stores</em>. PVLDB, 13(12).</li>
+<li>Kung, H. T., Robinson, J. T. (1981). <em>On Optimistic Methods for Concurrency Control</em>. ACM TODS, 6(2).</li>
+<li>Morton, G. M. (1966). <em>A Computer Oriented Geodetic Data Base and a New Technique in File Sequencing</em>. IBM. (origin of the Z-order)</li>
+<li>Delta Lake: <a href="https://github.com/delta-io/delta/blob/master/PROTOCOL.md">Protocol</a>, <a href="https://docs.delta.io/latest/concurrency-control.html">Concurrency control</a>, <a href="https://docs.delta.io/latest/optimizations-oss.html">Optimizations</a>, <a href="https://docs.delta.io/latest/delta-utility.html">Utilities (VACUUM)</a>, <a href="https://docs.delta.io/latest/table-properties.html">Table properties</a>, <a href="https://docs.delta.io/latest/delta-update.html">Update and merge</a>.</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

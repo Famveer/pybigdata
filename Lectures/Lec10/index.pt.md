@@ -14,10 +14,11 @@ layout: default
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* Tabelas ilimitadas e micro-batches
->* Output modes e triggers
->* Janelas e watermark
->* Checkpoint e exactly-once
+>* O modelo: tabela ilimitada, tempo do evento e tempo de processamento
+>* Micro-batches e capacidade: estabilidade e tempo de recuperação
+>* Janelas e quanto estado custam
+>* Watermarks: a regra exata, sua garantia e como escolhê-lo
+>* O que exactly-once realmente requer, e quais sinks o oferecem
 
 
 ### Slides

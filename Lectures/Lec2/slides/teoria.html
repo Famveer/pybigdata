@@ -188,6 +188,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,67 +207,163 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="what-you-will-learn" class="slide level2">
-<h2>What you will learn</h2>
+<section id="what-you-will-be-able-to-do" class="slide level2 smaller">
+<h2>What you will be able to do</h2>
 <ul>
-<li>Python essentials: types, collections, control flow and functions</li>
-<li>Why Pandas: origin and motivation</li>
-<li>Pandas: <strong>Series</strong> and <strong>DataFrame</strong></li>
-<li>Explore, filter, transform and clean data</li>
-<li>Aggregations, joins and method chaining</li>
-<li>How all of this carries over to Spark</li>
+<li>Predict what happens when Python assigns or passes a mutable object</li>
+<li>Explain why a Python loop is slow, and estimate its memory, with real numbers</li>
+<li>Explain why Pandas exists, and what its model does</li>
+<li>Choose types (<code>dtype</code>) that save memory, and know when <code>NaN</code> changes a type</li>
+<li>Estimate an operation’s complexity, and whether a dataset fits in memory</li>
+<li>Avoid the classic bug of modifying a copy</li>
 </ul>
-</section>
-<section id="python-collections" class="slide level2">
-<h2>Python collections</h2>
 <table class="caption-top">
+<thead>
+<tr class="header">
+<th>Block</th>
+<th>Topic</th>
+<th>Min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Python’s data model</td>
+<td>25</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>Why Pandas</td>
+<td>15</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Why vectorization is faster</td>
+<td>25</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>The DataFrame: columns and types</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Operations and their cost</td>
+<td>20</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Integrating problem</td>
+<td>15</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section>
+<section id="pythons-data-model" class="title-slide slide level1 center">
+<h1>1. Python’s data model</h1>
+
+</section>
+<section id="variables-are-names-not-boxes" class="slide level2 smaller">
+<h2>Variables are names, not boxes</h2>
+<p>A variable holds a <strong>reference to an object</strong>. An assignment copies the reference, not the object.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 12%">
+<col style="width: 25%">
+<col style="width: 35%">
+<col style="width: 27%">
+</colgroup>
 <thead>
 <tr class="header">
 <th>Type</th>
 <th>Properties</th>
-<th>Example</th>
+<th>Lookup by value</th>
+<th>Typical use</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td><code>list</code></td>
 <td>Ordered, mutable</td>
-<td><code>[150, 230, 90]</code></td>
+<td><span class="math inline">\(O(n)\)</span></td>
+<td>Sequences</td>
 </tr>
 <tr class="even">
-<td><code>dict</code></td>
-<td>Key-value, mutable</td>
-<td><code>{"nome": "Notebook"}</code></td>
-</tr>
-<tr class="odd">
 <td><code>tuple</code></td>
 <td>Ordered, <strong>immutable</strong></td>
-<td><code>(-23.55, -46.63)</code></td>
+<td><span class="math inline">\(O(n)\)</span></td>
+<td>Fixed records, dictionary keys</td>
+</tr>
+<tr class="odd">
+<td><code>dict</code></td>
+<td>Key-value, mutable</td>
+<td><strong><span class="math inline">\(O(1)\)</span></strong> on average</td>
+<td>Lookups, grouping</td>
 </tr>
 <tr class="even">
 <td><code>set</code></td>
-<td>No duplicates, no order</td>
-<td><code>{"Audio", "Cables"}</code></td>
+<td>No duplicates</td>
+<td><strong><span class="math inline">\(O(1)\)</span></strong> on average</td>
+<td>Membership, deduplication</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Exercise: what does each line print?</strong></p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>a <span class="op">=</span> [<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>]<span class="op">;</span>   b <span class="op">=</span> a<span class="op">;</span>   b.append(<span class="dv">4</span>)<span class="op">;</span>   <span class="bu">print</span>(a)</span>
+<span id="cb1-2"><a href=""></a>c <span class="op">=</span> a.copy()<span class="op">;</span>    c.append(<span class="dv">5</span>)<span class="op">;</span>            <span class="bu">print</span>(a)</span>
+<span id="cb1-3"><a href=""></a></span>
+<span id="cb1-4"><a href=""></a><span class="kw">def</span> add(x, acc<span class="op">=</span>[]):</span>
+<span id="cb1-5"><a href=""></a>    acc.append(x)</span>
+<span id="cb1-6"><a href=""></a>    <span class="cf">return</span> acc</span>
+<span id="cb1-7"><a href=""></a><span class="bu">print</span>(add(<span class="dv">1</span>), add(<span class="dv">2</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="fragment">
+<p><code>[1, 2, 3, 4]</code>, since <code>a</code> and <code>b</code> are the same list. Then <code>[1, 2, 3, 4]</code>, since <code>c</code> is a copy. Then <strong><code>[1, 2] [1, 2]</code></strong>: a default value is created <strong>once</strong>, when the function is defined, and is shared by every call.</p>
+</div>
 </section>
-<section id="comprehensions-and-functions" class="slide level2">
-<h2>Comprehensions and functions</h2>
-<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>numeros <span class="op">=</span> [<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">4</span>, <span class="dv">5</span>]</span>
-<span id="cb1-2"><a href=""></a>quadrados <span class="op">=</span> [n <span class="op">**</span> <span class="dv">2</span> <span class="cf">for</span> n <span class="kw">in</span> numeros]</span>
-<span id="cb1-3"><a href=""></a>pares <span class="op">=</span> [n <span class="cf">for</span> n <span class="kw">in</span> numeros <span class="cf">if</span> n <span class="op">%</span> <span class="dv">2</span> <span class="op">==</span> <span class="dv">0</span>]</span>
-<span id="cb1-4"><a href=""></a></span>
-<span id="cb1-5"><a href=""></a><span class="kw">def</span> classificar_receita(valor, limite_alto<span class="op">=</span><span class="dv">10000</span>, limite_medio<span class="op">=</span><span class="dv">5000</span>):</span>
-<span id="cb1-6"><a href=""></a>    <span class="cf">if</span> valor <span class="op">&gt;</span> limite_alto:</span>
-<span id="cb1-7"><a href=""></a>        <span class="cf">return</span> <span class="st">"Alta"</span></span>
-<span id="cb1-8"><a href=""></a>    <span class="cf">elif</span> valor <span class="op">&gt;</span> limite_medio:</span>
-<span id="cb1-9"><a href=""></a>        <span class="cf">return</span> <span class="st">"Média"</span></span>
-<span id="cb1-10"><a href=""></a>    <span class="cf">return</span> <span class="st">"Baixa"</span></span>
-<span id="cb1-11"><a href=""></a></span>
-<span id="cb1-12"><a href=""></a>desconto <span class="op">=</span> <span class="kw">lambda</span> preco, pct: preco <span class="op">*</span> (<span class="dv">1</span> <span class="op">-</span> pct)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="functions-are-values-and-comprehensions-are-expressions" class="slide level2 smaller">
+<h2>Functions are values, and comprehensions are expressions</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>discount <span class="op">=</span> <span class="kw">lambda</span> price, pct: price <span class="op">*</span> (<span class="dv">1</span> <span class="op">-</span> pct)      <span class="co"># a function object</span></span>
+<span id="cb2-2"><a href=""></a>squares  <span class="op">=</span> [n <span class="op">**</span> <span class="dv">2</span> <span class="cf">for</span> n <span class="kw">in</span> numbers]                 <span class="co"># list comprehension</span></span>
+<span id="cb2-3"><a href=""></a>prices   <span class="op">=</span> {item: p <span class="op">*</span> <span class="fl">1.23</span> <span class="cf">for</span> item, p <span class="kw">in</span> rows}      <span class="co"># dict comprehension</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Why this matters beyond syntax.</strong> Spark’s whole API takes functions and expressions as data:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 40%">
+<col style="width: 59%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Python idea</th>
+<th>Where it reappears</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>A function is a value</td>
+<td><code>.apply(fn)</code>, UDFs</td>
+</tr>
+<tr class="even">
+<td>A closure captures variables</td>
+<td>Spark serializes a function along with what it captured, and sends a <strong>copy</strong> to each executor (Lecture 3)</td>
+</tr>
+<tr class="odd">
+<td>A comprehension over an <strong>iterable</strong></td>
+<td><code>yield</code> and iterators are how Spark chains narrow transformations without intermediate lists (Lecture 5)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Generators keep memory constant:</strong></p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="bu">sum</span>([x <span class="op">*</span> <span class="dv">2</span> <span class="cf">for</span> x <span class="kw">in</span> rows])   <span class="co"># builds a whole list first: O(n)</span></span>
+<span id="cb3-2"><a href=""></a><span class="bu">sum</span>(x <span class="op">*</span> <span class="dv">2</span> <span class="cf">for</span> x <span class="kw">in</span> rows)     <span class="co"># one value at a time: O(1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The same sum, with very different memory use. This is the idea of <strong>pipelining</strong>, in one line of Python.</p>
+</section></section>
+<section>
+<section id="why-pandas" class="title-slide slide level1 center">
+<h1>2. Why Pandas</h1>
+
 </section>
-<section id="why-pandas" class="slide level2">
+<section id="why-pandas-1" class="slide level2">
 <h2>Why Pandas?</h2>
 <p>Python had no good way of working with <strong>tabular data</strong>:</p>
 <table class="caption-top">
@@ -303,13 +400,295 @@ Felipe A. Moreno-Vera
 </section>
 <section id="the-same-total-with-less-code" class="slide level2">
 <h2>The same total, with less code</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a><span class="co"># Pure Python</span></span>
-<span id="cb2-2"><a href=""></a>totals <span class="op">=</span> {}</span>
-<span id="cb2-3"><a href=""></a><span class="cf">for</span> row <span class="kw">in</span> rows:</span>
-<span id="cb2-4"><a href=""></a>    totals[row[<span class="st">"cat"</span>]] <span class="op">=</span> totals.get(row[<span class="st">"cat"</span>], <span class="dv">0</span>) <span class="op">+</span> row[<span class="st">"price"</span>]</span>
-<span id="cb2-5"><a href=""></a></span>
-<span id="cb2-6"><a href=""></a><span class="co"># Pandas</span></span>
-<span id="cb2-7"><a href=""></a>df.groupby(<span class="st">"cat"</span>)[<span class="st">"price"</span>].<span class="bu">sum</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a><span class="co"># Pure Python</span></span>
+<span id="cb4-2"><a href=""></a>totals <span class="op">=</span> {}</span>
+<span id="cb4-3"><a href=""></a><span class="cf">for</span> row <span class="kw">in</span> rows:</span>
+<span id="cb4-4"><a href=""></a>    totals[row[<span class="st">"cat"</span>]] <span class="op">=</span> totals.get(row[<span class="st">"cat"</span>], <span class="dv">0</span>) <span class="op">+</span> row[<span class="st">"price"</span>]</span>
+<span id="cb4-5"><a href=""></a></span>
+<span id="cb4-6"><a href=""></a><span class="co"># Pandas</span></span>
+<span id="cb4-7"><a href=""></a>df.groupby(<span class="st">"cat"</span>)[<span class="st">"price"</span>].<span class="bu">sum</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section></section>
+<section>
+<section id="why-vectorization-is-faster" class="title-slide slide level1 center">
+<h1>3. Why vectorization is faster</h1>
+
+</section>
+<section id="a-million-integers-two-memory-layouts" class="slide level2 smaller">
+<h2>A million integers, two memory layouts</h2>
+<pre><code> Python list:   [ptr][ptr][ptr][ptr] ...     each pointer ─▶ a separate int object
+                  │    │    │                 scattered around memory
+                  ▼    ▼    ▼
+                [28 B][28 B][28 B]
+
+ NumPy array:   [ 8 B | 8 B | 8 B | 8 B | ... ]    the raw values, contiguous, one type</code></pre>
+<table class="caption-top">
+<colgroup>
+<col style="width: 3%">
+<col style="width: 44%">
+<col style="width: 51%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Python list</th>
+<th>NumPy <code>int64</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Per value</td>
+<td>8 B pointer + 28 B object = <strong>36 B</strong></td>
+<td><strong>8 B</strong></td>
+</tr>
+<tr class="even">
+<td>1 million values</td>
+<td><strong>36 MB</strong></td>
+<td><strong>8 MB</strong></td>
+</tr>
+<tr class="odd">
+<td>Per addition</td>
+<td>Check types, follow pointers, allocate a result</td>
+<td>One machine instruction</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Check it:</strong> <code>sys.getsizeof(1)</code> returns 28, on 64-bit CPython.</p>
+<p><strong>Why the loop is slow:</strong> Python does not know that the list holds integers, so <strong>each iteration</strong> re-checks the type, unboxes, adds and allocates a new object. <code>arr * 2</code> does this check once, then runs a tight compiled loop over contiguous memory, which the cache and the prefetcher like. In practice this is usually <strong>tens of times faster</strong>. Measure it yourself with <code>%timeit</code>.</p>
+</section>
+<section id="exercise-rank-these-by-speed" class="slide level2 smaller">
+<h2>Exercise: rank these by speed</h2>
+<p>All add 15% VAT to a column of 10 million numbers.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>df[<span class="st">"t"</span>] <span class="op">=</span> [row.price <span class="op">*</span> <span class="fl">1.15</span> <span class="cf">for</span> row <span class="kw">in</span> df.itertuples()]        <span class="co"># A</span></span>
+<span id="cb6-2"><a href=""></a>df[<span class="st">"t"</span>] <span class="op">=</span> df.<span class="bu">apply</span>(<span class="kw">lambda</span> row: row[<span class="st">"price"</span>] <span class="op">*</span> <span class="fl">1.15</span>, axis<span class="op">=</span><span class="dv">1</span>)    <span class="co"># B</span></span>
+<span id="cb6-3"><a href=""></a>df[<span class="st">"t"</span>] <span class="op">=</span> df[<span class="st">"price"</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> p: p <span class="op">*</span> <span class="fl">1.15</span>)                <span class="co"># C</span></span>
+<span id="cb6-4"><a href=""></a>df[<span class="st">"t"</span>] <span class="op">=</span> df[<span class="st">"price"</span>] <span class="op">*</span> <span class="fl">1.15</span>                                   <span class="co"># D</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="fragment">
+<p>Typically, from fastest to slowest: <strong>D ≫ C, A ≫ B</strong>. Measure it with <code>%timeit</code>.</p>
+<table class="caption-top" style="width:100%;">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 73%">
+<col style="width: 21%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Python per row?</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>D</strong></td>
+<td>No</td>
+<td>A compiled loop over the column</td>
+</tr>
+<tr class="even">
+<td><strong>C</strong></td>
+<td>One call per value</td>
+<td>Boxes each number into a Python object</td>
+</tr>
+<tr class="odd">
+<td><strong>A</strong></td>
+<td>One namedtuple per row</td>
+<td>Builds a Python object for each row</td>
+</tr>
+<tr class="even">
+<td><strong>B</strong></td>
+<td><strong>A whole <code>Series</code> per row</strong></td>
+<td>The worst: it creates an object with an index, for each row</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The rule is to look for whether Python is running per row.</strong> <code>axis=1</code> is almost always the sign of something that can be rewritten.</p>
+<p><strong>It is the same cost as a Python UDF in Spark</strong> (Lecture 6).</p>
+</div>
+</section></section>
+<section>
+<section id="the-dataframe-columns-and-types" class="title-slide slide level1 center">
+<h1>4. The DataFrame: columns and types</h1>
+
+</section>
+<section id="a-dataframe-is-typed-columns-plus-an-index" class="slide level2 smaller">
+<h2>A DataFrame is typed columns plus an index</h2>
+<p>Each column has one <code>dtype</code>, so memory is predictable: <strong>rows × bytes per value</strong>.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 32%">
+<col style="width: 38%">
+<col style="width: 11%">
+</colgroup>
+<thead>
+<tr class="header">
+<th><code>dtype</code></th>
+<th>Bytes per value</th>
+<th>For 1 million rows</th>
+<th>Note</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>int64</code>, <code>float64</code></td>
+<td>8</td>
+<td>8 MB</td>
+<td>Default for numbers</td>
+</tr>
+<tr class="even">
+<td><code>int32</code>, <code>float32</code></td>
+<td>4</td>
+<td>4 MB</td>
+<td>Enough for many columns</td>
+</tr>
+<tr class="odd">
+<td><code>int8</code></td>
+<td>1</td>
+<td>1 MB</td>
+<td>From −128 to 127</td>
+</tr>
+<tr class="even">
+<td><code>object</code> (strings)</td>
+<td>8 + ~58</td>
+<td><strong>~66 MB</strong></td>
+<td>Pointers to Python objects</td>
+</tr>
+<tr class="odd">
+<td><code>category</code>, 5 values</td>
+<td>1 + a small table</td>
+<td><strong>~1 MB</strong></td>
+<td>Dictionary encoding</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>object</code> is a list in disguise</strong>: the array holds pointers, and the fast compiled loops are lost. <code>category</code> stores each distinct value once, plus an integer per row. This is the same idea as Parquet’s dictionary encoding (Lecture 8).</p>
+</section>
+<section id="nan-can-change-your-type" class="slide level2 smaller">
+<h2><code>NaN</code> can change your type</h2>
+<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>pd.Series([<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>]).dtype          <span class="co"># int64</span></span>
+<span id="cb7-2"><a href=""></a>pd.Series([<span class="dv">1</span>, <span class="dv">2</span>, <span class="va">None</span>]).dtype       <span class="co"># float64: NaN is a float</span></span>
+<span id="cb7-3"><a href=""></a>pd.Series([<span class="dv">1</span>, <span class="dv">2</span>, <span class="va">None</span>], dtype<span class="op">=</span><span class="st">"Int64"</span>)   <span class="co"># nullable: &lt;NA&gt;, keeps the type</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Large IDs lose precision past <span class="math inline">\(2^{53}\)</span> when forced to <code>float64</code>. So one missing value can silently corrupt an ID column.</p>
+<p><strong>This is why</strong> a column of IDs should be read with an explicit type: <code>dtype={"id": "Int64"}</code>, rather than left to inference.</p>
+</section>
+<section id="view-or-copy-the-classic-bug" class="slide level2 smaller">
+<h2>View or copy? The classic bug</h2>
+<div class="sourceCode" id="cb8"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href=""></a>df[df[<span class="st">"price"</span>] <span class="op">&gt;</span> <span class="dv">100</span>][<span class="st">"discount"</span>] <span class="op">=</span> <span class="fl">0.1</span>      <span class="co"># chained assignment</span></span>
+<span id="cb8-2"><a href=""></a><span class="bu">print</span>(df[<span class="st">"discount"</span>])                        <span class="co"># may be unchanged!</span></span>
+<span id="cb8-3"><a href=""></a></span>
+<span id="cb8-4"><a href=""></a>df.loc[df[<span class="st">"price"</span>] <span class="op">&gt;</span> <span class="dv">100</span>, <span class="st">"discount"</span>] <span class="op">=</span> <span class="fl">0.1</span>  <span class="co"># correct: one single operation</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>The first line has two steps:</strong> <code>df[mask]</code> gives a new object, and the assignment then modifies <strong>that object</strong>, not <code>df</code>. Whether the original changes depended on internals that decide between a view and a copy. Hence <code>SettingWithCopyWarning</code>, and <strong>a warning here is a bug that you must not ignore</strong>.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 61%">
+<col style="width: 38%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Pandas version</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>2.x, by default</td>
+<td>Ambiguous: warns, and may or may not modify</td>
+</tr>
+<tr class="even">
+<td>2.x with <code>copy_on_write = True</code>, or <strong>3.0</strong> (the default)</td>
+<td>A derived object <strong>behaves as a copy</strong>: chained assignment <strong>never</strong> modifies the original</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Copy-on-Write removes the ambiguity, and also saves memory:</strong> a real copy is made only upon a write. This course uses Pandas 2.x, so write it correctly in the form that works in both: <strong>one <code>.loc</code></strong>.</p>
+<p><strong>Spark avoids the whole problem by design:</strong> DataFrames are immutable, and <code>withColumn</code> always returns a new one.</p>
+</section></section>
+<section>
+<section id="operations-and-their-cost" class="title-slide slide level1 center">
+<h1>5. Operations and their cost</h1>
+
+</section>
+<section id="split-apply-combine-and-what-each-costs" class="slide level2 smaller">
+<h2>Split, apply, combine, and what each costs</h2>
+<p><code>groupby</code> is <strong>split-apply-combine</strong> (Wickham, 2011): split rows by key, apply a function to each group, and combine the results.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 11%">
+<col style="width: 24%">
+<col style="width: 22%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th>Algorithm</th>
+<th>Time</th>
+<th>Peak memory</th>
+<th>Exposed to</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Filter, arithmetic</td>
+<td>Compiled loop</td>
+<td><span class="math inline">\(O(n)\)</span></td>
+<td><span class="math inline">\(O(n)\)</span> result</td>
+<td></td>
+</tr>
+<tr class="even">
+<td><code>sort_values</code></td>
+<td>Comparison sort</td>
+<td><span class="math inline">\(O(n \log n)\)</span></td>
+<td><span class="math inline">\(O(n)\)</span></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><code>groupby().sum()</code></td>
+<td>Hash table per key</td>
+<td><span class="math inline">\(O(n)\)</span></td>
+<td><span class="math inline">\(O(\text{groups})\)</span></td>
+<td>Python, if <code>.apply</code></td>
+</tr>
+<tr class="even">
+<td><code>merge</code></td>
+<td>Hash the smaller side</td>
+<td><span class="math inline">\(O(n + m + \text{output})\)</span></td>
+<td><strong><span class="math inline">\(O(\text{output})\)</span></strong></td>
+<td>Duplicates: <span class="math inline">\(\sum_k a_k b_k\)</span></td>
+</tr>
+<tr class="odd">
+<td><code>groupby().apply(fn)</code></td>
+<td>Python per group</td>
+<td><span class="math inline">\(O(n)\)</span> with a high constant</td>
+<td></td>
+<td>Slow by groups</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The classic surprise in <code>merge</code>:</strong> a key not unique on both sides multiplies rows, and the result can be far larger than the input (Lecture 4). <code>validate="one_to_many"</code> makes it fail loudly, rather than silently:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href=""></a>orders.merge(customers, on<span class="op">=</span><span class="st">"customer_id"</span>, validate<span class="op">=</span><span class="st">"many_to_one"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Almost all these operations use one core.</strong> Pandas’ compiled loops are single-threaded for most operations. So, by Amdahl’s law with <span class="math inline">\(s \approx 1\)</span>, your 16 cores give you nothing here. This is the gap that later tools fill.</p>
+</section></section>
+<section>
+<section id="integrating-problem" class="title-slide slide level1 center">
+<h1>6. Integrating problem</h1>
+
+</section>
+<section id="does-it-fit-in-my-laptop" class="slide level2 smaller">
+<h2>Does it fit in my laptop?</h2>
+<p>A 16 GB laptop, and 50 million rows: 3 <code>int64</code>, 2 <code>float64</code>, and <code>region</code>, a text column with 5 values. You need one <code>merge</code> with a similar-sized result.</p>
+<ol type="1">
+<li>Memory in default types? 2. Fit for the <code>merge</code>? 3. And with better types? 4. What else can be done?</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li>Numbers: <span class="math inline">\(5 \times 8 =\)</span> 40 B. Text: 8 + 58 = 66 B. Total <strong>106 B/row</strong>, so <span class="math inline">\(50\text{M} \times 106 =\)</span> <strong>5.3 GB</strong>.</li>
+<li><strong>Risky.</strong> During the <code>merge</code>, both input and output are alive: about <strong>10.6 GB</strong>, before the operating system and anything else you have open. That is the 5 to 10 times the file’s size rule in action.</li>
+<li><code>category</code> (1 B) + <code>int32</code>/<code>float32</code> (4 B each, if the ranges allow it): <span class="math inline">\(5 \times 4 + 1 =\)</span> <strong>21 B/row</strong>, or <strong>1.05 GB</strong>. <strong>5× less</strong>, with the same data, and the <code>merge</code> fits with room to spare.</li>
+<li><strong>Read less.</strong> <code>pd.read_parquet(path, columns=[...])</code> and filter at the source. If it remains too much, chunk the processing, or change tools (Lecture 12).</li>
+</ol>
+<p><strong>The method matters more than the numbers:</strong> <strong>type widths × rows</strong> gives you the answer before the machine freezes.</p>
+</div>
 </section>
 <section id="what-carries-over-to-spark" class="slide level2">
 <h2>What carries over to Spark</h2>
@@ -353,125 +732,17 @@ Felipe A. Moreno-Vera
 </div>
 </div>
 </section>
-<section id="explore-and-select" class="slide level2">
-<h2>Explore and select</h2>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>df.shape<span class="op">;</span> df.head(<span class="dv">5</span>)<span class="op">;</span> df.info()<span class="op">;</span> df.describe()</span>
-<span id="cb3-2"><a href=""></a>df[<span class="st">"categoria"</span>].value_counts()</span>
-<span id="cb3-3"><a href=""></a>df.isnull().<span class="bu">sum</span>()</span>
-<span id="cb3-4"><a href=""></a></span>
-<span id="cb3-5"><a href=""></a>df[[<span class="st">"produto"</span>, <span class="st">"preco"</span>]]                    <span class="co"># columns</span></span>
-<span id="cb3-6"><a href=""></a>df.loc[<span class="dv">0</span>:<span class="dv">2</span>, [<span class="st">"produto"</span>, <span class="st">"preco"</span>]]           <span class="co"># label</span></span>
-<span id="cb3-7"><a href=""></a>df.iloc[<span class="dv">0</span>:<span class="dv">3</span>, <span class="dv">0</span>:<span class="dv">3</span>]                           <span class="co"># position</span></span>
-<span id="cb3-8"><a href=""></a></span>
-<span id="cb3-9"><a href=""></a>df[(df[<span class="st">"preco"</span>] <span class="op">&gt;</span> <span class="dv">200</span>) <span class="op">&amp;</span> (df[<span class="st">"avaliacao"</span>] <span class="op">&gt;=</span> <span class="fl">4.5</span>)]</span>
-<span id="cb3-10"><a href=""></a>df[df[<span class="st">"categoria"</span>].isin([<span class="st">"Periféricos"</span>, <span class="st">"Áudio"</span>])]</span>
-<span id="cb3-11"><a href=""></a>df.query(<span class="st">"preco &gt; 100 and categoria == 'Periféricos'"</span>)</span>
-<span id="cb3-12"><a href=""></a>df.sort_values(<span class="st">"preco"</span>, ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="transform-and-clean" class="slide level2">
-<h2>Transform and clean</h2>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>df[<span class="st">"valor_estoque"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>] <span class="op">*</span> df[<span class="st">"estoque"</span>]</span>
-<span id="cb4-2"><a href=""></a>df[<span class="st">"caro"</span>] <span class="op">=</span> np.where(df[<span class="st">"preco"</span>] <span class="op">&gt;</span> <span class="dv">500</span>, <span class="st">"Sim"</span>, <span class="st">"Não"</span>)</span>
-<span id="cb4-3"><a href=""></a>df[<span class="st">"faixa_preco"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>].<span class="bu">apply</span>(classificar_preco)</span>
-<span id="cb4-4"><a href=""></a></span>
-<span id="cb4-5"><a href=""></a>df[<span class="st">"avaliacao"</span>] <span class="op">=</span> df[<span class="st">"avaliacao"</span>].fillna(df[<span class="st">"avaliacao"</span>].mean())</span>
-<span id="cb4-6"><a href=""></a>df[<span class="st">"preco"</span>] <span class="op">=</span> df[<span class="st">"preco"</span>].astype(<span class="bu">float</span>)</span>
-<span id="cb4-7"><a href=""></a>df <span class="op">=</span> df.rename(columns<span class="op">=</span>{<span class="st">"preco"</span>: <span class="st">"preco_brl"</span>})</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-note callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Note</strong></p>
-</div>
-<div class="callout-content">
-<p><code>.apply()</code> is the Pandas counterpart of Spark UDFs.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="groupby-joins" class="slide level2">
-<h2>GroupBy &amp; joins</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>resumo <span class="op">=</span> df.groupby(<span class="st">"categoria"</span>).agg(</span>
-<span id="cb5-2"><a href=""></a>    qtd_produtos <span class="op">=</span> (<span class="st">"produto"</span>,   <span class="st">"count"</span>),</span>
-<span id="cb5-3"><a href=""></a>    preco_medio  <span class="op">=</span> (<span class="st">"preco_brl"</span>, <span class="st">"mean"</span>),</span>
-<span id="cb5-4"><a href=""></a>    estoque_total<span class="op">=</span> (<span class="st">"estoque"</span>,   <span class="st">"sum"</span>),</span>
-<span id="cb5-5"><a href=""></a>).<span class="bu">round</span>(<span class="dv">2</span>).reset_index()</span>
-<span id="cb5-6"><a href=""></a></span>
-<span id="cb5-7"><a href=""></a>df[<span class="st">"media_cat"</span>] <span class="op">=</span> df.groupby(<span class="st">"categoria"</span>)[<span class="st">"preco_brl"</span>].transform(<span class="st">"mean"</span>)</span>
-<span id="cb5-8"><a href=""></a></span>
-<span id="cb5-9"><a href=""></a>df.merge(fornecedores, on<span class="op">=</span><span class="st">"categoria"</span>, how<span class="op">=</span><span class="st">"left"</span>)   <span class="co"># inner, left, right, outer</span></span>
-<span id="cb5-10"><a href=""></a>pd.concat([df_a, df_b], ignore_index<span class="op">=</span><span class="va">True</span>)           <span class="co"># UNION</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="pipeline-with-method-chaining" class="slide level2">
-<h2>Pipeline with method chaining</h2>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>resultado <span class="op">=</span> (</span>
-<span id="cb6-2"><a href=""></a>    df_raw</span>
-<span id="cb6-3"><a href=""></a>    .fillna({<span class="st">"avaliacao"</span>: df_raw[<span class="st">"avaliacao"</span>].mean()})</span>
-<span id="cb6-4"><a href=""></a>    .assign(valor_estoque<span class="op">=</span><span class="kw">lambda</span> d: d[<span class="st">"preco"</span>] <span class="op">*</span> d[<span class="st">"estoque"</span>])</span>
-<span id="cb6-5"><a href=""></a>    .query(<span class="st">"avaliacao &gt;= 4.0"</span>)</span>
-<span id="cb6-6"><a href=""></a>    [[<span class="st">"produto"</span>, <span class="st">"categoria"</span>, <span class="st">"preco"</span>, <span class="st">"valor_estoque"</span>]]</span>
-<span id="cb6-7"><a href=""></a>    .sort_values(<span class="st">"valor_estoque"</span>, ascending<span class="op">=</span><span class="va">False</span>)</span>
-<span id="cb6-8"><a href=""></a>    .reset_index(drop<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb6-9"><a href=""></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>The same style of writing is used in PySpark.</p>
-</section>
-<section id="from-pandas-to-spark" class="slide level2">
-<h2>From Pandas to Spark</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 37%">
-<col style="width: 29%">
-<col style="width: 33%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Concept</th>
-<th>Pandas</th>
-<th>PySpark</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Read CSV</td>
-<td><code>pd.read_csv("f.csv")</code></td>
-<td><code>spark.read.csv("f.csv", header=True)</code></td>
-</tr>
-<tr class="even">
-<td>Select</td>
-<td><code>df[["a", "b"]]</code></td>
-<td><code>df.select("a", "b")</code></td>
-</tr>
-<tr class="odd">
-<td>Filter</td>
-<td><code>df[df["p"] &gt; 100]</code></td>
-<td><code>df.filter(df.p &gt; 100)</code></td>
-</tr>
-<tr class="even">
-<td>New column</td>
-<td><code>df["c"] = ...</code></td>
-<td><code>df.withColumn("c", ...)</code></td>
-</tr>
-<tr class="odd">
-<td>GroupBy</td>
-<td><code>df.groupby("c").agg(...)</code></td>
-<td><code>df.groupBy("c").agg(...)</code></td>
-</tr>
-<tr class="even">
-<td>Join</td>
-<td><code>df.merge(d2, on="k", how="left")</code></td>
-<td><code>df.join(d2, on="k", how="left")</code></td>
-</tr>
-<tr class="odd">
-<td>Execution</td>
-<td>Immediate</td>
-<td><strong>Lazy</strong></td>
-</tr>
-</tbody>
-</table>
+<section id="references" class="slide level2 smaller">
+<h2>References</h2>
+<ul>
+<li>McKinney, W. (2010). <em>Data Structures for Statistical Computing in Python</em>. SciPy.</li>
+<li>Harris, C. R., Millman, K. J., van der Walt, S. J., et al.&nbsp;(2020). <em>Array programming with NumPy</em>. Nature, 585.</li>
+<li>Wickham, H. (2011). <em>The Split-Apply-Combine Strategy for Data Analysis</em>. Journal of Statistical Software, 40(1).</li>
+<li>McKinney, W. (2017). <a href="https://wesmckinney.com/blog/apache-arrow-pandas-internals/">Apache Arrow and the “10 Things I Hate About pandas”</a>.</li>
+<li>pandas: <a href="https://pandas.pydata.org/docs/user_guide/migration.html">Migration guide, Copy-on-Write</a>, <a href="https://pandas.pydata.org/docs/user_guide/scale.html">Scaling to large datasets</a>, <a href="https://pandas.pydata.org/docs/user_guide/integer_na.html">Nullable integer type</a>.</li>
+</ul>
 
-</section>
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

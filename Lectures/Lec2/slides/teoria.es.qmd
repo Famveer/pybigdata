@@ -13,50 +13,88 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## Lo que aprenderás
+## Lo que podrás hacer {.smaller}
 
-- Python esencial: tipos, colecciones, control de flujo y funciones
-- Por qué Pandas: origen y motivación
-- Pandas: **Series** y **DataFrame**
-- Explorar, filtrar, transformar y limpiar datos
-- Agregaciones, joins y method chaining
-- Cómo todo esto se traslada a Spark
+- Predecir qué pasa cuando Python asigna o pasa un objeto mutable
+- Explicar por qué un bucle de Python es lento, y estimar su memoria, con números reales
+- Explicar por qué existe Pandas, y qué hace su modelo
+- Elegir tipos (`dtype`) que ahorran memoria, y saber cuándo `NaN` cambia un tipo
+- Estimar la complejidad de una operación, y si un dataset cabe en memoria
+- Evitar el error clásico de modificar una copia
 
----
+| Bloque | Tema | Min |
+|--------|------|-----|
+| 1 | El modelo de datos de Python | 25 |
+| 2 | Por qué Pandas | 15 |
+| 3 | Por qué vectorizar es más rápido | 25 |
+| 4 | El DataFrame: columnas y tipos | 20 |
+| 5 | Operaciones y su costo | 20 |
+| 6 | Problema integrador | 15 |
 
-## Colecciones en Python
+# 1. El modelo de datos de Python
 
-| Tipo | Propiedades | Ejemplo |
-|------|-------------|---------|
-| `list` | Ordenada, mutable | `[150, 230, 90]` |
-| `dict` | Clave-valor, mutable | `{"nome": "Notebook"}` |
-| `tuple` | Ordenada, **inmutable** | `(-23.55, -46.63)` |
-| `set` | Sin duplicados, sin orden | `{"Audio", "Cables"}` |
+## Las variables son nombres, no cajas {.smaller}
 
----
+Una variable guarda una **referencia a un objeto**. Asignar copia la referencia, no el objeto.
 
-## Comprehensions y funciones
+| Tipo | Propiedades | Búsqueda por valor | Uso típico |
+|------|-------------|--------------------|------------|
+| `list` | Ordenada, mutable | $O(n)$ | Secuencias |
+| `tuple` | Ordenada, **inmutable** | $O(n)$ | Registros fijos, claves de dict |
+| `dict` | Clave-valor, mutable | **$O(1)$** en promedio | Búsquedas, agrupar |
+| `set` | Sin duplicados | **$O(1)$** en promedio | Pertenencia, deduplicar |
+
+**Ejercicio: ¿qué imprime cada línea?**
 
 ```python
-numeros = [1, 2, 3, 4, 5]
-quadrados = [n ** 2 for n in numeros]
-pares = [n for n in numeros if n % 2 == 0]
+a = [1, 2, 3];   b = a;   b.append(4);   print(a)
+c = a.copy();    c.append(5);            print(a)
 
-def classificar_receita(valor, limite_alto=10000, limite_medio=5000):
-    if valor > limite_alto:
-        return "Alta"
-    elif valor > limite_medio:
-        return "Média"
-    return "Baixa"
-
-desconto = lambda preco, pct: preco * (1 - pct)
+def add(x, acc=[]):
+    acc.append(x)
+    return acc
+print(add(1), add(2))
 ```
 
+::: {.fragment}
+`[1, 2, 3, 4]`, porque `a` y `b` son la misma lista. Luego `[1, 2, 3, 4]`, porque `c` es una copia. Luego **`[1, 2] [1, 2]`**: un valor por defecto se crea **una vez**, al definir la función, y lo comparten todas las llamadas.
+:::
+
 ---
+
+## Las funciones son valores, y las comprehensions son expresiones {.smaller}
+
+```python
+discount = lambda price, pct: price * (1 - pct)      # un objeto función
+squares  = [n ** 2 for n in numbers]                 # list comprehension
+prices   = {item: p * 1.23 for item, p in rows}      # dict comprehension
+```
+
+**Por qué importa más allá de la sintaxis.** Toda la API de Spark recibe funciones y expresiones como datos:
+
+| Idea de Python | Dónde reaparece |
+|----------------|-----------------|
+| Una función es un valor | `.apply(fn)`, UDFs |
+| Una clausura captura variables | Spark serializa una función con lo que capturó, y envía una **copia** a cada executor (Clase 3) |
+| Una comprehension sobre un **iterable** | `yield` e iteradores son cómo Spark encadena transformaciones narrow sin listas intermedias (Clase 5) |
+
+**Los generadores mantienen la memoria constante:**
+
+```python
+sum([x * 2 for x in rows])   # primero toda una lista: O(n)
+sum(x * 2 for x in rows)     # un valor a la vez: O(1)
+```
+
+La misma suma, con un uso de memoria muy distinto. Es la idea del **pipelining**, en una línea de Python.
+
+# 2. Por qué Pandas
 
 ## ¿Por qué Pandas?
 
@@ -85,6 +123,148 @@ for row in rows:
 df.groupby("cat")["price"].sum()
 ```
 
+# 3. Por qué vectorizar es más rápido
+
+## Un millón de enteros, dos disposiciones {.smaller}
+
+```
+ Lista Python:  [ptr][ptr][ptr][ptr] ...     cada puntero ─▶ un objeto int aparte
+                  │    │    │                 dispersos por la memoria
+                  ▼    ▼    ▼
+                [28 B][28 B][28 B]
+
+ Array NumPy:   [ 8 B | 8 B | 8 B | 8 B | ... ]    los valores crudos, contiguos, un tipo
+```
+
+| | Lista Python | NumPy `int64` |
+|-|--------------|---------------|
+| Por valor | Puntero de 8 B + objeto de 28 B = **36 B** | **8 B** |
+| 1 millón de valores | **36 MB** | **8 MB** |
+| Por suma | Comprueba tipos, sigue punteros, crea un resultado | Una instrucción de máquina |
+
+**Compruébalo:** `sys.getsizeof(1)` devuelve 28, en CPython de 64 bits.
+
+**Por qué el bucle es lento:** Python no sabe que la lista tiene enteros, así que **cada iteración** comprueba el tipo, desempaca, suma y crea un objeto. `arr * 2` comprueba una vez y corre un bucle compilado sobre memoria contigua. Suele ser **decenas de veces más rápido**: mídelo con `%timeit`.
+
+---
+
+## Ejercicio: ordena por velocidad {.smaller}
+
+Todas añaden un 15% de IVA a una columna de 10 millones de números.
+
+```python
+df["t"] = [row.price * 1.15 for row in df.itertuples()]        # A
+df["t"] = df.apply(lambda row: row["price"] * 1.15, axis=1)    # B
+df["t"] = df["price"].apply(lambda p: p * 1.15)                # C
+df["t"] = df["price"] * 1.15                                   # D
+```
+
+::: {.fragment}
+Lo habitual, del más rápido al más lento: **D ≫ C, A ≫ B**. Mídelo con `%timeit`.
+
+| | ¿Python por fila? | Por qué |
+|-|-------------------|---------|
+| **D** | No | Un bucle compilado sobre la columna |
+| **C** | Una llamada por valor | Empaca cada número en un objeto Python |
+| **A** | Una namedtuple por fila | Construye un objeto Python por cada fila |
+| **B** | **Una `Series` entera por fila** | La peor: crea un objeto con índice, por cada fila |
+
+**La regla es mirar si Python corre por fila.** `axis=1` casi siempre es señal de algo que se puede reescribir.
+
+**Es el mismo costo que una UDF de Python en Spark** (Clase 6).
+:::
+
+# 4. El DataFrame: columnas y tipos
+
+## Un DataFrame son columnas tipadas más un índice {.smaller}
+
+Cada columna tiene un `dtype`, así que la memoria es predecible: **filas × bytes por valor**.
+
+| `dtype` | Bytes por valor | Para 1 millón de filas | Nota |
+|---------|-----------------|------------------------|------|
+| `int64`, `float64` | 8 | 8 MB | Por defecto para números |
+| `int32`, `float32` | 4 | 4 MB | Basta para muchas columnas |
+| `int8` | 1 | 1 MB | De −128 a 127 |
+| `object` (strings) | 8 + ~58 | **~66 MB** | Punteros a objetos Python |
+| `category`, 5 valores | 1 + una tabla pequeña | **~1 MB** | Codificación por diccionario |
+
+**`object` es una lista disfrazada**: el array guarda punteros, y se pierden los bucles compilados rápidos. `category` guarda cada valor distinto una vez, más un entero por fila. Es la misma idea que la codificación por diccionario de Parquet (Clase 8).
+
+---
+
+## `NaN` puede cambiar tu tipo {.smaller}
+
+```python
+pd.Series([1, 2, 3]).dtype          # int64
+pd.Series([1, 2, None]).dtype       # float64: NaN es float
+pd.Series([1, 2, None], dtype="Int64")   # con nulos: <NA>, conserva el tipo
+```
+
+Los ID grandes pierden precisión más allá de $2^{53}$ al forzarse a `float64`. Así, un solo valor faltante puede corromper en silencio una columna de IDs.
+
+**Por eso** una columna de IDs debe leerse con un tipo explícito: `dtype={"id": "Int64"}`, en vez de dejarlo a la inferencia.
+
+---
+
+## ¿Vista o copia? El error clásico {.smaller}
+
+```python
+df[df["price"] > 100]["discount"] = 0.1      # asignación encadenada
+print(df["discount"])                        # ¡puede no haber cambiado!
+
+df.loc[df["price"] > 100, "discount"] = 0.1  # correcto: una sola operación
+```
+
+**La primera línea tiene dos pasos:** `df[mask]` da un objeto nuevo, y la asignación modifica **ese objeto**, no `df`. Si el original cambiaba dependía de detalles internos que deciden entre vista y copia. De ahí `SettingWithCopyWarning`, y **ese aviso es un error que no debes ignorar**.
+
+| Versión de Pandas | Comportamiento |
+|-------------------|----------------|
+| 2.x, por defecto | Ambiguo: avisa, y puede modificar o no |
+| 2.x con `copy_on_write = True`, o **3.0** (por defecto) | Un objeto derivado **se comporta como copia**: la asignación encadenada **nunca** modifica el original |
+
+**Copy-on-Write quita la ambigüedad, y además ahorra memoria:** solo se copia de verdad al escribir. Este curso usa Pandas 2.x, así que escríbelo de la forma que sirve en ambos: **un solo `.loc`**.
+
+**Spark evita todo el problema por diseño:** los DataFrames son inmutables, y `withColumn` siempre devuelve uno nuevo.
+
+# 5. Operaciones y su costo
+
+## Split, apply, combine, y qué cuesta cada uno {.smaller}
+
+`groupby` es **split-apply-combine** (Wickham, 2011): dividir filas por clave, aplicar una función a cada grupo, y combinar los resultados.
+
+| Operación | Algoritmo | Tiempo | Pico de memoria | Expuesta a |
+|-----------|-----------|--------|-----------------|------------|
+| Filtro, aritmética | Bucle compilado | $O(n)$ | Resultado de $O(n)$ | |
+| `sort_values` | Orden por comparación | $O(n \log n)$ | $O(n)$ | |
+| `groupby().sum()` | Tabla hash por clave | $O(n)$ | $O(\text{grupos})$ | Python, si hay `.apply` |
+| `merge` | Hash del lado menor | $O(n + m + \text{salida})$ | **$O(\text{salida})$** | Duplicados: $\sum_k a_k b_k$ |
+| `groupby().apply(fn)` | Python por grupo | $O(n)$ con constante alta | | Lento por grupos |
+
+**La sorpresa clásica en `merge`:** una clave no única en ambos lados multiplica filas, y el resultado puede ser mucho mayor que la entrada (Clase 4). `validate="many_to_one"` hace que falle con claridad, en vez de en silencio:
+
+```python
+orders.merge(customers, on="customer_id", validate="many_to_one")
+```
+
+**Casi todas estas operaciones usan un núcleo.** Los bucles compilados de Pandas son de un hilo en la mayoría de operaciones. Así, por la ley de Amdahl con $s \approx 1$, tus 16 núcleos aquí no aportan nada. Ese es el vacío que llenan otras herramientas.
+
+# 6. Problema integrador
+
+## ¿Cabe en mi portátil? {.smaller}
+
+Un portátil de 16 GB, y 50 millones de filas: 3 `int64`, 2 `float64`, y `region`, una columna de texto con 5 valores. Necesitas un `merge` con un resultado de tamaño similar.
+
+1. ¿Memoria con los tipos por defecto? 2. ¿Cabe el `merge`? 3. ¿Y con mejores tipos? 4. ¿Qué más se puede hacer?
+
+::: {.fragment}
+1. Números: $5 \times 8 =$ 40 B. Texto: 8 + 58 = 66 B. Total **106 B/fila**, así que $50\text{M} \times 106 =$ **5,3 GB**.
+2. **Arriesgado.** Durante el `merge`, entrada y salida viven a la vez: unos **10,6 GB**, sin contar el sistema operativo y lo demás que tengas abierto. Es la regla de 5 a 10 veces el tamaño del archivo en acción.
+3. `category` (1 B) + `int32`/`float32` (4 B cada uno, si los rangos lo permiten): $5 \times 4 + 1 =$ **21 B/fila**, o **1,05 GB**. **5× menos**, con los mismos datos, y el `merge` cabe con holgura.
+4. **Lee menos.** `pd.read_parquet(path, columns=[...])` y filtra en el origen. Si aún es demasiado, procesa por trozos, o cambia de herramienta (Clase 12).
+
+**El método importa más que los números:** **ancho del tipo × filas** te da la respuesta antes de que la máquina se congele.
+:::
+
 ---
 
 ## Lo que se transfiere a Spark
@@ -102,86 +282,10 @@ Aprender Pandas es aprender a **pensar en DataFrames**, una habilidad que se tra
 
 ---
 
-## Explorar y seleccionar
+## Referencias {.smaller}
 
-```python
-df.shape; df.head(5); df.info(); df.describe()
-df["categoria"].value_counts()
-df.isnull().sum()
-
-df[["produto", "preco"]]                    # columns
-df.loc[0:2, ["produto", "preco"]]           # label
-df.iloc[0:3, 0:3]                           # position
-
-df[(df["preco"] > 200) & (df["avaliacao"] >= 4.5)]
-df[df["categoria"].isin(["Periféricos", "Áudio"])]
-df.query("preco > 100 and categoria == 'Periféricos'")
-df.sort_values("preco", ascending=False)
-```
-
----
-
-## Transformar y limpiar
-
-```python
-df["valor_estoque"] = df["preco"] * df["estoque"]
-df["caro"] = np.where(df["preco"] > 500, "Sim", "Não")
-df["faixa_preco"] = df["preco"].apply(classificar_preco)
-
-df["avaliacao"] = df["avaliacao"].fillna(df["avaliacao"].mean())
-df["preco"] = df["preco"].astype(float)
-df = df.rename(columns={"preco": "preco_brl"})
-```
-
-::: {.callout-note}
-`.apply()` es el equivalente en Pandas de las UDFs de Spark.
-:::
-
----
-
-## GroupBy & joins
-
-```python
-resumo = df.groupby("categoria").agg(
-    qtd_produtos = ("produto",   "count"),
-    preco_medio  = ("preco_brl", "mean"),
-    estoque_total= ("estoque",   "sum"),
-).round(2).reset_index()
-
-df["media_cat"] = df.groupby("categoria")["preco_brl"].transform("mean")
-
-df.merge(fornecedores, on="categoria", how="left")   # inner, left, right, outer
-pd.concat([df_a, df_b], ignore_index=True)           # UNION
-```
-
----
-
-## Pipeline con method chaining
-
-```python
-resultado = (
-    df_raw
-    .fillna({"avaliacao": df_raw["avaliacao"].mean()})
-    .assign(valor_estoque=lambda d: d["preco"] * d["estoque"])
-    .query("avaliacao >= 4.0")
-    [["produto", "categoria", "preco", "valor_estoque"]]
-    .sort_values("valor_estoque", ascending=False)
-    .reset_index(drop=True)
-)
-```
-
-Este mismo estilo de escritura se usa en PySpark.
-
----
-
-## De Pandas a Spark
-
-| Concepto | Pandas | PySpark |
-|----------|--------|---------|
-| Leer CSV | `pd.read_csv("f.csv")` | `spark.read.csv("f.csv", header=True)` |
-| Seleccionar | `df[["a", "b"]]` | `df.select("a", "b")` |
-| Filtrar | `df[df["p"] > 100]` | `df.filter(df.p > 100)` |
-| Nueva columna | `df["c"] = ...` | `df.withColumn("c", ...)` |
-| GroupBy | `df.groupby("c").agg(...)` | `df.groupBy("c").agg(...)` |
-| Join | `df.merge(d2, on="k", how="left")` | `df.join(d2, on="k", how="left")` |
-| Ejecución | Inmediata | **Perezosa** (lazy) |
+- McKinney, W. (2010). *Data Structures for Statistical Computing in Python*. SciPy.
+- Harris, C. R., Millman, K. J., van der Walt, S. J., et al. (2020). *Array programming with NumPy*. Nature, 585.
+- Wickham, H. (2011). *The Split-Apply-Combine Strategy for Data Analysis*. Journal of Statistical Software, 40(1).
+- McKinney, W. (2017). [Apache Arrow and the "10 Things I Hate About pandas"](https://wesmckinney.com/blog/apache-arrow-pandas-internals/).
+- pandas: [Migration guide, Copy-on-Write](https://pandas.pydata.org/docs/user_guide/migration.html), [Scaling to large datasets](https://pandas.pydata.org/docs/user_guide/scale.html), [Nullable integer type](https://pandas.pydata.org/docs/user_guide/integer_na.html).

@@ -13,20 +13,31 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## What you will learn
+## What you will be able to do {.smaller}
 
-- Why Hadoop and why Spark: origin and motivation
-- How Spark works: driver, executors and partitions
-- Create a `SparkSession` in local mode
-- Create and read DataFrames, with explicit schemas
-- Explore, select, filter and transform: Pandas vs Spark
-- UDFs and why to avoid them when possible
+- Explain why Hadoop and Spark exist, and estimate when scaling out is worth it
+- Bound the gain from adding machines, with Amdahl's and Gustafson's laws
+- Say **where each line of a PySpark program runs**, and what follows from that
+- Identify the semantic differences between a Spark and a Pandas DataFrame
+- Predict the cost of schema inference and of the file format
 
----
+| Block | Topic | Min |
+|-------|-------|-----|
+| 1 | Origin: why Hadoop, why Spark | 20 |
+| 2 | How much does scaling give? | 25 |
+| 3 | Architecture: where the code runs | 25 |
+| 4 | The DataFrame model | 25 |
+| 5 | Schemas and formats | 15 |
+| 6 | Integrating problem | 10 |
+
+# 1. Origin: why Hadoop, why Spark
 
 ## The problem: one machine is not enough
 
@@ -39,6 +50,25 @@ Pandas needs the data to fit in the memory of one machine. In the 2000s, indexin
 | Cost | Hardware | Coordination: network, failures, splitting the work |
 
 Scaling out is the only way past that limit, but writing a program that survives machine failures is very hard.
+
+---
+
+## The bottleneck was the disk {.smaller}
+
+Approximate sequential throughput, and the time to read 1 TB:
+
+| Device | Throughput (order of magnitude) | Read 1 TB |
+|--------|---------------------------------|-----------|
+| RAM | 10 GB/s | 100 s |
+| NVMe SSD | 2.5 GB/s | 400 s |
+| 10 Gb/s network | 1.25 GB/s | 800 s |
+| Hard disk | 200 MB/s | **5,000 s ≈ 83 min** |
+
+Disk capacity grew much faster than its transfer rate, so **reading a whole disk kept getting slower**. Now divide the same terabyte over 100 disks read in parallel:
+
+$$\frac{1\ \text{TB}}{100 \times 200\ \text{MB/s}} = 50\ \text{s}$$
+
+This is the core argument of scaling out: **parallel disks, not faster ones**. Note the table's other lesson: a 10 Gb/s network is faster than one disk but slower than RAM, so moving data is expensive, and "move the code to the data" follows directly.
 
 ---
 
@@ -69,135 +99,226 @@ MapReduce writes to disk at every step, so multi-step and iterative work was slo
 
 **2009:** Matei Zaharia starts Spark at UC Berkeley. **2014:** it becomes a top-level Apache project. Spark did not replace all of Hadoop: it still reads from HDFS and runs on YARN.
 
+# 2. How much does scaling give?
+
+## Measuring scaling: speedup and Amdahl's law {.smaller}
+
+With $T_p$ the time on $p$ processors:
+
+$$S(p) = \frac{T_1}{T_p} \qquad\qquad E(p) = \frac{S(p)}{p}$$
+
+If a fraction $s$ of the work is **serial** (Amdahl, 1967):
+
+$$S(p) = \frac{1}{s + \dfrac{1 - s}{p}} \;\leq\; \frac{1}{s}$$
+
+| $s$ | $p = 10$ | $p = 100$ | $p = 1000$ | $p \to \infty$ |
+|-----|----------|-----------|------------|----------------|
+| 1% | 9.2 | 50 | 91 | 100 |
+| 5% | 6.9 | 17 | 19.6 | **20** |
+| 10% | 5.3 | 9.2 | 9.9 | **10** |
+
+With $s = 5\%$, the efficiency at $p = 100$ is **17%**: 83 of those machines are effectively wasted. In Spark, $s$ includes the driver's work, `collect()`, single-partition operations and the largest task of each stage.
+
 ---
 
-## How Spark works
+## Then why does big data work? Gustafson's law {.smaller}
+
+Amdahl fixes the problem's size. In practice **more machines are used for more data**, with the serial part usually not growing in proportion. Measuring $s$ on the parallel run (Gustafson, 1988):
+
+$$S_{\text{scaled}}(p) = s + (1 - s)\,p$$
+
+With $s = 5\%$, $p = 100$: $S_{\text{scaled}} = 95$, compared to 17 in Amdahl's law. **They do not contradict each other: they answer different questions.**
+
+| Question | Metric | Law |
+|----------|--------|-----|
+| Same data, how much faster? | Strong scaling | Amdahl |
+| More data, same time? | Weak scaling | Gustafson |
+
+Most big data use is weak scaling: yesterday's job must still finish on time with today's larger volume. When you read a scaling claim, first ask which of the two it measures.
+
+---
+
+## Scalable is not the same as fast: COST {.smaller}
+
+A system can scale very well simply because it is **slow on one core**: parallelizable overhead looks like good speedup.
+
+**COST** (*Configuration that Outperforms a Single Thread*): the hardware a platform needs before it beats a competent single-threaded implementation (McSherry et al., 2015).
+
+Times reported for 20 PageRank iterations on the same graph:
+
+| System | Cores | Time |
+|--------|-------|------|
+| GraphX | 128 | 419 s |
+| Giraph | 128 | 596 s |
+| **Single thread** (SSD) | **1** | **300 s** |
+
+**Consequence for this course:** do not use a cluster's speedup alone as evidence that it is the right tool. Spark pays a fixed cost in planning, JVM and coordination, and it **must first recover it**. On a single machine, with data that fits in RAM, Pandas can match or beat it (see Lab 4). Lecture 12 returns to this question with numbers.
+
+# 3. Architecture: where the code runs
+
+## Three kinds of processes {.smaller}
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                       SPARK CLUSTER                          │
-│   ┌───────────┐     ┌────────────┐     ┌────────────┐        │
-│   │  Driver   │────▶│  Executor  │     │  Executor  │        │
-│   │ (code &   │     │ (Worker 1) │     │ (Worker 2) │        │
-│   │  plans)   │     │ Partition1 │     │ Partition2 │        │
-│   └───────────┘     └────────────┘     └────────────┘        │
-│         local[*] mode → everything runs on ONE machine       │
-└──────────────────────────────────────────────────────────────┘
+   DRIVER (your program)          CLUSTER MANAGER         EXECUTORS (on workers)
+   ┌───────────────────┐  asks    ┌──────────────┐ starts ┌─────────────────────┐
+   │ Python ─py4j─▶ JVM│ ───────▶ │ YARN, K8s or │ ─────▶ │ JVM: tasks + cache  │
+   │ plans, schedules  │          │ standalone   │        │ Python: only UDFs   │
+   └───────────────────┘          └──────────────┘        └─────────────────────┘
+             └───────────── sends tasks, receives results ────────▲
 ```
 
-Data is split into **partitions** processed in parallel. In **local mode**, everything happens on your machine.
+| Process | Role | If it fails |
+|---------|------|-------------|
+| **Driver** | Runs your `main`, builds the plans, schedules tasks | **The application dies** |
+| **Executor** | Runs tasks and stores cached data | Its tasks are retried elsewhere |
+| **Cluster manager** | Allocates resources | Depends on the manager |
+
+**PySpark does not run your DataFrame code in Python.** `df.filter(...)` only builds a plan through `py4j`: the data is processed in the JVM. That is why native PySpark performs like Scala, and why a Python UDF is so different: only then does data leave the JVM. In `local[*]` mode, all of this lives on one machine, in one JVM, with threads as executor slots.
 
 ---
 
-## Pandas vs Spark
-
-| | Pandas | Spark |
-|-|--------|-------|
-| **Runs on** | 1 machine, 1 process | Cluster of machines (or local) |
-| **Data lives** | In RAM | Distributed across partitions |
-| **Execution** | Immediate (eager) | Lazy: runs only on an action |
-| **Scale** | Up to a few GBs | Terabytes / petabytes |
-| **Entry point** | `import pandas as pd` | `SparkSession` |
-
----
-
-## SparkSession and schemas
+## Exercise: what does this print? {.smaller}
 
 ```python
-spark = (
-    SparkSession.builder
-    .appName("Spark vs Pandas")
-    .master("local[*]")                          # all CPU cores
-    .config("spark.sql.shuffle.partitions", "4")
-    .getOrCreate()
-)
+counter = 0
+def add(row):
+    global counter
+    counter += row.value
 
-schema = StructType([
-    StructField("order_id", IntegerType(), nullable=False),
-    StructField("product",  StringType(),  nullable=False),
-    StructField("rating",   DoubleType(),  nullable=True),
-])
+df.foreach(add)
+print(counter)
 ```
 
-An explicit schema is recommended in production: it avoids inference costs and makes intent clear.
+::: {.fragment}
+**`0` on a cluster, and the documentation calls this behavior undefined.** Before running, Spark serializes the function's *closure* and sends a **copy** to each executor. Each one updates its own copy, and the driver's `counter` is never touched. In local mode it may appear to work in some APIs, which is why this bug survives testing.
+
+The same model explains other common surprises:
+
+| Code | Runs on | Consequence |
+|------|---------|-------------|
+| `print(x)` inside a UDF | Executor | Goes to the executor's log, not to your notebook |
+| `df.collect()` | Tasks, then **driver** | All data in one machine (`spark.driver.maxResultSize`, 1 GB) |
+| A database connection in a closure | Fails to serialize | Open it inside `foreachPartition` |
+
+To count across executors, use an aggregation (`df.agg`) or an accumulator.
+:::
+
+# 4. The DataFrame model
+
+## Same name, different object {.smaller}
+
+| Property | Pandas | Spark |
+|----------|--------|-------|
+| What it is | Values in memory | **A plan**: description of a computation |
+| Mutable | Yes (`df["x"] = ...`) | **No**: each operation returns a new one |
+| Index | Always | **None** |
+| Row order | Guaranteed | **None**, unless you sort |
+| Missing values | `NaN`, `None`, `NaT` | `NULL`, and `NaN` is a separate value |
+| `df["a"] + 1` | A Series with results | A `Column`: an **expression**, with no data |
+| Execution | Immediate | At the first action |
+
+**Why these differences are necessary, not arbitrary:**
+
+- **Immutable + plan:** lost data can be recomputed from its lineage, and the optimizer can reorder steps.
+- **No index or order:** keeping a global order would force coordination between partitions on every operation.
+
+**Consequence:** `df.show(5)` may return different rows in another run, and "the first row" means nothing without `orderBy`. Code that depends on row order needs an explicit sort key.
 
 ---
 
-## Reading and converting
+## Columns are expressions {.smaller}
+
+`F.col("price") * F.col("quantity")` computes nothing. It builds a tree, and that is what lets Catalyst inspect and rewrite it:
 
 ```python
-sdf = spark.read.csv("sales.csv", header=True, inferSchema=True)
-sdf = spark.read.parquet("sales.parquet")     # preferred columnar format
-sdf = spark.read.json("sales.json")
+total = F.col("price") * F.col("quantity")     # Multiply(price, quantity)
+tier  = F.when(total > 500, "high").otherwise("low")   # CaseWhen(...)
 
-pdf = sdf.toPandas()                          # Spark → Pandas
-sdf = spark.createDataFrame(pdf)              # Pandas → Spark
+df.withColumn("total", total).withColumn("tier", tier) # no data read yet
 ```
 
-::: {.callout-warning}
-`toPandas()` collects **all data** to the driver. Only use it on small DataFrames.
+**This is the root of the difference with a UDF:** a tree of expressions can be optimized, whereas a Python function is opaque (Lecture 6).
+
+| Pandas habit | Spark | Why |
+|--------------|-------|-----|
+| A `for` loop adding columns | `select` with all of them | Each `withColumn` adds a plan node: large plans are slow to analyze |
+| `.apply(fn)` | `F.when`, `F.*` | Native expressions run on the JVM and are optimized |
+| `df[df.x > 1]` then reuse | Same, but keep it in a variable | Each action recomputes the entire plan |
+
+# 5. Schemas and formats
+
+## Inferring a schema has a cost, and a risk {.smaller}
+
+```python
+spark.read.csv(path, header=True, inferSchema=True)  # one extra pass
+spark.read.csv(path, header=True, schema=my_schema)  # no extra pass
+spark.read.parquet(path)                             # schema in the file
+```
+
+**Cost.** With the default `samplingRatio = 1.0`, inference scans the **whole file** before your query begins: on 1 TB of CSV at 200 MB/s, that is 83 min on one disk.
+
+**Risk.** The inferred schema depends on the data that happened to be there today. One `"N/A"` in a numeric column turns it into a string, and tomorrow's pipeline breaks or silently changes type.
+
+**In Spark 4, ANSI mode is on by default** (`spark.sql.ansi.enabled = true`), so an invalid cast **raises an error** in place of returning `NULL`:
+
+```python
+F.col("x").cast("int")       # error on "abc" (ANSI on)
+F.col("x").try_cast("int")   # NULL on "abc"
+```
+
+`nullable=False` in a schema is a declaration, and **not an enforced constraint** when reading files.
+
+---
+
+## Row or column: the format changes the bytes read {.smaller}
+
+```
+ CSV / JSON (rows)                    Parquet (columns)
+ ┌───┬─────┬───────┬────┐             ┌────┐ ┌─────┐ ┌───────┐ ┌────┐
+ │ 1 │ ana │ north │ 10 │             │ 1  │ │ ana │ │ north │ │ 10 │
+ │ 2 │ bo  │ south │ 20 │             │ 2  │ │ bo  │ │ south │ │ 20 │
+ └───┴─────┴───────┴────┘             └────┘ └─────┘ └───────┘ └────┘
+   reading 1 column parses all          reading 1 column reads only that one
+```
+
+With $C$ columns of similar width and a query that uses $c$, the fraction of bytes read is about $c / C$:
+
+| | CSV | Parquet |
+|-|-----|---------|
+| Query uses 2 of 20 columns | 100% of the bytes | About **10%** |
+| Compression | Weak: mixed values in a row | Strong: similar values together, per column |
+| Filter `price > 100` | Reads all | Skips row groups using min/max statistics |
+| Schema | Inferred or declared | Stored in the file |
+| Human-readable | Yes | No |
+
+For an analytical query, this can be worth more than adding machines, as the next problem shows.
+
+# 6. Integrating problem
+
+## Do you need a cluster? {.smaller}
+
+Daily report: 6 TB of CSV, 20 columns of similar width, the query uses 2. It must read everything in under 1 hour. Each node has one disk at 200 MB/s.
+
+1. How many nodes for the read alone, with CSV?
+2. If 5% of the job is serial, how many of those nodes are effectively gained?
+3. And if the data were in Parquet?
+
+::: {.fragment}
+1. $\dfrac{6\ \text{TB}}{200\ \text{MB/s} \times 3{,}600\ \text{s}} = 8.3$, so **9 nodes**, and `inferSchema` would double the read.
+2. Amdahl: $S(9) = 1 / (0.05 + 0.95/9) \approx$ **6.4**: 9 nodes behave like 6.4, so even more are needed.
+3. About 10% of the bytes: $600\ \text{GB} / 200\ \text{MB/s} =$ 3,000 s = 50 min, **on one node**.
+
+**Conclusion:** the format saved more than eight machines. This is an estimate that ignores compression (which helps Parquet further), CPU and everything after the read. Yet it shows the order in which to think: **first reduce the work, then parallelize what remains.** Scaling a wasteful plan just makes the waste faster.
 :::
 
 ---
 
-## Exploration
+## References {.smaller}
 
-| Operation | Pandas | Spark |
-|-----------|--------|-------|
-| Dimensions | `df.shape` | `df.count(), len(df.columns)` |
-| First rows | `df.head(n)` | `df.show(n)` |
-| Column types | `df.dtypes` | `df.printSchema()` |
-| Statistics | `df.describe()` | `df.describe()` |
-| Unique values | `df["c"].unique()` | `df.select("c").distinct()` |
-| Value counts | `df["c"].value_counts()` | `df.groupBy("c").count()` |
-
----
-
-## Selection and filtering
-
-| Operation | Pandas | Spark |
-|-----------|--------|-------|
-| Select columns | `df[["a", "b"]]` | `df.select("a", "b")` |
-| Filter rows | `df[df["c"] > x]` | `df.filter(df.c > x)` |
-| SQL-style filter | `df.query("c > x")` | `df.filter("c > x")` |
-| IN operator | `df[df["c"].isin([...])]` | `df.filter(df.c.isin([...]))` |
-| Null filter | `df[df["c"].isnull()]` | `df.filter(F.col("c").isNull())` |
-| Sort | `df.sort_values("c")` | `df.orderBy("c")` |
-
----
-
-## Transformations
-
-```python
-sdf2 = (
-    sdf
-    .withColumn("total", F.col("price") * F.col("quantity"))
-    .withColumn("price_range",
-        F.when(F.col("price") < 100, "Budget")
-         .when(F.col("price") < 500, "Mid-range")
-         .otherwise("Premium"))
-    .withColumn("product_upper", F.upper(F.col("product")))
-    .withColumn("sale_date", F.to_date(F.col("sale_date"), "yyyy-MM-dd"))
-    .withColumn("year", F.year(F.col("sale_date")))
-    .fillna({"rating": 4.3})
-    .withColumnRenamed("price", "price_usd")
-    .drop("product_upper")
-)
-```
-
----
-
-## UDFs
-
-```python
-def classify_price(price):
-    if price is None: return "Unknown"
-    return "Budget" if price < 100 else "Premium"
-
-classify_udf = F.udf(classify_price, StringType())
-sdf2 = sdf2.withColumn("price_class", classify_udf(F.col("price")))
-```
-
-::: {.callout-warning}
-UDFs are the Spark equivalent of `.apply()`, but they are slower than native `F.*` functions because they break out of the JVM. Prefer built-in functions when they exist.
-:::
+- Amdahl, G. M. (1967). *Validity of the single processor approach to achieving large scale computing capabilities*. AFIPS Spring Joint Computer Conference.
+- Gustafson, J. L. (1988). *Reevaluating Amdahl's Law*. Communications of the ACM, 31(5).
+- McSherry, F., Isard, M., Murray, D. G. (2015). *Scalability! But at what COST?* HotOS XV.
+- Ghemawat, S., Gobioff, H., Leung, S.-T. (2003). *The Google File System*. SOSP.
+- Dean, J., Ghemawat, S. (2004). *MapReduce: Simplified Data Processing on Large Clusters*. OSDI.
+- Zaharia, M., et al. (2012). *Resilient Distributed Datasets*. NSDI.
+- Apache Spark 4.0.1: [Cluster Overview](https://spark.apache.org/docs/4.0.1/cluster-overview.html), [RDD Guide: closures](https://spark.apache.org/docs/4.0.1/rdd-programming-guide.html#understanding-closures), [CSV](https://spark.apache.org/docs/4.0.1/sql-data-sources-csv.html), [ANSI mode](https://spark.apache.org/docs/4.0.1/sql-ref-ansi-compliance.html).

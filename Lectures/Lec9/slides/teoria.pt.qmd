@@ -13,124 +13,267 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## O que você vai aprender
+## O que você poderá fazer {.smaller}
 
-- Os limites do Parquet puro
-- O log de transações e as escritas ACID
-- `MERGE`, time travel e schema enforcement
-- `DELETE`, `UPDATE`, `RESTORE`, `OPTIMIZE` e `VACUUM`
+- Explicar como uma tabela obtém garantias ACID só com arquivos em armazenamento de objetos
+- Reconstruir o estado de uma tabela a partir do log, à mão
+- Prever quais operações concorrentes entram em conflito, e por quê
+- Estimar quantos arquivos um `MERGE` reescreve
+- Estimar quanto o Z-order ganha, e como se degrada com mais colunas
+- Saber exatamente quando dados apagados saem do disco
 
----
+| Bloco | Tema | Min |
+|-------|------|-----|
+| 1 | O que Parquet puro não pode fazer | 15 |
+| 2 | O log de transações | 30 |
+| 3 | Controle de concorrência | 25 |
+| 4 | O custo de `UPDATE` e `MERGE` | 20 |
+| 5 | Ler menos: salto de dados e Z-order | 15 |
+| 6 | Versões, retenção e exclusão | 10 |
+| 7 | Problema integrador | 5 |
 
-## Os limites do Parquet puro
+# 1. O que Parquet puro não pode fazer
 
-| Problema | Exemplo |
-|---------|---------|
-| **Sem atomicidade** | O job falha no meio do `overwrite`: a tabela fica pela metade |
-| **Sem UPDATE/MERGE** | Uma atualização de status obriga a reescrever a partição ou a tabela |
-| **Leituras inconsistentes** | Um leitor vê arquivos antigos e novos misturados durante a escrita |
-| **Sem histórico** | Não dá para ver como a tabela estava ontem |
-| **Schema sem proteção** | Um arquivo com colunas diferentes corrompe a tabela silenciosamente |
+## Uma tabela como "uma pasta de arquivos" {.smaller}
 
----
+O conteúdo da pasta **define** a tabela. Em um object store, sem operações atômicas sobre vários arquivos, isso causa anomalias concretas:
 
-## O log de transações
+| Anomalia | Cenário | Propriedade ACID violada |
+|----------|---------|--------------------------|
+| **Escrita parcial** | Um job morre com 60 de seus 100 arquivos gravados | Atomicidade |
+| **Leitura suja** | Um leitor lista a pasta durante um overwrite: arquivos velhos e novos juntos | Isolamento |
+| **Atualização perdida** | Dois jobs reescrevem uma partição: o último apaga o trabalho do outro | Isolamento |
+| **Dados inválidos** | Um arquivo com outras colunas | Consistência |
+
+E há custo de desempenho: **listar a pasta** no S3 custa uma requisição a cada 1.000 objetos (Armbrust et al., 2020).
+
+**A ideia do Delta Lake:** não mudar o armazenamento. Adicionar **um nível de indireção**: a tabela não é "o que há na pasta", mas "o que um log diz que há na pasta".
+
+# 2. O log de transações
+
+## A tabela é a reprodução do seu log {.smaller}
+
+Cada commit $v$ é um arquivo JSON que lista os arquivos que adiciona ($A_v$) e remove ($R_v$). O estado da tabela é uma função pura do log:
+
+$$S_v = (S_{v-1} \setminus R_v) \cup A_v$$
 
 ```
-  silver_delta/
-  ├── _delta_log/
-  │   ├── 00000000000000000000.json   <- v0: add files A, B, C
-  │   ├── 00000000000000000001.json   <- v1: remove B, add D   (MERGE)
-  │   └── 00000000000000000002.json   <- v2: remove A          (DELETE)
-  ├── order_date=2024-07-01/part-....parquet
-  └── order_date=2024-07-02/part-....parquet
+ _delta_log/
+   00000000000000000000.json    add a, add b, add c, metaData(schema)
+   00000000000000000001.json    add d
+   00000000000000000002.json    remove b, add e         (an UPDATE)
+   00000000000000000003.json    remove a, remove c, add f   (OPTIMIZE, dataChange=false)
+ a.parquet  b.parquet  c.parquet  d.parquet  e.parquet  f.parquet
 ```
 
-Os dados continuam em Parquet. O log diz **quais arquivos formam cada versão**. Escrever é atômico: ou o arquivo de log da nova versão existe, ou a versão não aconteceu.
+**Exercício: quais arquivos formam a versão 2? E a 3?**
 
----
-
-## MERGE (upsert)
-
-```python
-(orders_dt.alias("t")
- .merge(updates.alias("s"), "t.order_id = s.order_id")
- .whenMatchedUpdateAll(condition="s.updated_at > t.updated_at")
- .whenNotMatchedInsertAll()
- .execute())
-```
-
-A condição `s.updated_at > t.updated_at` protege contra dados atrasados: um evento antigo que chega depois não sobrescreve um estado mais novo.
-
----
-
-## Histórico e time travel
-
-Cada operação gera uma nova versão. As antigas continuam legíveis até serem removidas pelo `VACUUM`.
-
-```python
-orders_dt.history().select("version", "timestamp", "operation").show()
-
-v0 = spark.read.format("delta").option("versionAsOf", 0).load(SILVER_DELTA)
-
-spark.sql(f"SELECT status, COUNT(*) FROM delta.`{SILVER_DELTA}` "
-          "VERSION AS OF 0 GROUP BY status")
-```
-
----
-
-## Schema enforcement & evolution
-
-O Delta **recusa** escritas com schema incompatível. Mudanças intencionais são explícitas:
-
-```python
-(with_coupon.write.format("delta")
- .mode("append")
- .option("mergeSchema", "true")     # old rows get null
- .save(SILVER_DELTA))
-```
-
----
-
-## DELETE, UPDATE & RESTORE
-
-```python
-orders_dt.restoreToVersion(merge_version)
-orders_dt.delete(F.col("customer_id") == customer)
-orders_dt.update(
-    condition="status = 'created' AND created_at < '2024-07-03'",
-    set={"status": F.lit("expired")},
-)
-```
-
-::: {.callout-warning}
-Depois de um `DELETE`, os dados ainda existem nos arquivos Parquet das versões antigas e o time travel consegue lê-los. Para a exclusão ser real (ex.: LGPD), é preciso rodar `VACUUM`.
+::: {.fragment}
+- $S_0 = \{a, b, c\}$, $S_1 = \{a, b, c, d\}$, $S_2 =$ **$\{a, c, d, e\}$**, $S_3 =$ **$\{d, e, f\}$**.
+- `b.parquet` continua no disco, mas não pertence mais à tabela: um leitor da versão 3 nunca o abre.
+- **Por que isso dá atomicidade:** um job primeiro grava todos os seus arquivos de dados, invisíveis porque nenhuma entrada do log os nomeia, e depois confirma com um só arquivo. Uma queda antes do commit só deixa arquivos órfãos.
+- **O time travel não precisa de mais nada:** reproduzir até $v$ dá a tabela na versão $v$.
 :::
 
 ---
 
-## OPTIMIZE & VACUUM
+## A única primitiva que precisa: put-if-absent {.smaller}
 
-| Comando | O que faz | Quando |
-|---------|-------------|--------|
-| `OPTIMIZE` | Compacta arquivos pequenos em maiores | Após muitos MERGEs/appends |
-| `OPTIMIZE ... ZORDER BY (col)` | Também reorganiza os dados para pular mais blocos em filtros por `col` | Colunas muito filtradas, fora da partição |
-| `VACUUM` | Apaga arquivos que nenhuma versão recente usa | Periodicamente; o padrão mantém 7 dias |
+**Protocolo de escrita** (Armbrust et al., 2020, §3.2.2):
+
+1. Encontre a última versão $r$, e leia a tabela em $r$ se necessário.
+2. Grave os novos arquivos de dados, com nomes únicos, em paralelo.
+3. Tente criar o arquivo de log $r + 1$, **só se não existir**.
+4. Se outro escritor chegou antes: verifique conflitos, e repita na versão seguinte.
+
+**O passo 3 é o único ponto de coordenação.** Toda a transação se reduz a uma operação atômica sobre um objeto pequeno: *crie esta chave se não existir*.
+
+| Armazenamento | Como se obtém put-if-absent |
+|---------------|-----------------------------|
+| HDFS, Azure | Rename atômico, ou operações condicionais nativas |
+| S3 | **Não existia** no artigo: exigia coordenação. As escritas condicionais chegaram em 2024 |
+| Google Cloud Storage | Escritas condicionais nativas |
+
+**Isso explica o limite do sistema:** um commit por escrita no object store. Com dezenas a centenas de milissegundos por escrita, o artigo reporta **várias transações por segundo**. Serve para lotes e micro-batches, e o torna a ferramenta errada para OLTP por linha.
 
 ---
 
-## Resumo
+## ACID, propriedade por propriedade {.smaller}
 
-| Delta Lake | Comando |
-|------------|---------|
-| Upsert | `DeltaTable.merge(...).whenMatchedUpdateAll().whenNotMatchedInsertAll()` |
-| Histórico | `.history()` / `DESCRIBE HISTORY` |
-| Time travel | `.option("versionAsOf", n)` / `VERSION AS OF n` |
-| Desfazer | `.restoreToVersion(n)` |
-| Evoluir schema | `.option("mergeSchema", "true")` |
-| Compactar | `.optimize().executeCompaction()` / `.executeZOrderBy(col)` |
-| Limpar versões antigas | `.vacuum(horas)` |
+| Propriedade | Como se obtém | O que **não** dá |
+|-------------|---------------|------------------|
+| **Atomicidade** | Um arquivo de log por commit: tudo ou nada | Entre **várias tabelas** não há atomicidade |
+| **Consistência** | Schema enforcement, e restrições na escrita | Suas regras de negócio são suas |
+| **Isolamento** | Leitores leem uma versão fixa; escritores validam ao confirmar | Sem transações de várias instruções |
+| **Durabilidade** | A durabilidade do object store | Depende do armazenamento e de `VACUUM` |
+
+**Checkpoints: manter as leituras rápidas.** Reproduzir milhares de JSON seria lento. Por isso, por padrão a cada **10 commits**, o estado é gravado em um checkpoint Parquet, e um leitor só precisa de:
+
+$$\text{último checkpoint} + \text{os JSON posteriores}$$
+
+O checkpoint é em si uma tabela analítica sobre a tabela: como guarda estatísticas por arquivo em forma colunar, encontrar quais arquivos ler costuma ser **mais rápido que `LIST` mais ler footers** (Armbrust et al., 2020, §3.1.3).
+
+**Um checkpoint só afeta o desempenho:** uma queda ao gravá-lo não pode corromper nada.
+
+# 3. Controle de concorrência
+
+## Otimista: supor que não há conflito, e depois verificar {.smaller}
+
+| Abordagem | Ideia | Convém quando |
+|-----------|-------|---------------|
+| Pessimista (locks) | Pedir permissão antes de trabalhar | Transações curtas, conflitos frequentes |
+| **Otimista** | Trabalhar primeiro, e validar ao confirmar | **Transações longas, conflitos raros** |
+
+Um job Spark pode durar horas e tocar milhares de arquivos, então manter locks por tanto tempo está descartado. Além disso, um object store não oferece serviço de locks.
+
+**Leitores nunca bloqueiam ninguém.** Leem o snapshot em $v$, cujos arquivos seguem imutáveis, então podem rodar quantos forem durante uma escrita.
+
+**O preço do otimismo é o trabalho perdido:** em um conflito, o que o job gravou é descartado e é preciso repetir. Com uma probabilidade de conflito $p$ por tentativa, o número esperado de tentativas é:
+
+$$E[\text{tentativas}] = \frac{1}{1 - p}$$
+
+Com $p = 50\%$: 2 tentativas, ou seja **o dobro do custo**, em um job que pode levar uma hora. Projete para que os escritores não toquem os mesmos dados, em vez de confiar nas repetições.
+
+---
+
+## O que conflita com o quê, e por quê {.smaller}
+
+A matriz da documentação do Delta:
+
+| | `INSERT` | `UPDATE`, `DELETE`, `MERGE` | Compactação |
+|-|----------|-----------------------------|-------------|
+| `INSERT` | **Não pode haver conflito** | Pode | **Não pode** |
+| `UPDATE`, `DELETE`, `MERGE` | | Pode | Pode |
+| Compactação | | | Pode |
+
+**Tudo decorre de uma pergunta: o outro commit mudou o que eu li?**
+
+**Exercício: por que esses resultados fazem sentido?**
+
+::: {.fragment}
+- **Dois `INSERT` às cegas:** nenhum leu nada, e os arquivos novos têm nomes únicos. Ambas as ordens dão o mesmo.
+- **`INSERT` vs `MERGE`:** o `MERGE` buscou coincidências na tabela, e as linhas novas podem ser coincidências que não viu (`ConcurrentAppendException`).
+- **Dois `MERGE` nos mesmos arquivos:** ambos removem um arquivo que o outro usou (`ConcurrentDeleteReadException`).
+- **`MERGE` vs compactação:** a compactação marca arquivos como removidos, mesmo que os dados não mudem.
+
+**A correção habitual:** tornar disjuntas as condições, com um predicado de partição explícito, `MERGE ... ON t.id = s.id AND t.date = '2024-07-04'`, para que a operação só leia essa partição.
+:::
+
+# 4. O custo de UPDATE e MERGE
+
+## Parquet é imutável: mudar uma linha reescreve um arquivo {.smaller}
+
+`UPDATE` não atualiza nada: **encontra** os arquivos afetados, **reescreve cada um inteiro**, e confirma `remove velho` + `add novo`. Isso é **copy-on-write**.
+
+**Quantos arquivos um `MERGE` toca?** Com $k$ atualizações distribuídas ao acaso em $F$ arquivos, o número esperado de arquivos tocados é (bolas e urnas):
+
+$$F\left(1 - \left(1 - \frac{1}{F}\right)^{k}\right) \approx F\left(1 - e^{-k/F}\right)$$
+
+| Linhas atualizadas $k$ | Arquivos $F$ | Arquivos reescritos | Fração da tabela |
+|------------------------|--------------|---------------------|------------------|
+| 100 | 1.000 | 95 | 10% |
+| 1.000 | 1.000 | **632** | **63%** |
+| 5.000 | 1.000 | 993 | 99% |
+
+**1.000 linhas podem forçar a reescrever 63% de uma tabela.** Se a tabela tem 1 TB, são 630 GB gravados para talvez alguns KB de mudanças reais.
+
+**O que salva é a correlação.** Se as atualizações se concentram em dados recentes, e a tabela está particionada ou ordenada por data, tocam poucos arquivos. A fórmula supõe posicionamento aleatório: **a disposição dos dados é o que você pode mudar**.
+
+---
+
+## `MERGE` passo a passo, e sua alternativa {.smaller}
+
+```
+ 1. Une fonte e destino, para saber quais arquivos têm coincidências  (lê: candidatos)
+ 2. Reescreve cada arquivo com coincidência: novas + sem mudança      (grava: inteiros)
+ 3. Confirma: remove os arquivos velhos, adiciona os novos            (uma entrada atômica)
+```
+
+| Para baixar o custo | Por quê |
+|---------------------|---------|
+| Predicado de partição no `ON` | Reduz os candidatos do passo 1 |
+| Deduplicar a fonte | Duas linhas para um mesmo destino **fazem o `MERGE` falhar**: qual ganharia? |
+
+| | Copy-on-write | Merge-on-read (deletion vectors) |
+|-|---------------|----------------------------------|
+| Atualizar | Reescreve o arquivo | **Marca as linhas como apagadas** em um arquivo à parte |
+| Custo de escrita | **Alto** | Baixo |
+| Custo de leitura | Nenhum | **Deve filtrar** as linhas marcadas, até compactar |
+| Convém | Lotes grandes e poucos | Atualizações pequenas e frequentes |
+
+O custo não desaparece: passa da escrita para a leitura.
+
+# 5. Ler menos: salto de dados e Z-order
+
+## O salto de dados precisa de dados agrupados {.smaller}
+
+O log guarda min, max e contagens de nulos por arquivo, por padrão das primeiras **32 colunas**. Um filtro pula todo arquivo cuja faixa não possa coincidir. Assim, **o salto só funciona se cada arquivo tem uma faixa estreita**, ou seja, se as linhas relacionadas estão juntas.
+
+**Ordenar só ajuda uma coluna.** Como servir várias ao mesmo tempo? O Z-order intercala os bits das colunas:
+
+$$x = \color{#7cc}{1}\color{#7cc}{0},\ \ y = \color{#fc8}{1}\color{#fc8}{1} \quad\Longrightarrow\quad z = \color{#7cc}{1}\color{#fc8}{1}\color{#7cc}{0}\color{#fc8}{1}$$
+
+Ordenar por $z$ deixa pontos próximos juntos em **todas** as dimensões, de forma aproximada. Com $F$ arquivos e $d$ colunas, um filtro em uma coluna toca cerca de $F^{\,1 - 1/d}$ arquivos:
+
+| Colunas em Z-order | Arquivos tocados ($F = 10.000$) | Fração lida |
+|--------------------|---------------------------------|-------------|
+| 1 (ordem simples) | 1 | 0,01%, só nessa coluna |
+| 2 | 100 | **1%** |
+| 3 | 464 | 4,6% |
+| 4 | 1.000 | **10%** |
+
+**A documentação avisa que "a eficácia da localidade cai a cada coluna extra".** O artigo mede isso com 4 colunas: pôde pular pelo menos **43%** dos arquivos por dimensão, e 54% em média.
+
+# 6. Versões, retenção e exclusão
+
+## Quando os dados realmente vão embora? {.smaller}
+
+`DELETE` só grava um `remove` no log: **os dados continuam no disco**, e o time travel pode lê-los. Duas retenções decidem o que acontece depois:
+
+| Configuração | Padrão | Controla | Quem aplica |
+|--------------|--------|----------|-------------|
+| `delta.deletedFileRetentionDuration` | **1 semana** | Quanto tempo os **arquivos de dados** removidos ficam | `VACUUM` manual |
+| `delta.logRetentionDuration` | **30 dias** | Quanto tempo as **entradas do log** ficam | Automático, após checkpoints |
+
+**O time travel para a versão $v$ precisa de ambos**, suas entradas de log e seus arquivos, então a janela real é a **menor** das duas.
+
+| Cenário | Consequência |
+|---------|--------------|
+| `VACUUM` nunca roda | O armazenamento cresce sem fim, e dados pessoais "apagados" seguem legíveis |
+| `VACUUM` com retenção curta | Leitores concorrentes em uma versão velha **perdem seus arquivos**: daí a verificação de segurança |
+| Pedido legal de apagar dados de um cliente | `DELETE` **não basta**: requer `VACUUM` após a retenção |
+
+`RESTORE` grava um commit novo: não rebobina a história, então pode ser desfeito.
+
+# 7. Problema integrador
+
+## Um `MERGE` que ficou caro demais {.smaller}
+
+Silver: 2 TB em 2.000 arquivos de 1 GB. Todo dia: um `MERGE` de 20.000 atualizações e linhas novas, e um `OPTIMIZE` noturno. Ultimamente o `MERGE` leva 3 horas e às vezes falha com `ConcurrentDeleteReadException`.
+
+1. Quanto o `MERGE` reescreve, com atualizações distribuídas ao acaso? 2. O que explica a exceção? 3. 95% das atualizações caem nos últimos 7 dias: o que você mudaria? 4. Quanto reescreveria então?
+
+::: {.fragment}
+1. $k/F = 10$, então $F(1 - e^{-10}) \approx$ **2.000 arquivos: toda a tabela**, 2 TB reescritos por dia.
+2. `OPTIMIZE` remove arquivos que o longo `MERGE` leu. Eles se sobrepõem no tempo, e a matriz diz que a compactação **pode conflitar**.
+3. **Particione por data**, e adicione `t.order_date >= current_date() - 7` ao `ON` (com uma passada à parte para atualizações antigas). Além disso, agende `OPTIMIZE` para não sobrepor, ou limite-o a partições antigas.
+4. Um ano em 2.000 arquivos são cerca de 5,5 arquivos por dia, então 7 dias têm cerca de **38 arquivos**, ou **38 GB**: cerca de **50× menos**. $k$ continua grande, então todos esses arquivos são tocados, mas $F$ encolheu.
+
+**A lição:** nenhuma configuração resolve isso tanto quanto a disposição dos dados.
+:::
+
+---
+
+## Referências {.smaller}
+
+- Armbrust, M., Das, T., Sun, L., et al. (2020). *Delta Lake: High-Performance ACID Table Storage over Cloud Object Stores*. PVLDB, 13(12).
+- Kung, H. T., Robinson, J. T. (1981). *On Optimistic Methods for Concurrency Control*. ACM TODS, 6(2).
+- Morton, G. M. (1966). *A Computer Oriented Geodetic Data Base and a New Technique in File Sequencing*. IBM. (origin of the Z-order)
+- Delta Lake: [Protocol](https://github.com/delta-io/delta/blob/master/PROTOCOL.md), [Concurrency control](https://docs.delta.io/latest/concurrency-control.html), [Optimizations](https://docs.delta.io/latest/optimizations-oss.html), [Utilities (VACUUM)](https://docs.delta.io/latest/delta-utility.html), [Table properties](https://docs.delta.io/latest/table-properties.html), [Update and merge](https://docs.delta.io/latest/delta-update.html).

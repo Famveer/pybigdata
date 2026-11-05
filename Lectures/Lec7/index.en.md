@@ -14,11 +14,11 @@ layout: default
 {: .summary}
 >In this lecture, we will learn:
 >
->* The three pillars of Hadoop: HDFS, MapReduce and YARN
->* MapReduce with Python scripts, compared with Spark
->* The Hadoop FileSystem API and why `s3a://` works
->* Single-node HDFS with Spark and Pandas
->* Hadoop today and the move to the cloud
+>* Design assumptions: why Hadoop is the way it is
+>* HDFS in numbers: block size, NameNode memory, data loss, locality
+>* MapReduce: the model, failures, stragglers and its limits
+>* YARN: allocating a cluster and sizing executors
+>* FileSystem API and why an object store is not a file system
 
 
 ### Slides

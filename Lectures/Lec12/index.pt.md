@@ -14,11 +14,12 @@ layout: default
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* O que torna Polars e DuckDB rápidos
->* A mesma consulta em cinco ferramentas: tempo, memória e sintaxe
->* Pandas API on Spark para migrar código Pandas
->* Apache Arrow para trocar dados entre ferramentas
->* Critérios para escolher a ferramenta certa
+>* O que as medições dizem: um modelo de custo, e onde as ferramentas se cruzam
+>* Por que Polars e DuckDB são rápidos: hardware e execução vetorizada
+>* Memória e execução out-of-core
+>* Apache Arrow: quando as conversões não custam nada
+>* Pandas API on Spark: o custo da sua semântica
+>* Como decidir: um critério em quatro perguntas
 
 
 ### Slides

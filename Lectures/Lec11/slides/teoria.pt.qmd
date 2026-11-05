@@ -13,130 +13,241 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## O que você vai aprender
+## O que você poderá fazer {.smaller}
 
-- Transformer, Estimator e Pipeline
-- Preparação de features: nulos, categorias e vetores
-- Treinar e avaliar um classificador (churn de clientes)
-- Escolher o limiar de decisão
-- Validação cruzada, salvar modelos, scoring em batch e streaming
+- Decidir se um problema precisa de treinamento distribuído
+- Explicar por que `fit` deve ver só dados de treino, e como um Pipeline garante isso
+- Explicar como a regressão logística é distribuída, e estimar seu custo de rede
+- Explicar por que as árvores usam histogramas, e quanto custam seus parâmetros
+- Ler uma matriz de confusão, e escolher um limiar pelos custos do negócio
+- Contar quanto custa a validação cruzada, e evitar o otimismo da seleção
+
+| Bloco | Tema | Min |
+|-------|------|-----|
+| 1 | Você precisa de ML distribuído? | 15 |
+| 2 | Pipelines e vazamento de dados | 20 |
+| 3 | Regressão logística em escala | 25 |
+| 4 | Árvores: dividir sem ordenar | 20 |
+| 5 | Avaliação e limiares | 25 |
+| 6 | Ajuste, e problema integrador | 15 |
+
+# 1. Você precisa de ML distribuído?
+
+## Mais dados ajudam cada vez menos {.smaller}
+
+O erro de um modelo costuma cair com o tamanho $n$ com retornos decrescentes: o erro estatístico de muitos modelos cai aproximadamente como $O(1/\sqrt{n})$. **Passar de 1 milhão para 100 milhões de linhas costuma dividir essa parte do erro por 10, e ela pode já ser desprezível frente ao viés do modelo.**
+
+**Então teste antes de escalar:** treine com amostras crescentes, e plote a métrica de validação.
+
+| A curva de aprendizado... | Significa | Ação |
+|---------------------------|-----------|------|
+| É plana com 1% dos dados | Mais linhas não acrescentam | **Amostre**, e use scikit-learn em uma máquina |
+| Continua subindo | Os dados são o gargalo | MLlib, ou uma máquina maior |
+
+| Use MLlib quando | Use scikit-learn quando |
+|------------------|-------------------------|
+| A curva continua subindo, e o pipeline é distribuído | Uma amostra cabe na RAM de uma máquina |
+
+**Treinar distribuído e avaliar distribuído são problemas diferentes:** um modelo treinado com uma amostra pode ser aplicado no Spark a todos os dados.
+
+# 2. Pipelines e vazamento de dados
+
+## Transformer, Estimator, Pipeline: como tipos {.smaller}
+
+| Conceito | Tipo | Exemplo |
+|----------|------|---------|
+| **Transformer** | $\text{DataFrame} \to \text{DataFrame}$ | Um modelo treinado, `VectorAssembler` |
+| **Estimator** | $\text{DataFrame} \to \text{Transformer}$ | `Imputer`, `StringIndexer`, `LogisticRegression` |
+| **Pipeline** | É em si um Estimator: `fit` dá um `PipelineModel` | |
+
+**A regra é uma frase: tudo que aprende dos dados é um Estimator, e deve ser ajustado só com o treino.** A mediana, a lista de categorias e as escalas são parâmetros do modelo.
+
+**Por que importa: o vazamento.** Suponha que uma feature seja o churn médio por região, calculado com todos os dados, de modo que as linhas de teste ajudaram a calcular sua própria feature. A avaliação fica **otimista**, e esse otimismo só desaparece em produção, onde ninguém avisa.
+
+| Vazamento comum | Por que vaza |
+|-----------------|--------------|
+| Imputar ou escalar antes de dividir | Estatísticas de teste entraram no treino |
+| Uma feature calculada após a data do alvo | Não existiria ao prever |
+| Divisão aleatória de dados temporais | Treina com o futuro para prever o passado |
+| Linhas de um cliente em ambos os lados | O modelo reconhece o cliente |
+
+# 3. Regressão logística em escala
+
+## O gradiente é uma soma, então se distribui {.smaller}
+
+$$P(y = 1 \mid x) = \sigma(w \cdot x) = \frac{1}{1 + e^{-w \cdot x}} \qquad \text{perda: } L(w) = -\sum_i \big[y_i \log p_i + (1 - y_i)\log(1 - p_i)\big]$$
+
+Seu gradiente tem uma forma muito conveniente:
+
+$$\nabla L(w) = \sum_{i=1}^{n} \big(\sigma(w \cdot x_i) - y_i\big)\, x_i = \sum_{p \in \text{partições}} \ \sum_{i \in p} \big(\sigma(w \cdot x_i) - y_i\big)\, x_i$$
+
+**É uma agregação distributiva** (Aula 4). Cada partição calcula sua soma parcial, e estas são fundidas. Uma iteração faz:
+
+```
+ driver: w ──broadcast──▶ executors: gradiente por partição ──agregação em árvore──▶ driver: ∇L, novo w
+```
+
+**Custo por iteração:** uma passada completa pelos dados, mais $w$ na ida e $\nabla L$ na volta. Com $d$ features em doubles e $N$ executors, a rede leva cerca de $2 N d \times 8$ bytes.
+
+| Caso | $d$ | $N$ | Por iteração | 50 iterações |
+|------|-----|-----|--------------|--------------|
+| Lab 10 | 14 | 24 | 5,4 KB | 269 KB: **irrelevante** |
+| Features de texto | $10^7$ | 100 | **16 GB** | **800 GB** |
+
+**Então o gargalo se move com $d$**: com poucas features domina a CPU. Com muitas, a rede e o driver. **Faça cache da entrada:** com $k = 50$ iterações, a desigualdade da Aula 6 é atendida com folga.
 
 ---
 
-## Quando usar MLlib
+## Regularização, e ler os coeficientes {.smaller}
 
-| | scikit-learn | Spark MLlib |
-|-|-------------|-------------|
-| Dados | Cabem na memória de uma máquina | Distribuídos, sem limite prático |
-| Entrada | NumPy / Pandas | Spark DataFrame |
-| Features | Uma matriz `X` | **Uma coluna do tipo vetor** (`features`) |
-| Algoritmos | Muito amplo | Os principais: lineares, árvores, ensembles, clustering, ALS |
+O MLlib minimiza a perda mais uma penalização elastic-net, com $\alpha$ = `elasticNetParam`, e $\lambda$ = `regParam`:
 
-Regra prática: se os dados de treino cabem em uma máquina, scikit-learn costuma ser mais simples.
+$$\min_w\ L(w) + \lambda\left[\frac{1 - \alpha}{2}\,\|w\|_2^2 + \alpha\,\|w\|_1\right]$$
+
+| | $\alpha = 0$: ridge (L2) | $\alpha = 1$: lasso (L1) |
+|-|--------------------------|--------------------------|
+| Efeito | Encolhe todos os coeficientes | **Deixa alguns exatamente em zero** |
+| Uso | Features correlacionadas | Seleção de features |
+
+**Por que a regularização não ajudou no Lab 11?** Com $n$ = 160.000 e $d$ = 14, temos $n/d \approx 11.000$: nada a sobreajustar. AUC média medida: 0,8337 com $\lambda = 0$, 0,8331 com $\lambda = 0{,}1$ e L2, e **0,7786** com $\lambda = 0{,}1$ e L1, que removeu features úteis. **A regularização só compensa quando $d$ é grande frente a $n$.**
+
+**A escala importa.** A penalização trata todos os coeficientes igual, então uma feature em milhares tem um coeficiente pequeno, e quase não é penalizada. Por isso, **padronize primeiro**. Assim um coeficiente compara efeitos: `support_tickets` +1,10, `tenure_months` −0,86, enquanto a região fica abaixo de 0,01, igual à regra que gerou os dados.
+
+# 4. Árvores: dividir sem ordenar
+
+## Ordenar é caro demais: histogramas {.smaller}
+
+Uma árvore de decisão em uma máquina testa cada valor único de cada feature como divisão: **requer ordenar**, e é proibitivo em distribuído. O MLlib discretiza antes (documentação do Spark):
+
+1. Calcula **quantis aproximados** sobre uma amostra, e obtém até `maxBins` divisões candidatas (padrão **32**).
+2. Para cada nível da árvore, cada partição constrói um **histograma** por nó, feature e bin, com as contagens de classe.
+3. Funde os histogramas. São aditivos: de novo uma **agregação distributiva**. Depois escolhe no driver a melhor divisão por nó.
+
+**O tamanho dessas estatísticas é o que precisa viajar:**
+
+$$\text{nós} \times d \times \text{bins} \times \text{classes} \times 8\ \text{B}$$
+
+| Nível (profundidade) | Nós | Com $d = 14$, 32 bins, 2 classes |
+|----------------------|-----|----------------------------------|
+| 3 | 8 | 57 KB |
+| 8 | 256 | **1,8 MB** |
+| 15 | 32.768 | **235 MB** |
+
+A profundidade aumenta o custo de forma **exponencial**: limite-a. Se as estatísticas superam `maxMemoryInMB` (padrão 256 MiB), os nós são processados em grupos, com mais passadas pelos dados. Segundo a documentação, a comunicação escala quase linearmente com as features e `maxBins`.
 
 ---
 
-## Três conceitos centrais
+## Ensembles, e uma lição sobre complexidade {.smaller}
 
-| Conceito | O que é | Método |
-|---------|-----------|--------|
-| **Transformer** | Recebe um DataFrame e devolve outro com colunas novas | `.transform(df)` |
-| **Estimator** | Aprende dos dados e produz um Transformer | `.fit(df)` |
-| **Pipeline** | Sequência de estágios; ele próprio é um Estimator | `.fit(df)` gera um `PipelineModel` |
+| | Random Forest | Gradient-Boosted Trees |
+|-|---------------|------------------------|
+| Árvores | **Independentes**: bootstrap + features ao acaso | **Sequenciais**: cada uma ajusta os erros da anterior |
+| Paralelismo | Pode treinar nós de muitas árvores ao mesmo tempo | Só dentro de cada árvore |
+| Reduz | Variância | Viés |
+| Mais árvores | Não sobreajusta, só custa mais | **Pode sobreajustar** |
 
-::: {.callout-important}
-Tudo que aprende dos dados é ajustado **só no treino**. Caso contrário, a avaliação fica otimista (*data leakage*). O Pipeline garante isso.
+**O modelo não se escolhe por reputação.** No Lab 10, com os mesmos dados de teste:
+
+| Modelo | AUC-ROC | Accuracy | Precision | Recall |
+|--------|---------|----------|-----------|--------|
+| **Regressão logística** | **0,831** | 0,760 | 0,731 | 0,655 |
+| Random Forest (60 árvores, profundidade 8) | 0,818 | 0,751 | 0,733 | 0,615 |
+
+O modelo complexo perde, e é **o resultado esperado**: os dados foram gerados por uma regra linear no logit. Uma árvore precisa aproximar uma função suave com degraus. **Compare sempre primeiro com uma base simples**: ela diz quanto a complexidade realmente compra.
+
+# 5. Avaliação e limiares
+
+## Toda métrica vem de uma tabela {.smaller}
+
+Matriz de confusão do Lab 10 para a regressão logística, 39.909 clientes de teste:
+
+| | Previsão: fica | Previsão: sai |
+|-|----------------|---------------|
+| **Fica** | TN = 19.641 | FP = 3.932 |
+| **Sai** | FN = 5.636 | TP = 10.700 |
+
+$$\text{accuracy} = \frac{TP + TN}{\text{total}} = 0{,}760 \quad\ \text{precision} = \frac{TP}{TP + FP} = 0{,}731 \quad\ \text{recall} = \frac{TP}{TP + FN} = 0{,}655$$
+
+**Precision** é a qualidade do alerta, e **recall** sua cobertura: "dos que saem, quantos encontro?"
+
+**Por que a accuracy sozinha falha:** com 1% de churn, "ninguém sai" obtém **99% de accuracy** e não serve para nada. Compare sempre com a taxa base, que aqui é de 40,8%.
+
+**A AUC tem um significado preciso que costuma passar despercebido:** é a **probabilidade de um positivo ao acaso receber maior pontuação que um negativo ao acaso** (Mann-Whitney). Uma AUC de 0,831 significa que o modelo ordena bem esse par 83% das vezes. Assim, mede a **ordem**, e não depende de nenhum limiar.
+
+---
+
+## O limiar é uma decisão econômica {.smaller}
+
+Contatar um cliente custa $c$, e perdê-lo custa $V$. Supondo que o contato o retém, age-se quando a perda esperada supera o custo:
+
+$$p \cdot V > c \quad\Longrightarrow\quad p^* = \frac{c}{V}$$
+
+**Com $c = 10$ e $V = 100$: $p^* =$ 0,1, não o 0,5 padrão.** O custo $10 \times \text{contatados} + 100 \times \text{FN}$, na tabela do Lab 10:
+
+| Limiar | Contatados | Precision | Recall | Custo total |
+|--------|------------|-----------|--------|-------------|
+| 0,2 | 27.307 | 0,549 | 0,918 | **407.500** |
+| 0,3 | 22.384 | 0,614 | 0,841 | 483.100 |
+| 0,5 (padrão) | 14.632 | 0,731 | 0,655 | 710.300 |
+| 0,7 | 8.218 | 0,835 | 0,420 | 1.029.600 |
+
+**Mover o limiar economiza 43% frente ao padrão, com o mesmo modelo.** Pode valer mais que semanas de ajuste por uma AUC um pouco melhor.
+
+**Dois avisos:** isso precisa de probabilidades **calibradas**, então verifique-as, ou ao menos escolha o limiar empiricamente, como acima. E o contato não retém a todos: com efetividade $e$, $p^* = c / (eV)$.
+
+# 6. Ajuste, e problema integrador
+
+## Quanto custa a validação cruzada, e o que promete {.smaller}
+
+$$\text{modelos treinados} = (\text{combinações}) \times k + 1$$
+
+O último "+1" é o reajuste final, com todo o treino e os melhores parâmetros.
+
+| Grade | $k$ | Treinamentos | Com 5 s cada, sequencial |
+|-------|-----|--------------|--------------------------|
+| Lab 11: $3 \times 2$ | 3 | 19 | 95 s (medido: 14,7 s nos 18 ajustes, com `parallelism=2`) |
+| 5 parâmetros, 4 valores cada | 3 | 3.073 | **4,3 horas** |
+
+A grade cresce de forma **exponencial com o número de parâmetros**. Opções: `TrainValidationSplit` (uma divisão, não $k$), busca aleatória, ou uma grade pequena ao redor do que se sabe que funciona.
+
+**O otimismo da seleção.** O melhor de muitos modelos parece melhor do que é: com 3.072 tentativas, algum ganha por acaso. Assim, **a pontuação CV do vencedor é enviesada para cima**, e por isso o conjunto de teste é usado **uma vez, no final**. Usá-lo para comparar modelos o transforma em dados de validação, e não resta uma estimativa honesta.
+
+`parallelism` treina combinações ao mesmo tempo, e segundo a documentação bastam até cerca de 10. Compete pelos mesmos núcleos que as tasks de cada ajuste.
+
+---
+
+## Revise este projeto {.smaller}
+
+Uma equipe reporta: *"Modelo de fraude, accuracy 99,2%, AUC 0,97. 5 bilhões de linhas, $d$ = 200, em um cluster de 50 nós. Mediana imputada, depois divisão 80/20 ao acaso. As features incluem `chargebacks_next_30d`. Testamos 500 configurações, escolhendo a melhor pela AUC de teste. Limiar 0,5. 0,5% das transações são fraude."*
+
+**Encontre todos os problemas.**
+
+::: {.fragment}
+| Problema | Por quê |
+|----------|---------|
+| Accuracy 99,2% | "Sem fraude" consegue **99,5%**: este modelo é **pior que não fazer nada** |
+| Imputar antes de dividir | Vazamento: medianas de teste entraram no treino. Use um Pipeline |
+| `chargebacks_next_30d` | **Vazamento direto do futuro**: provavelmente a razão dessa AUC |
+| Divisão aleatória de transações | Treina com o futuro. Divida por **tempo** |
+| Seleção sobre o teste | A AUC é enviesada: 500 tentativas sobre os dados de teste |
+| Limiar 0,5 | Uma fraude custa muito mais que uma revisão: $p^* = c/V$ é muito menor |
+| 5 bilhões de linhas | Com $d = 200$, a curva de aprendizado pode achatar muito antes: verifique antes de pagar 50 nós |
 :::
 
 ---
 
-## Preparação de features
+## Referências {.smaller}
 
-| Coluna | Problema | Estágio |
-|--------|---------|-------|
-| `last_rating`, `monthly_spend` | Nulos | `Imputer` (mediana) |
-| `plan`, `region` | Texto | `StringIndexer` + `OneHotEncoder` |
-| Todas | Várias colunas | `VectorAssembler` |
-| Numéricas | Escalas diferentes | `StandardScaler` |
-
-```python
-train, test = customers.randomSplit([0.8, 0.2], seed=42)   # before any preparation
-
-lr = LogisticRegression(featuresCol="features", labelCol="churn", maxIter=50)
-pipeline = Pipeline(stages=[imputer, indexer, encoder, assembler, scaler, lr])
-model = pipeline.fit(train)
-pred  = model.transform(test)
-```
-
----
-
-## Avaliação {.smaller}
-
-| Métrica | Pergunta | Quando importa |
-|--------|----------|-----------------|
-| **AUC-ROC** | O modelo ordena bem os clientes por risco? | Comparar modelos, independente do limiar |
-| **AUC-PR** | Idem, focando na classe positiva | Classes desbalanceadas |
-| **Precision** | Dos que marquei como churn, quantos eram? | Custo de abordar um cliente sem necessidade |
-| **Recall** | Dos que eram churn, quantos encontrei? | Custo de perder um cliente |
-| **Accuracy** | Quantos acertei no total? | Enganosa com classes desbalanceadas |
-
-O limiar de 0.5 raramente é o ideal: a escolha é uma **decisão de negócio**.
-
----
-
-## Comparando modelos
-
-| | Regressão logística | Random Forest | Gradient-Boosted Trees |
-|-|---------------------|---------------|------------------------|
-| Relações | Lineares | Não-lineares | Não-lineares |
-| Interpretação | Coeficientes | Importância de features | Importância de features |
-| Treino | Rápido | Paralelo (árvores independentes) | Sequencial (mais lento) |
-| Risco de overfitting | Baixo | Médio | Maior, exige tuning |
-
-::: {.callout-tip}
-O modelo mais complexo não é automaticamente o melhor: sempre compare com uma base simples.
-:::
-
----
-
-## Validação cruzada
-
-```
-  params 1:  [train ][train ][valid ]  -> AUC_1
-             [train ][valid ][train ]  -> AUC_2
-             [valid ][train ][train ]  -> AUC_3   => mean
-  params 2:  ...                                  => mean
-```
-
-```python
-grid = (ParamGridBuilder()
-        .addGrid(lr.regParam, [0.0, 0.01, 0.1])
-        .addGrid(lr.elasticNetParam, [0.0, 1.0]).build())
-cv = CrossValidator(estimator=pipeline, estimatorParamMaps=grid,
-                    evaluator=BinaryClassificationEvaluator(labelCol="churn"),
-                    numFolds=3, parallelism=2, seed=42)
-best = cv.fit(train).bestModel
-```
-
----
-
-## Salvar e servir
-
-Um `PipelineModel` salvo contém **todos os estágios**: quem o carrega aplica a mesma preparação. Também funciona em DataFrames de streaming.
-
-```python
-best.write().overwrite().save(MODEL_PATH)
-loaded = PipelineModel.load(MODEL_PATH)
-
-stream = spark.readStream.schema(schema).json(STREAM_IN)
-q = (loaded.transform(stream)
-     .select("customer_id",
-             F.round(vector_to_array("probability")[1], 3).alias("p_churn"))
-     .filter("p_churn >= 0.5")
-     .writeStream.format("memory").queryName("at_risk")
-     .outputMode("append").start())
-```
+- Meng, X., Bradley, J., Yavuz, B., et al. (2016). *MLlib: Machine Learning in Apache Spark*. JMLR, 17(34).
+- Breiman, L. (2001). *Random Forests*. Machine Learning, 45(1).
+- Friedman, J. H. (2001). *Greedy Function Approximation: A Gradient Boosting Machine*. Annals of Statistics, 29(5).
+- Liu, D. C., Nocedal, J. (1989). *On the Limited Memory BFGS Method for Large Scale Optimization*. Mathematical Programming, 45.
+- Hanley, J. A., McNeil, B. J. (1982). *The Meaning and Use of the Area under a ROC Curve*. Radiology, 143(1).
+- Apache Spark 4.0.1: [Classification and regression](https://spark.apache.org/docs/4.0.1/ml-classification-regression.html), [Decision trees](https://spark.apache.org/docs/4.0.1/mllib-decision-tree.html), [Optimization](https://spark.apache.org/docs/4.0.1/mllib-optimization.html), [Tuning](https://spark.apache.org/docs/4.0.1/ml-tuning.html).

@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Transformers, Estimators y Pipelines
->* Preparación de features
->* Evaluación y umbral de decisión
->* Validación cruzada, guardar modelos y scoring
+>* Si necesitas ML distribuido: curvas de aprendizaje
+>* Pipelines, y por qué la fuga de datos infla los resultados
+>* Regresión logística a escala: el gradiente como agregación, y su costo de red
+>* Árboles: histogramas en vez de ordenar, y qué cuesta la profundidad
+>* Métricas, AUC, y el umbral como decisión económica
+>* Validación cruzada: su costo y el optimismo de la selección
 
 
 ### Slides

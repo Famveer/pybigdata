@@ -14,10 +14,11 @@ layout: default
 {: .summary}
 >In this lecture, we will learn:
 >
->* Unbounded tables and micro-batches
->* Output modes and triggers
->* Windows and watermarks
->* Checkpoints and exactly-once
+>* The model: unbounded table, event time and processing time
+>* Micro-batches and capacity: stability and catch-up time
+>* Windows and how much state they cost
+>* Watermarks: the exact rule, its guarantee and how to choose it
+>* What exactly-once really requires, and which sinks offer it
 
 
 ### Slides

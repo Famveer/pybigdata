@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >In this lecture, we will learn:
 >
->* Data warehouse, data lake and lakehouse
->* Bronze, Silver and Gold layers
->* Quality rules and quarantine
->* Partitioned Parquet and pruning
+>* Warehouse, lake and lakehouse: when structure is enforced
+>* Medallion as a set of invariants
+>* Idempotence: pipelines that survive retries
+>* Data quality as measurement, and quarantine
+>* Inside a Parquet file: encoding and data skipping
+>* Partitioning: cardinality and number of files
 
 
 ### Slides

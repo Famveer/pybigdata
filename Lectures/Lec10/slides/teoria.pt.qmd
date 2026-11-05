@@ -13,144 +13,270 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## O que você vai aprender
+## O que você poderá fazer {.smaller}
 
-- O modelo de tabela ilimitada e o micro-batch
-- Sources, sinks, output modes e triggers
-- Agregar por **tempo do evento** com janelas
-- Tratar dados atrasados com **watermark**
-- Tolerância a falhas com **checkpoint**
+- Distinguir o tempo do evento do tempo de processamento, e dizer o que cada um mede
+- Decidir se um pipeline dá conta, e calcular quanto tempo leva para se atualizar
+- Estimar o estado que uma consulta com janelas mantém em memória
+- Traçar um watermark à mão, e escolher seu atraso
+- Dizer exatamente o que "exactly-once" requer, e quais sinks o oferecem
 
----
+| Bloco | Tema | Min |
+|-------|------|-----|
+| 1 | O modelo: tabela ilimitada e dois tempos | 20 |
+| 2 | Micro-batches e capacidade | 20 |
+| 3 | Janelas e estado | 20 |
+| 4 | Watermarks | 25 |
+| 5 | Exactly-once, com precisão | 25 |
+| 6 | Problema integrador | 10 |
 
-## Batch vs streaming
+# 1. O modelo: tabela ilimitada e dois tempos
 
-| | Batch | Streaming |
-|-|-------|-----------|
-| Dados | Conjunto fechado | Fluxo sem fim |
-| Execução | Roda uma vez e termina | Roda continuamente |
-| Leitura | `spark.read` | `spark.readStream` |
-| Escrita | `df.write` | `df.writeStream` |
-| Latência típica | Minutos a horas | Segundos |
+## Um stream é uma tabela que só cresce {.smaller}
 
----
+A entrada é uma **tabela ilimitada** à qual se adicionam linhas. Você escreve uma consulta como se rodasse sobre toda a tabela, e o motor a calcula **de forma incremental** (Armbrust et al., 2018).
 
-## A tabela ilimitada
+**Consistência de prefixo:** o resultado em qualquer momento é igual ao da mesma consulta, em batch, sobre **algum prefixo** da entrada. É a promessa central do modelo, e por isso se pode raciocinar sobre a lógica de um stream como sobre a de um batch.
 
-O fluxo é uma **tabela que cresce sem parar**. Você escreve a consulta como se fosse sobre a tabela inteira; o Spark a executa **de forma incremental**.
+| Modo de saída | O que cada trigger grava | Requer |
+|---------------|--------------------------|--------|
+| `append` | Só linhas que **nunca mudarão** | Com agregação: um watermark |
+| `update` | Linhas que mudaram | |
+| `complete` | Todo o resultado, de novo | O estado **nunca** é limpo |
 
-```
-   source     [e1 e2]        [e3 e4 e5]        [e6]
-                 │               │               │
-   query      groupBy        groupBy        groupBy
-                 │               │               │
-   result     [A:2]          [A:3 B:2]      [A:3 B:3]
-```
-
-```
-   SOURCE ──▶ TRANSFORMATIONS ──▶ SINK
-              CHECKPOINT: processed offsets + aggregation state
-              TRIGGER   : when each micro-batch runs
-```
+**Por que `append` precisa de um watermark em uma agregação:** uma contagem das 10:00 ainda pode mudar, e gravá-la seria uma promessa impossível de cumprir. Só pode ser gravada quando o motor decide que a janela não mudará. Assim, **alguma latência é o preço de uma saída imutável**.
 
 ---
 
-## Modos de saída
+## Dois relógios que não coincidem {.smaller}
 
-| Modo | O que é escrito em cada micro-batch | Uso típico |
-|------|-----------------------------|-------------|
-| `append` | Só linhas novas que **não mudarão mais** | Eventos sem agregação; janelas fechadas pelo watermark |
-| `update` | Só linhas do resultado que **mudaram** | Dashboards, upserts |
-| `complete` | O resultado **inteiro**, de novo | Agregações pequenas |
+```
+ tempo de processamento
+   10:20 │                                     ● pedido das 10:01, sem sinal
+   10:10 │                  ●
+   10:05 │         ●                 ●
+   10:00 │ ●
+         └───────────────────────────────────────── tempo do evento
+          10:00   10:01   10:03    10:05      ideal: ambos iguais
+```
 
-**Processing time:** quando o Spark recebeu o evento. **Event time:** quando ele aconteceu. Para métricas de negócio quase sempre queremos event time, o que exige lidar com dados atrasados.
+| | Tempo do evento | Tempo de processamento |
+|-|-----------------|------------------------|
+| O que é | Quando ocorreu | Quando o Spark viu |
+| Determinístico ao reprocessar | **Sim**: faz parte do dado | Não |
+| Serve para | Métricas de negócio | Métricas do sistema, como o throughput |
+| Problema | Dados chegam **fora de ordem** | O resultado depende dos atrasos |
+
+**Por que isso não pode ser evitado.** Em um stream ilimitado e fora de ordem, não se pode saber se uma janela está completa. O **Dataflow** coloca como um compromisso forçado entre três objetivos: **correção, latência e custo** (Akidau et al., 2015). Cada parâmetro desta aula escolhe um ponto desse compromisso.
+
+# 2. Micro-batches e capacidade
+
+## O pipeline dá conta? {.smaller}
+
+Com taxa de chegada $\lambda$ (linhas/s) e capacidade $\mu$ (linhas/s que o job processa), seja $\rho = \lambda / \mu$.
+
+| | Comportamento |
+|-|---------------|
+| $\rho < 1$ | **Estável**: cada micro-batch drena o que chegou |
+| $\rho > 1$ | **Instável**: o atraso cresce sem limite, como $(\lambda - \mu)\,t$ |
+
+**A latência tem um piso:** um evento espera seu lote começar, e depois terminar. Com uma duração de lote $B$, a latência fica perto de $2B$ no pior caso. Os lotes ficam mais longos com mais dados, então com $\rho \to 1$ a latência cresce rápido.
+
+**Após uma queda de duração $T$**, o atraso é $\lambda T$, e é drenado a $\mu - \lambda$:
+
+$$T_{\text{recuperar}} = \frac{\lambda T}{\mu - \lambda} = T \cdot \frac{\rho}{1 - \rho}$$
+
+| $\rho$ (carga normal) | Recuperação após 1 h de queda |
+|-----------------------|-------------------------------|
+| 50% | 1 h |
+| 80% | **4 h** |
+| 95% | **19 h** |
+
+**O critério real de dimensionamento não é "dá conta hoje?" mas "quanto tempo leva para se recuperar?"**
 
 ---
 
-## Fontes de arquivos: dois cuidados
+## Triggers: latência frente a custo {.smaller}
 
-- **O schema é obrigatório:** precisa ser estável durante toda a vida da consulta
-- **Os arquivos devem aparecer completos:** escreva em outra pasta e depois **mova** (atômico no mesmo sistema de arquivos)
+| Trigger | O lote começa | Latência | Custo |
+|---------|---------------|----------|-------|
+| Padrão | Ao terminar o anterior | A menor em micro-batch | Cluster sempre ligado |
+| `processingTime="1 minute"` | A cada intervalo | Até cerca de 2 min | Lotes e arquivos maiores |
+| `availableNow=True` | Uma vez: drena, e **para** | A do agendamento | **Só paga enquanto roda** |
+| `continuous="1 second"` | Sem lotes (experimental) | Milissegundos | Poucas operações, at-least-once |
+
+**`availableNow` é a opção que costuma ser esquecida.** Você realmente precisa de resultados em segundos? Se a cada hora basta, isso roda um job por hora com **o mesmo código e checkpoint de streaming**: processa só o novo e libera o cluster.
+
+**Triggers pequenos são arquivos pequenos:** um sink de arquivos com trigger de 10 s grava pelo menos 8.640 commits por dia, e pelo menos tantos arquivos, que depois requerem compactação (Aulas 8 e 9).
+
+# 3. Janelas e estado
+
+## Quanta memória custa uma janela? {.smaller}
+
+Uma janela de comprimento $L$ que avança a cada $S$: cada evento pertence a $\lceil L / S \rceil$ janelas, então o trabalho por evento se multiplica por esse fator.
+
+**Estado.** Uma agregação guarda, por janela e chave, seu estado parcial (o estado distributivo ou algébrico da Aula 4). Uma janela fica aberta enquanto pode receber dados: seu comprimento mais o atraso $\tau$ do watermark. Com $K$ chaves ativas e $b$ bytes por entrada:
+
+$$\text{estado} \approx \frac{L + \tau}{S} \times K \times b$$
+
+| Consulta, $K = 100.000$, $b = 200$ B, $\tau = 10$ min | Janelas abertas | Estado |
+|-------------------------------------------------------|-----------------|--------|
+| Tumbling, 5 min | 3 | **60 MB** |
+| Deslizante, 10 min a cada 1 min | 20 | **400 MB** |
+| Deslizante, 1 h a cada 1 min | 70 | **1,4 GB** |
+| **`complete`, ou sem watermark** | Cresce sem fim | **Até falhar** |
+
+**O estado pertence aos executors,** em memória com o armazenamento padrão, onde causa pausas de GC ao crescer. O **RocksDB** o leva à memória nativa e ao disco local. É copiado no checkpoint, então soma à duração do lote.
+
+# 4. Watermarks
+
+## A regra formal, e sua garantia {.smaller}
+
+$$W = \max(\text{tempo de evento visto}) - \tau$$
+
+Uma janela que termina em $T$ é mantida até que $W > T$. Então é emitida (em `append`) e seu estado é liberado.
+
+| Detalhe | Consequência |
+|---------|--------------|
+| $W$ só avança | Um evento tardio nunca o faz recuar |
+| Recalculado ao **final** de cada lote | Vale a partir do lote seguinte |
+| Decidido pelas **janelas**, não pelos eventos | Um tardio entra se **sua janela segue aberta** |
+| Com várias entradas: o $W$ **mínimo** | O stream mais lento segura todos os resultados |
+
+**A garantia vai em uma só direção** (documentação do Spark):
+
+- Dados com atraso **menor** que $\tau$: **nunca descartados**.
+- Dados com atraso **maior** que $\tau$: **podem ser agregados ou não**.
+
+Assim, $\tau$ é um limite inferior de tolerância, e não um corte exato. **Não confie que os tardios serão descartados**: o resultado pode diferir entre execuções, conforme caíram os lotes.
+
+---
+
+## Exercício: trace à mão {.smaller}
+
+Janelas tumbling de 5 min, $\tau = 5$ min, `append`. Antes de ver a resposta, preencha o watermark vigente **durante** cada lote, o que é emitido, e o destino de cada evento tardio.
+
+| Lote | Eventos | $W$ vigente | Tardio? | Emite | $W$ depois |
+|------|---------|-------------|---------|-------|------------|
+| 1 | 10:00 a 10:04 | ? | | ? | ? |
+| 2 | 10:05 a 10:09, **+10:01** | ? | ? | ? | ? |
+| 3 | 10:16 ×3, **+10:03** | ? | ? | ? | ? |
+| 4 | **10:02**, 10:12 | ? | ? | ? | ? |
+
+::: {.fragment}
+| Lote | $W$ vigente | Evento tardio | Emite | $W$ depois |
+|------|-------------|---------------|-------|------------|
+| 1 | nenhum | | Nada | 09:59 |
+| 2 | 09:59 | 10:01 **aceito** | Nada | **10:04** |
+| 3 | 10:04 | 10:03 **aceito**: sua janela segue aberta | [10:00, 10:05) = **7**; [10:05, 10:10) = **5** | **10:11** |
+| 4 | 10:11 | 10:02 **descartado**: sua janela fechou | Nada | 10:11 |
+
+É a saída real do Lab 9: 7 e 5 pedidos, com `dropped = 1` no lote 4. Note que **no lote 3, 10:03 é anterior a $W$ = 10:04 e mesmo assim entra**, porque a regra é decidida pela janela.
+:::
+
+---
+
+## Escolher $\tau$ é escolher entre três custos {.smaller}
+
+| Aumentar $\tau$ | Efeito |
+|-----------------|--------|
+| **Correção** | Menos eventos descartados |
+| **Latência** | Resultados aparecem mais tarde: pelo menos $\tau$ após o fim da janela, em `append` |
+| **Custo** | Mais janelas abertas, portanto mais estado: $(L + \tau)/S$ |
+
+**Por isso $\tau$ deve vir dos dados, não do costume.** Meça a distribuição do atraso $D = t_{\text{processamento}} - t_{\text{evento}}$:
+
+| Percentil de atraso | Exemplo | Se $\tau$ = este valor |
+|---------------------|---------|------------------------|
+| p50 | 2 s | Metade dos eventos em perigo |
+| p99 | 3 min | Cerca de 1% em risco |
+| p99,9 | 2 h | Quase nada em risco, mas resultados 2 h atrasados |
+
+A cauda costuma ser longa, porque um celular sem sinal pode levar horas, e segui-la custa na mesma proporção. **O habitual é $\tau$ cobrir o p99**, e o que chega depois é tratado à parte: uma correção diária em lote, com `MERGE`, sobre os dados do Bronze.
+
+É um **padrão tipo lambda** com um só código: o streaming dá velocidade, e o reprocessamento dá completude.
+
+# 5. Exactly-once, com precisão
+
+## O que exactly-once realmente requer {.smaller}
+
+Um evento pode ser *processado* várias vezes. O que se garante é que **seu efeito na saída é aplicado uma vez**, o que precisa de:
+
+| Componente | Requisito | Exemplo |
+|------------|-----------|---------|
+| **Fonte** | Reproduzível, com offsets | Kafka, arquivos. **Um socket não serve** |
+| **Motor** | Registra o que cada lote lê, e é determinístico | Checkpoint |
+| **Sink** | Idempotente ou transacional | Sink de arquivos, Delta |
+
+```
+ 1. grava offsets/N     ← "o lote N lerá esta faixa"        (antes de processar)
+ 2. processa, grava no sink
+ 3. grava commits/N     ← "o lote N terminou"               (após o sink)
+```
+
+**Exercício: o processo morre. O que acontece ao reiniciar?**
+
+::: {.fragment}
+| Queda | Ao reiniciar | Por que é seguro |
+|-------|--------------|------------------|
+| Entre 1 e 2 | Reexecuta N com **a mesma faixa** | Determinístico |
+| Durante 2 | Reexecuta N: **regrava no sink** | O sink deve ser idempotente |
+| Entre 2 e 3 | **Reexecuta um lote terminado** | Aqui está o truque: mesma razão |
+
+**No sink se ganha ou se perde a garantia.** O sink de arquivos grava um manifesto por lote, e o Delta uma transação com o par `(appId, version)`, de modo que um lote repetido é ignorado.
+:::
+
+---
+
+## Nem todo sink oferece {.smaller}
+
+| Sink | Garantia | Por quê |
+|------|----------|---------|
+| **Arquivos** | **Exactly-once** | Leitores passam pelo manifesto: arquivos sem confirmar são invisíveis |
+| **Delta** | **Exactly-once** | Transação com `(appId, version)` |
+| **Kafka** | **At-least-once** | Não pode retirar o publicado. Uma repetição duplica |
+| **`foreach`** | At-least-once | Seu código roda por linha |
+| **`foreachBatch`** | **Depende de você** | Use `batchId` para deduplicar |
+
+**O erro mais comum, em `foreachBatch`:**
 
 ```python
-orders_stream = (spark.readStream.schema(event_schema)
-                 .option("maxFilesPerTrigger", 1).json(INPUT))
-
-q = (orders_stream.groupBy("region").count()
-     .writeStream.format("memory").queryName("by_region")
-     .outputMode("complete").start())
+def write(df, batch_id):
+    df.write.mode("append").jdbc(url, table)           # duplica
+def write(df, batch_id):
+    merge_target(df, on="event_id")                    # idempotente
 ```
+
+**Exactly-once termina no sink.** Se depois um consumidor envia um e-mail por linha, as duplicatas de uma repetição chegam ao cliente: o efeito colateral é responsabilidade sua.
+
+# 6. Problema integrador
+
+## Dimensione este stream {.smaller}
+
+10.000 eventos/s do Kafka. Faturamento por produto em janelas deslizantes de 10 min a cada 1 min. 50.000 produtos ativos, 200 B por entrada de estado. Uma amostra dá um atraso p99 de 2 min. O job processa 12.500 eventos/s no máximo. Grava em Delta.
+
+1. $\tau$? 2. Tamanho do estado? 3. É estável? 4. Recuperação após 2 h de queda? 5. Garantia de ponta a ponta?
+
+::: {.fragment}
+1. **2 min** cobre o p99. Um job diário em lote pode conciliar o resto.
+2. $(10 + 2) / 1 =$ 12 janelas abertas $\times$ 50.000 $\times$ 200 B $=$ **120 MB**. Gerenciável. Uma janela por segundo multiplicaria por 60.
+3. $\rho = 10.000 / 12.500 =$ **80%**: estável, com margem estreita.
+4. $2\ \text{h} \times 0{,}8 / 0{,}2 =$ **8 horas** com frescor reduzido. Se inaceitável, dobre a capacidade: $\rho = 40\%$ dá 80 min.
+5. **Exactly-once**: Kafka é reproduzível, o checkpoint registra os offsets, e o Delta é transacional. Se a retenção do Kafka for menor que a queda, os dados **se perdem**: a garantia supunha uma fonte reproduzível, então dimensione essa retenção acima da sua queda mais longa plausível.
+:::
 
 ---
 
-## Janelas
+## Referências {.smaller}
 
-```python
-.groupBy(F.window("event_time", "5 minutes"))                # tumbling
-.groupBy(F.window("event_time", "10 minutes", "5 minutes"))  # sliding
-```
-
-```
-  Tumbling (5 min)                         Sliding (10 min, every 5 min)
-  |10:00-10:05|10:05-10:10|10:10-10:15|    |10:00-------10:10|
-                                                 |10:05-------10:15|
-  each event falls in 1 window             each event falls in 2 windows
-```
-
----
-
-## Watermark
-
-```
-  watermark = latest event_time seen − tolerated delay
-
-  tolerated delay 5 min, latest event_time = 10:11  ->  watermark = 10:06
-
-  - window 10:00-10:05 -> end < watermark: closed, emitted, state released
-  - event at 10:07     -> window 10:05-10:10 still open: accepted
-  - event at 10:02     -> its window is closed: dropped
-```
-
-**Trade-off:** um atraso maior aceita mais eventos atrasados, mas segura mais estado em memória e atrasa os resultados.
-
----
-
-## Checkpoint
-
-```
-  checkpoint/
-  ├── offsets/    <- what each micro-batch will read (written BEFORE processing)
-  ├── commits/    <- which micro-batches finished    (written AFTER the sink)
-  ├── sources/    <- files already seen by the source
-  └── state/      <- aggregation and window state
-```
-
-Reiniciar com o **mesmo checkpoint** continua de onde parou. Com um sink transacional (arquivos do Spark, Delta), a garantia é **exactly-once**. Cada consulta precisa do seu próprio checkpoint.
-
----
-
-## Triggers
-
-| Trigger | Comportamento | Uso |
-|---------|----------|-----|
-| (padrão) | Novo micro-batch assim que o anterior termina | Menor latência |
-| `processingTime="1 minute"` | Um micro-batch a cada intervalo | Controlar custo e tamanho dos arquivos |
-| `availableNow=True` | Processa **tudo que está disponível** e **para** | Ingestão incremental agendada |
-| `continuous="1 second"` | Contínuo, sem micro-batch (experimental) | Latência de milissegundos, operações simples |
-
----
-
-## Outras operações {.smaller}
-
-| Operação | Suporte | Observação |
-|-----------|---------|------|
-| `select`, `filter`, `withColumn` | Sim | Iguais ao batch |
-| Join stream + estático | Sim | Enriquecimento com dimensões |
-| Join stream + stream | Sim | Watermark nos dois lados e condição de tempo |
-| `dropDuplicatesWithinWatermark` | Sim (3.5+) | Deduplicação com estado limitado |
-| `orderBy` | Só após agregação em `complete` | Ordenar um fluxo infinito não faz sentido |
-| `show()`, `collect()` | Não | Use um sink (memory, foreachBatch) |
+- Armbrust, M., Das, T., Torres, J., et al. (2018). *Structured Streaming: A Declarative API for Real-Time Applications in Apache Spark*. SIGMOD.
+- Akidau, T., Bradshaw, R., Chambers, C., et al. (2015). *The Dataflow Model: A Practical Approach to Balancing Correctness, Latency, and Cost in Massive-Scale, Unbounded, Out-of-Order Data Processing*. PVLDB, 8(12).
+- Zaharia, M., Das, T., Li, H., et al. (2013). *Discretized Streams: Fault-Tolerant Streaming Computation at Scale*. SOSP.
+- Apache Spark 4.0.1: [Structured Streaming: Getting Started](https://spark.apache.org/docs/4.0.1/streaming/getting-started.html), [APIs on DataFrames and Datasets](https://spark.apache.org/docs/4.0.1/streaming/apis-on-dataframes-and-datasets.html).

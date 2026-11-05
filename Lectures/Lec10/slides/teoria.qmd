@@ -13,144 +13,270 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## What you will learn
+## What you will be able to do {.smaller}
 
-- The unbounded table model and micro-batches
-- Sources, sinks, output modes and triggers
-- Aggregate by **event time** with windows
-- Handle late data with **watermarks**
-- Fault tolerance with **checkpoints**
+- Distinguish event time from processing time, and say what each one measures
+- Decide whether a pipeline can keep up, and calculate how long it takes to catch up
+- Estimate the state a windowed query keeps in memory
+- Trace a watermark by hand, and choose its delay
+- Say exactly what "exactly-once" requires, and which sinks offer it
 
----
+| Block | Topic | Min |
+|-------|-------|-----|
+| 1 | The model: unbounded table and two times | 20 |
+| 2 | Micro-batches and capacity | 20 |
+| 3 | Windows and state | 20 |
+| 4 | Watermarks | 25 |
+| 5 | Exactly-once, precisely | 25 |
+| 6 | Integrating problem | 10 |
 
-## Batch vs streaming
+# 1. The model: unbounded table and two times
 
-| | Batch | Streaming |
-|-|-------|-----------|
-| Data | Closed set | Endless flow |
-| Execution | Runs once and finishes | Runs continuously |
-| Read | `spark.read` | `spark.readStream` |
-| Write | `df.write` | `df.writeStream` |
-| Typical latency | Minutes to hours | Seconds |
+## A stream is a table that only grows {.smaller}
 
----
+The input is an **unbounded table** to which rows are appended. You write a query as if it ran over the whole table, and the engine computes it **incrementally** (Armbrust et al., 2018).
 
-## The unbounded table
+**Prefix consistency:** the result at any moment equals the result of the same query, run in batch, over **some prefix** of the input. This is the model's central promise, and it is why a stream's logic can be reasoned about like a batch's.
 
-The stream is a **table that never stops growing**. You write the query as if over the whole table; Spark runs it **incrementally**.
+| Output mode | What each trigger writes | Requires |
+|-------------|--------------------------|----------|
+| `append` | Only rows that **will never change** | With aggregation: a watermark |
+| `update` | Rows that changed | |
+| `complete` | The whole result, again | State is **never** cleaned |
 
-```
-   source     [e1 e2]        [e3 e4 e5]        [e6]
-                 │               │               │
-   query      groupBy        groupBy        groupBy
-                 │               │               │
-   result     [A:2]          [A:3 B:2]      [A:3 B:3]
-```
-
-```
-   SOURCE ──▶ TRANSFORMATIONS ──▶ SINK
-              CHECKPOINT: processed offsets + aggregation state
-              TRIGGER   : when each micro-batch runs
-```
+**Why `append` needs a watermark in an aggregation:** a count for 10:00 can still change, so writing it would be a promise that cannot be kept. It can only be written once the engine decides that the window will not change. So **some latency is the price of immutable output**.
 
 ---
 
-## Output modes
+## Two clocks that disagree {.smaller}
 
-| Mode | Written in each micro-batch | Typical use |
-|------|-----------------------------|-------------|
-| `append` | Only new rows that **will not change** | Events without aggregation; windows closed by the watermark |
-| `update` | Only result rows that **changed** | Dashboards, upserts |
-| `complete` | The **entire** result, again | Small aggregations |
+```
+ processing time
+   10:20 │                                     ● order placed at 10:01, with no signal
+   10:10 │                  ●
+   10:05 │         ●                 ●
+   10:00 │ ●
+         └───────────────────────────────────────── event time
+          10:00   10:01   10:03    10:05      ideal: both equal
+```
 
-**Processing time:** when Spark received the event. **Event time:** when it happened. For business metrics, we almost always want event time, which requires handling late data.
+| | Event time | Processing time |
+|-|------------|-----------------|
+| What it is | When it happened | When Spark saw it |
+| Deterministic on replay | **Yes**: part of the data | No |
+| Useful for | Business metrics | System metrics, such as throughput |
+| Problem | Data is **out of order** | Results depend on delays |
+
+**Why this cannot be escaped.** On an unbounded, out-of-order stream, you cannot know whether a window is complete. **Dataflow** frames it as a forced compromise between three goals: **correctness, latency and cost** (Akidau et al., 2015). Each of this lecture's parameters picks a point in that trade-off.
+
+# 2. Micro-batches and capacity
+
+## Can the pipeline keep up? {.smaller}
+
+With arrival rate $\lambda$ (rows/s), and capacity $\mu$ (rows/s the job can process), let $\rho = \lambda / \mu$.
+
+| | Behavior |
+|-|----------|
+| $\rho < 1$ | **Stable**: each micro-batch drains what arrived |
+| $\rho > 1$ | **Unstable**: the backlog grows without limit, as $(\lambda - \mu)\,t$ |
+
+**Latency has a floor:** an event waits for its batch to start, and then for it to finish. At a batch duration $B$, the latency reaches around $2B$ at worst. Batches get longer with more data, so as $\rho \to 1$ latency grows quickly.
+
+**After an outage of duration $T$**, the backlog is $\lambda T$, and it drains at $\mu - \lambda$:
+
+$$T_{\text{catch-up}} = \frac{\lambda T}{\mu - \lambda} = T \cdot \frac{\rho}{1 - \rho}$$
+
+| $\rho$ (normal load) | Catch-up after a 1 h outage |
+|----------------------|-----------------------------|
+| 50% | 1 h |
+| 80% | **4 h** |
+| 95% | **19 h** |
+
+**The real sizing criterion is not "does it keep up today?" but "how long does it take to recover?"**
 
 ---
 
-## File sources: two precautions
+## Triggers: latency against cost {.smaller}
 
-- **The schema is mandatory:** it must stay stable for the life of the query
-- **Files must appear complete:** write elsewhere, then **move** (atomic on the same file system)
+| Trigger | Batch starts | Latency | Cost |
+|---------|--------------|---------|------|
+| Default | When the last one ends | Lowest for micro-batch | Cluster always on |
+| `processingTime="1 minute"` | Every interval | Up to about 2 min | Larger batches, larger files |
+| `availableNow=True` | Once: drains, and **stops** | That of the schedule | **Only pay while it runs** |
+| `continuous="1 second"` | No batches (experimental) | Milliseconds | Few operations, at-least-once |
+
+**`availableNow` is the often-overlooked option.** Do you really need results within seconds? If every hour is enough, this runs an hourly job with **the same streaming code and checkpoint**: it processes only what is new and then releases the cluster.
+
+**Small triggers mean small files:** a file sink with a 10 s trigger writes at least 8,640 commits per day, and at least that many files, which then require compaction (Lectures 8 and 9).
+
+# 3. Windows and state
+
+## How much memory does a window cost? {.smaller}
+
+A window of length $L$ sliding every $S$: each event belongs to $\lceil L / S \rceil$ windows, so the work per event multiplies by that factor.
+
+**State.** An aggregation keeps, per window and key, its partial state (Lecture 4's distributive or algebraic state). A window remains open while it may receive data: its length plus the watermark's delay $\tau$. With $K$ active keys and $b$ bytes per entry:
+
+$$\text{state} \approx \frac{L + \tau}{S} \times K \times b$$
+
+| Query, $K = 100{,}000$, $b = 200$ B, $\tau = 10$ min | Open windows | State |
+|------------------------------------------------------|--------------|-------|
+| Tumbling, 5 min | 3 | **60 MB** |
+| Sliding, 10 min every 1 min | 20 | **400 MB** |
+| Sliding, 1 h every 1 min | 70 | **1.4 GB** |
+| **`complete`, or no watermark** | Grows forever | **Until it fails** |
+
+**State belongs to the executors,** in memory with the default store, where it causes GC pauses as it grows. **RocksDB** moves it to native memory and local disk. It is backed up in the checkpoint, so it adds to the batch's duration.
+
+# 4. Watermarks
+
+## The formal rule, and its guarantee {.smaller}
+
+$$W = \max(\text{event time seen}) - \tau$$
+
+A window ending at $T$ is kept until $W > T$. Then it is emitted (in `append`) and its state is released.
+
+| Detail | Consequence |
+|--------|-------------|
+| $W$ only moves forward | A late event never moves it back |
+| Recomputed at the **end** of each batch | Applies from the next batch on |
+| Decided by **windows**, not by events | A late event gets in if **its window is still open** |
+| With several inputs: the **minimum** $W$ | The slowest stream holds back all the results |
+
+**The guarantee goes in one direction only** (Spark documentation):
+
+- Data delayed **less** than $\tau$: **never dropped**.
+- Data delayed **more** than $\tau$: **may or may not** be aggregated.
+
+So $\tau$ is a lower bound on tolerance, and not an exact cutoff. **Do not rely on late data being dropped**: results may differ between runs, according to how the batches fell.
+
+---
+
+## Exercise: trace it by hand {.smaller}
+
+Tumbling windows of 5 min, $\tau = 5$ min, `append`. Before looking at the answer, fill in the watermark that applies **during** each batch, what gets emitted, and the fate of each late event.
+
+| Batch | Events | $W$ in force | Late event? | Emits | $W$ after |
+|-------|--------|--------------|-------------|-------|-----------|
+| 1 | 10:00 to 10:04 | ? | | ? | ? |
+| 2 | 10:05 to 10:09, **+10:01** | ? | ? | ? | ? |
+| 3 | 10:16 ×3, **+10:03** | ? | ? | ? | ? |
+| 4 | **10:02**, 10:12 | ? | ? | ? | ? |
+
+::: {.fragment}
+| Batch | $W$ in force | Late event | Emits | $W$ after |
+|-------|--------------|------------|-------|-----------|
+| 1 | none | | Nothing | 09:59 |
+| 2 | 09:59 | 10:01 **accepted** | Nothing | **10:04** |
+| 3 | 10:04 | 10:03 **accepted**: its window is open | [10:00, 10:05) = **7**; [10:05, 10:10) = **5** | **10:11** |
+| 4 | 10:11 | 10:02 **dropped**: its window closed | Nothing | 10:11 |
+
+This is the real output of Lab 9: 7 and 5 orders, with `dropped = 1` in batch 4. Note that **in batch 3, 10:03 is older than $W$ = 10:04 and still enters**, as the rule is decided by window.
+:::
+
+---
+
+## Choosing $\tau$ is choosing among three costs {.smaller}
+
+| Increasing $\tau$ | Effect |
+|-------------------|--------|
+| **Correctness** | Fewer dropped events |
+| **Latency** | Results appear later: at least $\tau$ past the window's end, in `append` |
+| **Cost** | More open windows, hence more state: $(L + \tau)/S$ |
+
+**So $\tau$ should come from data, rather than habit.** Measure the delay distribution $D = t_{\text{processing}} - t_{\text{event}}$:
+
+| Delay percentile | Example | If $\tau$ = this value |
+|------------------|---------|------------------------|
+| p50 | 2 s | Half of the events are in danger |
+| p99 | 3 min | About 1% at risk |
+| p99.9 | 2 h | Almost none at risk, but results 2 h late |
+
+The tail is usually long, as a phone with no signal can take hours, and following it costs in proportion. **Usually $\tau$ covers the p99**, and what arrives later is handled apart: a daily batch correction, with `MERGE`, on the Bronze layer's data.
+
+This is the **lambda-like pattern** with one codebase: streaming gives speed, and reprocessing gives completeness.
+
+# 5. Exactly-once, precisely
+
+## What exactly-once really requires {.smaller}
+
+An event may be *processed* several times. What is guaranteed is that **its effect on the output applies once**, which needs:
+
+| Component | Requirement | Example |
+|-----------|-------------|---------|
+| **Source** | Replayable, with offsets | Kafka, files. **A socket does not qualify** |
+| **Engine** | Records what each batch reads, and is deterministic | Checkpoint |
+| **Sink** | Idempotent or transactional | File sink, Delta |
+
+```
+ 1. write offsets/N    ← "batch N will read this range"     (before processing)
+ 2. process, write to the sink
+ 3. write commits/N    ← "batch N is finished"              (after the sink)
+```
+
+**Exercise: the process dies. What happens on restart?**
+
+::: {.fragment}
+| Crash | On restart | Why it is safe |
+|-------|------------|----------------|
+| Between 1 and 2 | Re-runs N with **the same range** | Deterministic |
+| During 2 | Re-runs N: **rewrites to the sink** | The sink must be idempotent |
+| Between 2 and 3 | **Re-runs a finished batch** | Here is the catch: same reason |
+
+**The sink is where the guarantee is won or lost.** The file sink writes a manifest per batch, and Delta a transaction with the `(appId, version)` pair, so that a repeated batch is ignored.
+:::
+
+---
+
+## Not every sink offers it {.smaller}
+
+| Sink | Guarantee | Why |
+|------|-----------|-----|
+| **File** | **Exactly-once** | Readers use the manifest: uncommitted files are invisible |
+| **Delta** | **Exactly-once** | Transaction with `(appId, version)` |
+| **Kafka** | **At-least-once** | Cannot retract what was published. A retry duplicates |
+| **`foreach`** | At-least-once | Your code runs on each row |
+| **`foreachBatch`** | **Depends on you** | Use `batchId` to deduplicate |
+
+**The most common mistake, in `foreachBatch`:**
 
 ```python
-orders_stream = (spark.readStream.schema(event_schema)
-                 .option("maxFilesPerTrigger", 1).json(INPUT))
-
-q = (orders_stream.groupBy("region").count()
-     .writeStream.format("memory").queryName("by_region")
-     .outputMode("complete").start())
+def write(df, batch_id):
+    df.write.mode("append").jdbc(url, table)           # duplicates
+def write(df, batch_id):
+    merge_target(df, on="event_id")                    # idempotent
 ```
+
+**Exactly-once ends at the sink.** A side effect, such as sending an email per row, is your responsibility.
+
+# 6. Integrating problem
+
+## Size this stream {.smaller}
+
+10,000 events/s from Kafka. Revenue per product in sliding windows of 10 min every 1 min. 50,000 active products, 200 B per state entry. A sample shows a p99 delay of 2 min. The job handles 12,500 events/s at most. It writes to Delta.
+
+1. $\tau$? 2. Size of the state? 3. Is it stable? 4. Catch-up after a 2 h outage? 5. End-to-end guarantee?
+
+::: {.fragment}
+1. **2 min** covers the p99. A daily batch job can reconcile the rest.
+2. $(10 + 2) / 1 =$ 12 open windows $\times$ 50,000 $\times$ 200 B $=$ **120 MB**. Manageable. A window every second would multiply this by 60.
+3. $\rho = 10{,}000 / 12{,}500 =$ **80%**: stable, with a thin margin.
+4. $2\ \text{h} \times 0.8 / 0.2 =$ **8 hours** at reduced freshness. If unacceptable, double the capacity: $\rho = 40\%$ gives 80 min.
+5. **Exactly-once**: Kafka is replayable, the checkpoint records the offsets, and Delta is transactional. If Kafka's retention is shorter than the outage, data is **lost**: the guarantee assumed a replayable source, so size that retention beyond your longest plausible outage.
+:::
 
 ---
 
-## Windows
+## References {.smaller}
 
-```python
-.groupBy(F.window("event_time", "5 minutes"))                # tumbling
-.groupBy(F.window("event_time", "10 minutes", "5 minutes"))  # sliding
-```
-
-```
-  Tumbling (5 min)                         Sliding (10 min, every 5 min)
-  |10:00-10:05|10:05-10:10|10:10-10:15|    |10:00-------10:10|
-                                                 |10:05-------10:15|
-  each event falls in 1 window             each event falls in 2 windows
-```
-
----
-
-## Watermark
-
-```
-  watermark = latest event_time seen − tolerated delay
-
-  tolerated delay 5 min, latest event_time = 10:11  ->  watermark = 10:06
-
-  - window 10:00-10:05 -> end < watermark: closed, emitted, state released
-  - event at 10:07     -> window 10:05-10:10 still open: accepted
-  - event at 10:02     -> its window is closed: dropped
-```
-
-**Trade-off:** a larger delay accepts more late events, but holds more state in memory and delays results.
-
----
-
-## Checkpoint
-
-```
-  checkpoint/
-  ├── offsets/    <- what each micro-batch will read (written BEFORE processing)
-  ├── commits/    <- which micro-batches finished    (written AFTER the sink)
-  ├── sources/    <- files already seen by the source
-  └── state/      <- aggregation and window state
-```
-
-Restarting with the **same checkpoint** resumes where it stopped. With a transactional sink (Spark files, Delta), the guarantee is **exactly-once**. Each query needs its own checkpoint.
-
----
-
-## Triggers
-
-| Trigger | Behavior | Use |
-|---------|----------|-----|
-| (default) | New micro-batch when the previous one ends | Lowest latency |
-| `processingTime="1 minute"` | One micro-batch per interval | Control cost and file size |
-| `availableNow=True` | Processes **everything available** and **stops** | Scheduled incremental ingestion |
-| `continuous="1 second"` | Continuous, no micro-batch (experimental) | Millisecond latency, simple operations |
-
----
-
-## Other operations {.smaller}
-
-| Operation | Support | Note |
-|-----------|---------|------|
-| `select`, `filter`, `withColumn` | Yes | Same as batch |
-| Stream + static join | Yes | Enrich with dimensions |
-| Stream + stream join | Yes | Watermark on both sides and a time condition |
-| `dropDuplicatesWithinWatermark` | Yes (3.5+) | Deduplication with bounded state |
-| `orderBy` | Only after aggregation in `complete` | Sorting an infinite stream makes no sense |
-| `show()`, `collect()` | No | Use a sink (memory, foreachBatch) |
+- Armbrust, M., Das, T., Torres, J., et al. (2018). *Structured Streaming: A Declarative API for Real-Time Applications in Apache Spark*. SIGMOD.
+- Akidau, T., Bradshaw, R., Chambers, C., et al. (2015). *The Dataflow Model: A Practical Approach to Balancing Correctness, Latency, and Cost in Massive-Scale, Unbounded, Out-of-Order Data Processing*. PVLDB, 8(12).
+- Zaharia, M., Das, T., Li, H., et al. (2013). *Discretized Streams: Fault-Tolerant Streaming Computation at Scale*. SOSP.
+- Apache Spark 4.0.1: [Structured Streaming: Getting Started](https://spark.apache.org/docs/4.0.1/streaming/getting-started.html), [APIs on DataFrames and Datasets](https://spark.apache.org/docs/4.0.1/streaming/apis-on-dataframes-and-datasets.html).

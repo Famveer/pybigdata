@@ -14,11 +14,12 @@ layout: default
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Data skew y salting
->* Cache y persist
->* Adaptive Query Execution
->* Funciones nativas vs UDFs
->* Spark UI
+>* Un modelo del skew: por qué limita el speedup, sea cual sea el clúster
+>* Correcciones y sus costos: salting, broadcast, AQE skew join
+>* Cache: una desigualdad para decidir, y su costo de memoria
+>* Adaptive Query Execution: qué cambia y sus límites
+>* Qué cuesta una UDF, y qué pierde el optimizador
+>* Diagnosticar un job con las métricas de la Spark UI
 
 
 ### Slides

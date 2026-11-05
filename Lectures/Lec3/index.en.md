@@ -14,10 +14,11 @@ layout: default
 {: .summary}
 >In this lecture, we will learn:
 >
->* Why Hadoop and why Spark: origin and motivation
->* Driver, executors and partitions
->* SparkSession, schemas and file reading
->* Selection, filtering, transformations and UDFs
+>* Origin and motivation: why Hadoop, why Spark
+>* How much scaling gives: Amdahl, Gustafson and COST
+>* Architecture: where each line of PySpark runs
+>* The DataFrame model, and how it differs from Pandas
+>* Schemas and file formats: their real cost
 
 
 ### Slides

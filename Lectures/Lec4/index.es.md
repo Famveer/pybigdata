@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* GroupBy y funciones de ventana
->* Joins y uniones
->* Spark SQL
->* Evaluación perezosa, transformaciones y acciones
+>* El modelo relacional detrás de DataFrames y SQL
+>* NULL y lógica de tres valores: filtros, joins y agregaciones
+>* Agregaciones según su estado: cuáles escalan, y aproximaciones
+>* Funciones de ventana: marcos, rankings y costo
+>* Semántica de los joins y cotas de su tamaño
+>* Evaluación perezosa: qué gana y sus sorpresas
 
 
 ### Slides

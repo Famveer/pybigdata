@@ -188,6 +188,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,152 +207,678 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="what-you-will-learn" class="slide level2">
-<h2>What you will learn</h2>
+<section id="what-you-will-be-able-to-do" class="slide level2 smaller">
+<h2>What you will be able to do</h2>
 <ul>
-<li><code>groupBy</code>, aggregations and window functions</li>
-<li>Joins and unions</li>
-<li>Query any DataFrame with Spark SQL</li>
-<li>Transformations vs actions: lazy evaluation</li>
-<li>First look at <code>explain()</code>, cache and partitions</li>
+<li>Translate a DataFrame query to relational algebra and reason about its result</li>
+<li>Predict what <code>NULL</code> does in filters, joins and aggregations</li>
+<li>Classify an aggregation by its state, and know which ones scale</li>
+<li>Choose the right window frame, and avoid its default trap</li>
+<li>Bound the number of rows of a join before running it</li>
+<li>Explain what lazy evaluation gains, and what it costs</li>
 </ul>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Block</th>
+<th>Topic</th>
+<th>Min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>The relational model behind the API</td>
+<td>15</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td><code>NULL</code> and three-valued logic</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Aggregation: which ones scale</td>
+<td>25</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Window functions</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Join semantics</td>
+<td>20</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Lazy evaluation</td>
+<td>10</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Integrating problem</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="groupby-and-aggregations" class="slide level2">
-<h2>GroupBy and aggregations</h2>
-<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a><span class="co"># Pandas</span></span>
-<span id="cb1-2"><a href=""></a>pdf.groupby(<span class="st">"category"</span>).agg(</span>
-<span id="cb1-3"><a href=""></a>    orders<span class="op">=</span>(<span class="st">"order_id"</span>, <span class="st">"count"</span>), total_revenue<span class="op">=</span>(<span class="st">"total"</span>, <span class="st">"sum"</span>))</span>
-<span id="cb1-4"><a href=""></a></span>
-<span id="cb1-5"><a href=""></a><span class="co"># Spark</span></span>
-<span id="cb1-6"><a href=""></a>(sdf.groupBy(<span class="st">"category"</span>)</span>
-<span id="cb1-7"><a href=""></a>    .agg(F.count(<span class="st">"order_id"</span>).alias(<span class="st">"orders"</span>),</span>
-<span id="cb1-8"><a href=""></a>         F.<span class="bu">sum</span>(<span class="st">"total"</span>).alias(<span class="st">"total_revenue"</span>),</span>
-<span id="cb1-9"><a href=""></a>         F.<span class="bu">round</span>(F.avg(<span class="st">"price"</span>), <span class="dv">2</span>).alias(<span class="st">"avg_price"</span>))</span>
-<span id="cb1-10"><a href=""></a>    .orderBy(F.col(<span class="st">"total_revenue"</span>).desc()))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section>
+<section id="the-relational-model-behind-the-api" class="title-slide slide level1 center">
+<h1>1. The relational model behind the API</h1>
+
 </section>
-<section id="window-functions" class="slide level2">
-<h2>Window functions</h2>
-<p>Compute values across a group <strong>without collapsing</strong> the DataFrame, like Pandas <code>.groupby().transform()</code>.</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>w_cat       <span class="op">=</span> Window.partitionBy(<span class="st">"category"</span>)</span>
-<span id="cb2-2"><a href=""></a>w_cat_price <span class="op">=</span> Window.partitionBy(<span class="st">"category"</span>).orderBy(F.col(<span class="st">"price"</span>).desc())</span>
-<span id="cb2-3"><a href=""></a></span>
-<span id="cb2-4"><a href=""></a>(sdf</span>
-<span id="cb2-5"><a href=""></a> .withColumn(<span class="st">"avg_price_cat"</span>, F.<span class="bu">round</span>(F.avg(<span class="st">"price"</span>).over(w_cat), <span class="dv">2</span>))</span>
-<span id="cb2-6"><a href=""></a> .withColumn(<span class="st">"rank_in_cat"</span>,   F.rank().over(w_cat_price)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="joins" class="slide level2">
-<h2>Joins</h2>
+<section id="dataframe-sql-and-algebra-are-the-same-thing" class="slide level2 smaller">
+<h2>DataFrame, SQL and algebra are the same thing</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 19%">
-<col style="width: 25%">
-<col style="width: 22%">
-<col style="width: 32%">
+<col style="width: 36%">
+<col style="width: 44%">
+<col style="width: 20%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Type</th>
-<th>Pandas</th>
-<th>Spark</th>
-<th>Behavior</th>
+<th>Algebra</th>
+<th>DataFrame</th>
+<th>SQL</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(\sigma_p(R)\)</span> selection</td>
+<td><code>filter(p)</code></td>
+<td><code>WHERE p</code></td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\pi_A(R)\)</span> projection</td>
+<td><code>select(A)</code></td>
+<td><code>SELECT A</code></td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(R \bowtie_k S\)</span> join</td>
+<td><code>join(S, k)</code></td>
+<td><code>JOIN S USING (k)</code></td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\gamma_{k,\,f(x)}(R)\)</span> grouping</td>
+<td><code>groupBy(k).agg(f(x))</code></td>
+<td><code>GROUP BY k</code></td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(R \cup S\)</span> union</td>
+<td><code>union(S)</code></td>
+<td><code>UNION ALL</code></td>
+</tr>
+</tbody>
+</table>
+<p>The DataFrame API and SQL are compiled to <strong>the same logical plan</strong> by Catalyst: there is no performance difference between the two. Pick whichever makes the query clearer.</p>
+<p><strong>It works on bags, not sets.</strong> Unlike textbook relational algebra, duplicates are kept:</p>
+<ul>
+<li><code>union</code> does <strong>not</strong> deduplicate: add <code>distinct()</code>, which costs a shuffle.</li>
+<li><code>union</code> matches columns <strong>by position</strong>: if the schemas are in a different order, values end up silently in the wrong columns. Use <code>unionByName</code>.</li>
+</ul>
+</section></section>
+<section>
+<section id="null-and-three-valued-logic" class="title-slide slide level1 center">
+<h1>2. NULL and three-valued logic</h1>
+
+</section>
+<section id="null-means-unknown-and-so-does-its-comparison" class="slide level2 smaller">
+<h2><code>NULL</code> means unknown, and so does its comparison</h2>
+<p>A comparison with <code>NULL</code> is neither true nor false, but <strong>unknown</strong>:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th><span class="math inline">\(a\)</span></th>
+<th><span class="math inline">\(b\)</span></th>
+<th><code>a AND b</code></th>
+<th><code>a OR b</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>TRUE</code></td>
+<td><code>NULL</code></td>
+<td><code>NULL</code></td>
+<td><code>TRUE</code></td>
+</tr>
+<tr class="even">
+<td><code>FALSE</code></td>
+<td><code>NULL</code></td>
+<td><code>FALSE</code></td>
+<td><code>NULL</code></td>
+</tr>
+<tr class="odd">
+<td><code>NULL</code></td>
+<td><code>NULL</code></td>
+<td><code>NULL</code></td>
+<td><code>NULL</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>NOT NULL</code> is <code>NULL</code>, and <code>NULL = NULL</code> is <code>NULL</code>.</p>
+<p><strong>The rule that explains everything:</strong> a <code>WHERE</code> or a join condition keeps a row <strong>only if it evaluates to <code>TRUE</code></strong>. Unknown behaves like false in the filter, but it is not false: its negation is also unknown.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>df.<span class="bu">filter</span>(F.col(<span class="st">"x"</span>) <span class="op">&gt;</span> <span class="dv">0</span>)          <span class="co"># drops the rows where x is NULL</span></span>
+<span id="cb1-2"><a href=""></a>df.<span class="bu">filter</span>(<span class="op">~</span>(F.col(<span class="st">"x"</span>) <span class="op">&gt;</span> <span class="dv">0</span>))       <span class="co"># ALSO drops those rows</span></span>
+<span id="cb1-3"><a href=""></a>df.<span class="bu">filter</span>(F.col(<span class="st">"x"</span>).eqNullSafe(<span class="va">None</span>))   <span class="co"># the way to compare with NULL: &lt;=&gt;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>So <code>filter(p)</code> and <code>filter(~p)</code> together <strong>do not necessarily add up to all rows</strong>.</p>
+</section>
+<section id="exercise-where-null-changes-the-answer" class="slide level2 smaller">
+<h2>Exercise: where <code>NULL</code> changes the answer</h2>
+<p><code>x</code> has the values 10, <code>NULL</code>, 20. What does each expression return?</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Expression</th>
+<th>Your answer</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>count(*)</code>, <code>count(x)</code></td>
+<td></td>
+</tr>
+<tr class="even">
+<td><code>sum(x)</code>, <code>avg(x)</code></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><code>avg(x)</code> after <code>fillna(0)</code></td>
+<td></td>
+</tr>
+<tr class="even">
+<td><code>WHERE x NOT IN (10, NULL)</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<div class="fragment">
+<table class="caption-top">
+<colgroup>
+<col style="width: 48%">
+<col style="width: 32%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Expression</th>
+<th>Result</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>count(*)</code>, <code>count(x)</code></td>
+<td>3, <strong>2</strong></td>
+<td><code>count(*)</code> counts rows; the rest ignore <code>NULL</code></td>
+</tr>
+<tr class="even">
+<td><code>sum(x)</code>, <code>avg(x)</code></td>
+<td>30, <strong>15</strong></td>
+<td><code>avg</code> divides by 2 and not by 3</td>
+</tr>
+<tr class="odd">
+<td><code>avg(x)</code> after <code>fillna(0)</code></td>
+<td><strong>10</strong></td>
+<td>Filling changes the mean</td>
+</tr>
+<tr class="even">
+<td><code>WHERE x NOT IN (10, NULL)</code></td>
+<td><strong>no rows</strong></td>
+<td><code>20 &lt;&gt; NULL</code> is unknown: never <code>TRUE</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>NOT EXISTS</code>, or <code>left_anti</code> in a DataFrame, is not affected by this.</p>
+</div>
+</section>
+<section id="null-by-operation-and-the-difference-with-pandas" class="slide level2 smaller">
+<h2><code>NULL</code> by operation, and the difference with Pandas</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 18%">
+<col style="width: 55%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th><code>NULL</code></th>
+<th>Pandas, for comparison</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Filter</td>
+<td>Dropped unless <code>isNull</code></td>
+<td><code>NaN</code> comparison gives <code>False</code></td>
+</tr>
+<tr class="even">
+<td>Join key</td>
+<td><strong>Does not match</strong> (use <code>eqNullSafe</code> to match)</td>
+<td><code>merge</code> <strong>does match</strong> <code>NaN</code> keys</td>
+</tr>
+<tr class="odd">
+<td><code>groupBy</code></td>
+<td>Forms <strong>one group</strong></td>
+<td><strong>Dropped</strong> by default (<code>dropna=True</code>)</td>
+</tr>
+<tr class="even">
+<td><code>distinct</code></td>
+<td>Treated as equal: one row</td>
+<td><code>drop_duplicates</code> treats them as equal</td>
+</tr>
+<tr class="odd">
+<td><code>orderBy</code></td>
+<td>First when ascending</td>
+<td>Last by default</td>
+</tr>
+</tbody>
+</table>
+<p>The same query can return a different number of rows or groups in each engine.</p>
+<p><strong><code>NaN</code> is not <code>NULL</code>.</strong> In Spark they are different values:</p>
+<ul>
+<li><code>NaN = NaN</code> is <strong>true</strong>, unlike IEEE 754.</li>
+<li><code>NaN</code> is treated as a normal value in join keys and aggregations.</li>
+<li>It sorts as greater than any other number, so a <code>max</code> may return <code>NaN</code>.</li>
+</ul>
+<p><code>F.isnan(c)</code> and <code>F.isnull(c)</code> test different things.</p>
+</section></section>
+<section>
+<section id="aggregation-which-ones-scale" class="title-slide slide level1 center">
+<h1>3. Aggregation: which ones scale</h1>
+
+</section>
+<section id="the-question-is-how-much-state-a-group-needs" class="slide level2 smaller">
+<h2>The question is how much state a group needs</h2>
+<p>To run in parallel, an aggregation must be computed per partition and then <strong>merged</strong>. Functions are classified by what must be kept for each group (Gray et al., 1997):</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 15%">
+<col style="width: 26%">
+<col style="width: 21%">
+<col style="width: 36%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Class</th>
+<th>Definition</th>
+<th>Examples</th>
+<th>State per group</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Distributive</strong></td>
+<td><span class="math inline">\(f(A \cup B) = g(f(A), f(B))\)</span></td>
+<td><code>sum</code>, <code>count</code>, <code>min</code>, <code>max</code></td>
+<td>1 value</td>
+</tr>
+<tr class="even">
+<td><strong>Algebraic</strong></td>
+<td>Computed from a fixed number of distributive values</td>
+<td><code>avg</code> = (sum, count), <code>stddev</code></td>
+<td>Fixed tuple</td>
+</tr>
+<tr class="odd">
+<td><strong>Holistic</strong></td>
+<td>No fixed-size summary exists</td>
+<td><code>median</code>, <code>countDistinct</code>, <code>collect_list</code></td>
+<td><strong>Grows with the data</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why it decides everything:</strong></p>
+<ul>
+<li>Distributive and algebraic allow <strong>partial aggregation</strong>: the shuffle carries fixed-size states.</li>
+<li>Holistic forces <strong>all the values</strong> to the same place: more network, more memory, and exposed to skew.</li>
+</ul>
+<p>The real plan shows this as <code>partial_sum</code> before the <code>Exchange</code> and <code>sum</code> after it.</p>
+</section>
+<section id="two-classic-errors" class="slide level2 smaller">
+<h2>Two classic errors</h2>
+<p><strong>1. The average of averages is not the average.</strong> Groups <span class="math inline">\(A = \{1, 1, 1, 1\}\)</span> and <span class="math inline">\(B = \{100\}\)</span>:</p>
+<p><span class="math display">\[\frac{\text{avg}(A) + \text{avg}(B)}{2} = \frac{1 + 100}{2} = 50.5 \qquad \text{but} \qquad \text{avg}(A \cup B) = \frac{104}{5} = 20.8\]</span></p>
+<p><code>avg</code> is algebraic, not distributive: its mergeable state is <span class="math inline">\((\sum x,\ n)\)</span>. Spark keeps both, but a pre-aggregated table with only <code>avg_price</code> <strong>has lost the information</strong>. Store the sum and the count.</p>
+<p><strong>2. Distinct counts do not add up.</strong> Users on Monday: {a, b}; on Tuesday: {b, c}. So 2 + 2 = 4, whereas the real figure is <strong>3</strong>. A daily count of distinct users <strong>cannot be summed</strong> to give a monthly figure.</p>
+<p><strong>The same test applies to any metric in a data lake:</strong> can a Gold table with this column be re-aggregated later? Only if the column is distributive, or if its state was stored.</p>
+</section>
+<section id="when-exact-is-too-expensive-approximation" class="slide level2 smaller">
+<h2>When exact is too expensive: approximation</h2>
+<p>A holistic aggregate can be replaced by an <strong>algebraic approximation</strong>: a fixed-size summary that can be merged, at the cost of a bounded error.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 16%">
+<col style="width: 30%">
+<col style="width: 26%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Exact</th>
+<th>Approximate</th>
+<th>Parameter</th>
+<th>Algorithm</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>countDistinct(x)</code></td>
+<td><code>approx_count_distinct(x, rsd)</code></td>
+<td>Relative std. deviation, default 5%</td>
+<td>HyperLogLog++</td>
+</tr>
+<tr class="even">
+<td><code>median(x)</code>, <code>percentile(x, p)</code></td>
+<td><code>percentile_approx(x, p, accuracy)</code></td>
+<td>Relative error <span class="math inline">\(1/\text{accuracy}\)</span>, default accuracy 10,000</td>
+<td>Quantile sketch</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why they scale:</strong> each partition builds its own sketch, sketches are merged, and the state is bounded regardless of how many values there are. So they get partial aggregation back.</p>
+<p><strong>Why HyperLogLog works, intuitively:</strong> on hashing values uniformly, seeing a hash with <span class="math inline">\(b\)</span> leading zeros suggests about <span class="math inline">\(2^b\)</span> distinct values. Duplicates hash identically, so they cannot change the estimate.</p>
+<p><strong>Decide by the question:</strong> a dashboard showing 1.2 M users does not need the exact figure. A billing report does, and must pay for it.</p>
+</section></section>
+<section>
+<section id="window-functions" class="title-slide slide level1 center">
+<h1>4. Window functions</h1>
+
+</section>
+<section id="a-window-has-three-parts" class="slide level2 smaller">
+<h2>A window has three parts</h2>
+<p><code>groupBy</code> collapses each group into one row. A window <strong>keeps all rows</strong> and computes, for each one, a value over its related rows:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>w <span class="op">=</span> Window.partitionBy(<span class="st">"category"</span>).orderBy(<span class="st">"date"</span>).rowsBetween(<span class="op">-</span><span class="dv">6</span>, <span class="dv">0</span>)</span>
+<span id="cb2-2"><a href=""></a>df.withColumn(<span class="st">"sum_7d"</span>, F.<span class="bu">sum</span>(<span class="st">"revenue"</span>).over(w))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<table class="caption-top">
+<colgroup>
+<col style="width: 22%">
+<col style="width: 33%">
+<col style="width: 44%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Part</th>
+<th>Meaning</th>
+<th>If omitted</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>partitionBy</code></td>
+<td>Which rows are related</td>
+<td><strong>All rows go to a single partition</strong> (Spark warns)</td>
+</tr>
+<tr class="even">
+<td><code>orderBy</code></td>
+<td>Order within the partition</td>
+<td>Rankings fail</td>
+</tr>
+<tr class="odd">
+<td>Frame</td>
+<td>Subset around the current row</td>
+<td>See the next slide</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Cost:</strong> one <code>Exchange</code> by the partition key, plus a sort of each partition. So <span class="math inline">\(O(n \log (n/P))\)</span>, with all of a key’s rows in one task, and no partial aggregation possible. Windows are therefore <strong>exposed to skew</strong>, like joins.</p>
+<p><strong>Ranking functions on ties.</strong> With prices 100, 100, 90, 80:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th></th>
+<th>100</th>
+<th>100</th>
+<th>90</th>
+<th>80</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>row_number</code></td>
+<td>1</td>
+<td>2</td>
+<td>3</td>
+<td>4</td>
+</tr>
+<tr class="even">
+<td><code>rank</code></td>
+<td>1</td>
+<td>1</td>
+<td>3</td>
+<td>4</td>
+</tr>
+<tr class="odd">
+<td><code>dense_rank</code></td>
+<td>1</td>
+<td>1</td>
+<td>2</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="the-trap-in-the-default-frame" class="slide level2 smaller">
+<h2>The trap in the default frame</h2>
+<p>The documentation defines the default frame:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 93%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Default frame</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>No <code>orderBy</code></td>
+<td>Whole partition: <code>rowsBetween(unboundedPreceding, unboundedFollowing)</code></td>
+</tr>
+<tr class="even">
+<td><strong>With <code>orderBy</code></strong></td>
+<td><strong><code>rangeBetween(unboundedPreceding, currentRow)</code></strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>RANGE</code> works on values, so <strong>rows tied on the sort key are peers</strong> and enter the frame together. A running sum over values 10, 10, 20:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Frame</th>
+<th>10</th>
+<th>10</th>
+<th>20</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>ROWS</code> up to the current row</td>
+<td>10</td>
+<td>20</td>
+<td>40</td>
+</tr>
+<tr class="even">
+<td><strong><code>RANGE</code> (default)</strong></td>
+<td><strong>20</strong></td>
+<td><strong>20</strong></td>
+<td>40</td>
+</tr>
+</tbody>
+</table>
+<p>Same data, different column, no error. The classic symptom is <code>F.last("x").over(w)</code>, which seems to return the current row, since the frame ends at it.</p>
+<p><strong>Determinism.</strong> With ties, <code>row_number</code> numbers them <strong>arbitrarily</strong>. A dedup with <code>row_number() == 1</code> may keep a different row in each run. Add a tie-breaking column to the <code>orderBy</code>.</p>
+</section></section>
+<section>
+<section id="join-semantics" class="title-slide slide level1 center">
+<h1>5. Join semantics</h1>
+
+</section>
+<section id="bounding-the-rows-of-a-join" class="slide level2 smaller">
+<h2>Bounding the rows of a join</h2>
+<p>With <span class="math inline">\(n\)</span> rows in <span class="math inline">\(R\)</span> and <span class="math inline">\(m\)</span> rows in <span class="math inline">\(S\)</span>, the exact size of an inner join is <span class="math inline">\(\sum_k a_k b_k\)</span> (see Lecture 5). Before running it, each type already has bounds:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 31%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Join</th>
+<th>Semantics</th>
+<th>Minimum</th>
+<th>Maximum</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td>Inner</td>
-<td><code>how="inner"</code></td>
-<td><code>how="inner"</code></td>
-<td>Only matching rows</td>
+<td>Matching pairs</td>
+<td><span class="math inline">\(0\)</span></td>
+<td><span class="math inline">\(n \cdot m\)</span></td>
 </tr>
 <tr class="even">
-<td>Left</td>
-<td><code>how="left"</code></td>
-<td><code>how="left"</code></td>
-<td>All left + matched right</td>
+<td>Left outer</td>
+<td>All of <span class="math inline">\(R\)</span> + matches</td>
+<td><span class="math inline">\(n\)</span></td>
+<td><span class="math inline">\(\max(n,\ n \cdot m)\)</span></td>
 </tr>
 <tr class="odd">
-<td>Right</td>
-<td><code>how="right"</code></td>
-<td><code>how="right"</code></td>
-<td>All right + matched left</td>
-</tr>
-<tr class="even">
 <td>Full outer</td>
-<td><code>how="outer"</code></td>
-<td><code>how="outer"</code></td>
-<td>All rows from both</td>
+<td>Everything from both</td>
+<td><span class="math inline">\(\max(n, m)\)</span></td>
+<td><span class="math inline">\(\max(n \cdot m,\ n + m)\)</span></td>
+</tr>
+<tr class="even">
+<td><strong>Left semi</strong></td>
+<td><span class="math inline">\(R\)</span> with some match</td>
+<td><span class="math inline">\(0\)</span></td>
+<td><strong><span class="math inline">\(n\)</span></strong></td>
 </tr>
 <tr class="odd">
-<td>Stack rows</td>
-<td><code>pd.concat([...])</code></td>
-<td><code>df1.union(df2)</code></td>
-<td>Append rows (UNION)</td>
+<td><strong>Left anti</strong></td>
+<td><span class="math inline">\(R\)</span> with no match</td>
+<td><span class="math inline">\(0\)</span></td>
+<td><strong><span class="math inline">\(n\)</span></strong></td>
+</tr>
+<tr class="even">
+<td>Cross</td>
+<td>All pairs</td>
+<td><span class="math inline">\(n \cdot m\)</span></td>
+<td><span class="math inline">\(n \cdot m\)</span></td>
 </tr>
 </tbody>
 </table>
+<p><strong>Semi and anti never multiply rows or add columns.</strong> To ask “which customers have orders?”, a <code>left_semi</code> answers it directly, whereas <code>inner</code> + <code>distinct</code> costs a multiplication and then a shuffle to undo it.</p>
+<p><strong>If <span class="math inline">\(S\)</span> has a unique key:</strong> inner <span class="math inline">\(\leq n\)</span>, and left is exactly <span class="math inline">\(n\)</span>. A left join with more rows than its left table proves that <strong>the key was not unique</strong>: an assertion worth having in a pipeline.</p>
+</section></section>
+<section>
+<section id="lazy-evaluation" class="title-slide slide level1 center">
+<h1>6. Lazy evaluation</h1>
+
 </section>
-<section id="spark-sql" class="slide level2">
-<h2>Spark SQL</h2>
-<p>Register a DataFrame as a <strong>temporary view</strong> and write SQL. It uses the same optimized query planner.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>sdf.createOrReplaceTempView(<span class="st">"sales"</span>)</span>
-<span id="cb3-2"><a href=""></a></span>
-<span id="cb3-3"><a href=""></a>spark.sql(<span class="st">"""</span></span>
-<span id="cb3-4"><a href=""></a><span class="st">    SELECT product, category, price,</span></span>
-<span id="cb3-5"><a href=""></a><span class="st">           RANK() OVER (PARTITION BY category ORDER BY price DESC) AS rank_in_cat</span></span>
-<span id="cb3-6"><a href=""></a><span class="st">    FROM   sales</span></span>
-<span id="cb3-7"><a href=""></a><span class="st">    WHERE  price &gt; 100</span></span>
-<span id="cb3-8"><a href=""></a><span class="st">    ORDER  BY category, rank_in_cat</span></span>
-<span id="cb3-9"><a href=""></a><span class="st">"""</span>).show()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="transformations-vs-actions" class="slide level2">
-<h2>Transformations vs actions</h2>
+<section id="what-it-gains-and-its-surprises" class="slide level2 smaller">
+<h2>What it gains, and its surprises</h2>
+<p><strong>What it gains.</strong> With the whole query known before running, the optimizer can act across steps: a <code>filter</code> written last is pushed down to the read, and the columns never used are not read. An eager engine, like Pandas, has already paid for each step.</p>
+<p><strong>Its surprises</strong>, all from one fact: <strong>a DataFrame is a recipe, and each action cooks it again</strong>.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 4%">
-<col style="width: 24%">
-<col style="width: 40%">
-<col style="width: 32%">
+<col style="width: 42%">
+<col style="width: 57%">
 </colgroup>
 <thead>
 <tr class="header">
-<th></th>
-<th>Type</th>
-<th>Examples</th>
+<th>Code</th>
 <th>Effect</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Transformations</strong></td>
-<td>Lazy</td>
-<td><code>filter</code>, <code>select</code>, <code>withColumn</code>, <code>groupBy</code>, <code>join</code></td>
-<td>Builds a plan: <strong>nothing runs</strong></td>
+<td>Two actions on one DataFrame</td>
+<td>Everything is computed twice, unless cached</td>
 </tr>
 <tr class="even">
-<td><strong>Actions</strong></td>
-<td>Eager</td>
-<td><code>show()</code>, <code>count()</code>, <code>collect()</code>, <code>write</code>, <code>toPandas()</code></td>
-<td><strong>Executes the full plan</strong></td>
+<td><code>df.withColumn("r", F.rand())</code>, then two actions</td>
+<td>Possibly <strong>different</strong> values each time</td>
+</tr>
+<tr class="odd">
+<td><code>F.current_timestamp()</code></td>
+<td>Each action sees a different time</td>
+</tr>
+<tr class="even">
+<td>A source file changes between actions</td>
+<td>Each action sees different data</td>
 </tr>
 </tbody>
 </table>
-<pre><code>  TRANSFORMATION ──▶ TRANSFORMATION ──▶ TRANSFORMATION ──▶  ACTION
-    .filter()          .withColumn()      .groupBy()        .show()</code></pre>
-<p>Spark uses this to build an <strong>optimized query plan</strong> before executing.</p>
-</section>
-<section id="plan-cache-and-partitions" class="slide level2">
-<h2>Plan, cache and partitions</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>plan.explain(mode<span class="op">=</span><span class="st">"simple"</span>)        <span class="co"># logical and physical plan</span></span>
-<span id="cb5-2"><a href=""></a></span>
-<span id="cb5-3"><a href=""></a>cached <span class="op">=</span> sdf.cache()               <span class="co"># stored on the first action</span></span>
-<span id="cb5-4"><a href=""></a>cached.count()<span class="op">;</span> cached.count()     <span class="co"># the second one reads from memory</span></span>
-<span id="cb5-5"><a href=""></a>cached.unpersist()</span>
-<span id="cb5-6"><a href=""></a></span>
-<span id="cb5-7"><a href=""></a>sdf.rdd.getNumPartitions()</span>
-<span id="cb5-8"><a href=""></a>sdf.repartition(<span class="dv">4</span>, <span class="st">"category"</span>)     <span class="co"># full shuffle, evenly distributed</span></span>
-<span id="cb5-9"><a href=""></a>sdf.coalesce(<span class="dv">2</span>)                    <span class="co"># no full shuffle, less balanced</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>When do errors appear?</strong></p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 42%">
+<col style="width: 23%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Error</th>
+<th>Appears</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Column does not exist</td>
+<td><strong>Immediately</strong></td>
+<td>Analysis runs when the DataFrame is built</td>
+</tr>
+<tr class="even">
+<td>Invalid cast (ANSI), division by zero</td>
+<td><strong>At the action</strong></td>
+<td>Depends on the data</td>
+</tr>
+</tbody>
+</table>
+<p>So an error may arise far from the line that caused it, and only for some rows.</p>
+</section></section>
+<section>
+<section id="integrating-problem" class="title-slide slide level1 center">
+<h1>7. Integrating problem</h1>
 
 </section>
+<section id="why-did-revenue-double" class="slide level2 smaller">
+<h2>Why did revenue double?</h2>
+<p>A dashboard reports twice the real revenue. There is no error in the logs.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>report <span class="op">=</span> (orders.join(addresses, <span class="st">"customer_id"</span>, <span class="st">"left"</span>)     <span class="co"># 1,000,000 orders</span></span>
+<span id="cb3-2"><a href=""></a>                .groupBy(<span class="st">"region"</span>).agg(F.<span class="bu">sum</span>(<span class="st">"revenue"</span>).alias(<span class="st">"revenue"</span>),</span>
+<span id="cb3-3"><a href=""></a>                                       F.avg(<span class="st">"revenue"</span>).alias(<span class="st">"avg_ticket"</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ol type="1">
+<li>What fact about <code>addresses</code> would explain it? How do you detect it? 2. Does <code>avg_ticket</code> also double? 3. Propose a fix that does not shuffle <code>orders</code> twice.</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li>Some customers have several addresses, so the key is <strong>not unique</strong> on the right: rows multiply (<span class="math inline">\(\sum_k a_k b_k\)</span>). Detection: rows after the join <code>&gt; orders.count()</code>, or <code>addresses.groupBy("customer_id").count().filter("count &gt; 1")</code>.</li>
+<li><strong>Not necessarily.</strong> Both numerator and denominator grow, so a uniformly duplicated <code>avg</code> looks fine. Only <code>sum</code> reveals the error: an algebraic function can hide what a distributive one exposes.</li>
+<li>Reduce <code>addresses</code> to one row per customer <strong>before</strong> the join, choosing the row with <code>row_number</code> plus a tie-breaker. This also makes the left bound exact: <code>n</code> rows out. <strong>Never fix it with <code>distinct()</code> afterwards</strong>: two legitimate equal orders would be lost.</li>
+</ol>
+</div>
+</section>
+<section id="references" class="slide level2 smaller">
+<h2>References</h2>
+<ul>
+<li>Codd, E. F. (1970). <em>A Relational Model of Data for Large Shared Data Banks</em>. Communications of the ACM, 13(6).</li>
+<li>Gray, J., et al.&nbsp;(1997). <em>Data Cube: A Relational Aggregation Operator Generalizing Group-By, Cross-Tab, and Sub-Totals</em>. Data Mining and Knowledge Discovery, 1.</li>
+<li>Heule, S., Nunkesser, M., Hall, A. (2013). <em>HyperLogLog in Practice</em>. EDBT.</li>
+<li>Armbrust, M., et al.&nbsp;(2015). <em>Spark SQL: Relational Data Processing in Spark</em>. SIGMOD.</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/sql-ref-null-semantics.html">NULL semantics</a>, <a href="https://spark.apache.org/docs/4.0.1/sql-ref-datatypes.html">NaN semantics</a>, <a href="https://spark.apache.org/docs/4.0.1/sql-ref-syntax-qry-select-window.html">Window functions</a>, <a href="https://spark.apache.org/docs/4.0.1/api/sql/index.html">SQL functions</a>.</li>
+<li>Apache Spark 4.0.1, source code: <code>pyspark/sql/window.py</code> (default frames).</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

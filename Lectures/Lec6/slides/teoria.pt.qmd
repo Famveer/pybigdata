@@ -13,116 +13,412 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## O que você vai aprender
+## O que você poderá fazer {.smaller}
 
-- Detectar e corrigir *data skew*
-- Decidir quando usar cache
-- O que o Adaptive Query Execution faz automaticamente
-- Funções nativas vs Pandas UDF vs UDF Python
-- Onde olhar na Spark UI
+- Quantificar quanto o skew limita um job, com um número, antes de olhar o relógio
+- Comparar as correções pelo que cada uma custa, e saber quando **não se aplica**
+- Decidir se usa cache com uma desigualdade de custos, e não por intuição
+- Explicar o que o AQE muda em execução, e o que não pode mudar
+- Estimar o custo de uma UDF, e saber o que o otimizador perde com ela
+- Diagnosticar um job lento a partir das métricas da Spark UI
 
----
+| Bloco | Tema | Min |
+|-------|------|-----|
+| 1 | Um modelo do skew | 20 |
+| 2 | Correções e seus custos | 25 |
+| 3 | Cache: quando compensa | 20 |
+| 4 | Adaptive Query Execution | 25 |
+| 5 | UDFs | 20 |
+| 6 | Diagnóstico pela Spark UI | 10 |
 
-## Data skew
+# 1. Um modelo do skew
 
-Poucas chaves concentram grande parte das linhas. Depois do shuffle, **uma partição fica enorme** e o job inteiro espera pela sua task.
+## O skew limita o speedup, qualquer que seja o cluster {.smaller}
 
-```
-   T1 ███
-   T2 ███
-   T3 ████████████████████████████████   <- hot key
-   T4 ███
-```
+Da Aula 5: $T \geq t_{\max}$, e uma chave com uma fração $f$ das linhas força uma partição com pelo menos $f \cdot n$ linhas, para qualquer $R$.
 
-Sintoma típico: duração máxima das tasks muito maior que a mediana, job parado em "199/200 tasks".
+Se o tempo de uma task é proporcional às suas linhas, então $t_{\max} \geq f \cdot W$, e o speedup fica limitado por:
 
----
+$$S = \frac{W}{T} \;\leq\; \frac{W}{f \cdot W} = \frac{1}{f}$$
 
-## Corrigindo o skew {.smaller}
+| $f$ (chave mais quente) | Speedup máximo desse stage |
+|-------------------------|----------------------------|
+| 40% | **2,5×**, com 10 ou com 10.000 núcleos |
+| 10% | 10× |
+| 1% | 100× |
 
-| Técnica | Ideia | Quando |
-|---------|------|--------|
-| **Broadcast** | Elimina o shuffle, então o skew deixa de importar | O outro lado cabe em memória |
-| **Salting** | Divide a chave quente em N subchaves artificiais | Os dois lados são grandes |
-| **AQE skew join** | O Spark detecta partições enormes e as divide | Spark 3+ |
-| **Separar a chave** | Processa a chave quente à parte e faz `union` | Poucas chaves conhecidas |
-
-```python
-orders_salted = orders_skew.withColumn("salt", (F.rand(8) * SALT).cast("int"))
-customers_salted = customers.crossJoin(
-    spark.range(SALT).select(F.col("id").cast("int").alias("salt")))
-orders_salted.join(customers_salted, ["customer_id", "salt"])
-```
+Tem a mesma forma da lei de Amdahl: a chave quente se comporta como a **fração serial** do stage. Adicionar núcleos não ajuda, e isso distingue o skew de uma simples falta de recursos.
 
 ---
 
-## Cache e persist
+## O modelo frente a dados reais {.smaller}
 
-Cada ação recalcula o plano desde a leitura. O cache evita esse retrabalho.
+Lab 5: $n$ = 5.000.000 linhas, 40% com `customer_id = 0`, o resto uniforme, $R = 16$. A partição quente tem a chave quente mais sua parte do resto:
 
-| Nível | Onde | Observação |
-|-------|-------|------|
-| `MEMORY_AND_DISK` | Memória, transbordando para disco | Padrão de `df.cache()` |
-| `MEMORY_ONLY` | Só memória | O que não cabe é recalculado |
-| `DISK_ONLY` | Só disco | Útil quando o cálculo é muito caro |
+$$\text{máx} = f n + \frac{(1-f)\,n}{R} = 2.000.000 + 187.500 = 2.187.500 \qquad \text{mediana} = \frac{(1-f)\,n}{R} = 187.500$$
 
-**Use:** o mesmo DataFrame alimenta várias ações, e é caro de calcular e pequeno para guardar.
+| | Modelo | Medido no Lab 5 |
+|-|--------|-----------------|
+| Maior partição | 2.187.500 | 2.186.568 |
+| Partição mediana | 187.500 | 187.215 |
+| Razão | 11,7× | 11,7× |
 
-**Evite:** o DataFrame é usado uma única vez, ou é só uma leitura de Parquet. O cache ocupa memória que os shuffles poderiam usar.
+O modelo prevê a razão só com $f$ e $R$:
+
+$$\frac{\text{máx}}{\text{mediana}} = 1 + \frac{f\,R}{1-f}$$
+
+**Então a razão cresce com $R$.** Aumentar `shuffle.partitions` faz o desbalanço parecer *pior* e não reduz a maior partição: ela continua com pelo menos $f n$ linhas.
 
 ---
 
-## Adaptive Query Execution
+## De onde vêm as chaves quentes {.smaller}
 
-Sem AQE, o plano é decidido **antes** da execução, com estimativas. Com AQE (padrão desde o Spark 3.2), o Spark **reotimiza entre os stages** com estatísticas reais.
+**Distribuições naturais.** A popularidade costuma seguir algo como uma lei de Zipf, onde a $k$-ésima chave mais frequente tem:
 
-| Recurso | O que faz |
-|---------|-------------|
-| Coalescer partições | Junta partições pequenas após o shuffle (200 vira poucas) |
-| Trocar estratégia de join | Converte sort-merge em broadcast se um lado ficou pequeno após filtros |
-| Skew join | Divide partições gigantes em pedaços menores |
+$$f_k = \frac{1/k}{H_d}, \qquad H_d = \sum_{i=1}^{d} \frac{1}{i} \approx \ln d + 0{,}577$$
 
-::: {.callout-tip}
-Em produção, mantenha o AQE ligado. Ele não substitui um bom desenho, mas resolve boa parte dos ajustes de partição.
+Com $d = 10^6$ chaves: $H_d \approx 14{,}4$, então a primeira chave tem **6,9%** das linhas (speedup de no máximo 14×), e as 100 primeiras **36%**. Um milhão de chaves distintas não garante balanço.
+
+**Valores artificiais,** muitas vezes os piores e os mais fáceis de corrigir:
+
+| Valor | Origem típica | Ação |
+|-------|---------------|------|
+| Chave `NULL` | Campo opcional | Filtrar ou tratar à parte |
+| `0`, `-1`, `"unknown"` | Valores padrão | Encontrar e tratar como faltante |
+| Uma conta gigante | Marketplace, bot, usuário de teste | Separar |
+
+Um inner join já descarta as chaves `NULL` (o plano mostra `isnotnull`), mas um `LEFT JOIN` precisa mantê-las à esquerda. Todas essas linhas vão para a **mesma partição**, sem nenhuma correspondência a ganhar.
+
+---
+
+## Toda operação sofre com o skew? {.smaller}
+
+Não, e a razão é a agregação parcial da aula anterior.
+
+| Operação | Com uma chave quente | Por quê |
+|----------|----------------------|---------|
+| `groupBy().sum()` | **Quase imune** | Após o passo parcial, a chave quente contribui com no máximo $M$ linhas |
+| `join` | **Sofre** | Todas as suas linhas devem se reunir em uma task; saída $\sum_k a_k b_k$ |
+| `collect_list`, `percentile` | **Sofre** | Não decomponível: viajam todos os valores |
+| Janela com `partitionBy(k)` | **Sofre** | Toda a chave deve estar em uma partição, ordenada |
+
+**Uma chave quente em um `groupBy` não é necessariamente um problema:** olhe primeiro qual operador está parado.
+
+O pior caso é um join com chaves quentes em **ambos** os lados: $a_k = 10^6$ e $b_k = 10^3$ geram $10^9$ linhas em uma só task.
+
+# 2. Correções e seus custos
+
+## Salting: por que é correto, e quanto custa {.smaller}
+
+Adicione a cada linha de $R$ um $s \in \{0,\dots,k-1\}$ aleatório, replique cada linha de $S$ $k$ vezes com $s = 0,\dots,k-1$, e una por $(\text{chave}, s)$.
+
+**Correção.** Cada linha de $R$ tem um só $s$, e cada linha de $S$ que coincide tem exatamente uma cópia com esse $s$. Assim, cada par aparece uma vez, e a saída não muda. No Lab 5: 5.000.000 de linhas com ou sem salt.
+
+**Efeito.** As linhas da chave quente se distribuem em $k$ subchaves. Para deixar cada pedaço abaixo da carga média $n/R$:
+
+$$\frac{f n}{k} \leq \frac{n}{R} \quad\Longrightarrow\quad k \geq f R$$
+
+**Custo.** $S$ passa de $|S|$ para $k|S|$ no shuffle. Com $f = 40\%$, $R = 200$: $k \geq 80$, ou seja **80 cópias de todo o $S$**.
+
+**Salting seletivo:** aplique salt só às chaves quentes conhecidas, com $s = 0$ para o resto. O custo extra passa a ser $(k - 1) |S_{\text{hot}}|$. Com um cliente quente, são 79 linhas extras em vez de 79 cópias extras de uma tabela.
+
+---
+
+## Exercício: por que 1,4× e não 1,0×? {.smaller}
+
+O Lab 5 com $k = 16$, $R = 16$ mediu: maior 441.645, mediana 308.298, razão 1,4×. O balanço perfeito seriam 312.500 em todas. **Você consegue explicar esses números?**
+
+::: {.fragment}
+Cada um dos 16 valores de salt leva $2.000.000 / 16 =$ 125.000 linhas quentes, e cai em uma partição por hash: **16 bolas em 16 urnas**, não uma em cada. Uma partição que recebe $j$ salts tem:
+
+$$j \times 125.000 + 187.500$$
+
+| $j$ | Modelo | Medido |
+|-----|--------|--------|
+| 1 | 312.500 | 308.298 (mediana) |
+| 2 | 437.500 | 441.645 (maior) |
+
+Então dois salts colidiram em uma partição. O salt distribui a chave em $k$ subchaves, mas o particionador as coloca com colisões: da Aula 5, cerca de $e^{-1} \approx 37\%$ das urnas ficam sem nenhum salt.
+
+**Para melhorar:** $k \gg R$ faz as colisões importarem menos, mas multiplica $S$ por mais cópias. Aqui não há opção grátis.
 :::
 
 ---
 
-## Funções nativas vs UDFs
+## Escolher uma correção {.smaller}
 
-```
-  F.when(...)     JVM ──────────────────────────────▶ JVM            (fast)
-  @udf            JVM ─▶ row-by-row serialization ─▶ Python ─▶ JVM   (slow)
-  @pandas_udf     JVM ─▶ Arrow batches (columnar) ─▶ Pandas ─▶ JVM   (middle)
-```
+| Correção | Custo adicionado | Falha quando |
+|----------|------------------|--------------|
+| **Limpar a chave** (`NULL`, valores padrão) | Nenhum: reduz $n$ | A chave é frequente de verdade |
+| **Broadcast** | $N \cdot |S|$ de memória | $S$ é grande, ou o lado preservado é o pequeno |
+| **Separar a chave quente** + `union` | Código, e uma lista de chaves a manter | As chaves mudam ou são muitas |
+| **Salting seletivo** | $(k-1)|S_{\text{hot}}|$ | Igual: é preciso conhecer as chaves |
+| **Salting completo** | $(k-1)|S|$ | $S$ é grande; $k$ fica caro |
+| **AQE skew join** | Replica parte de $S$ | Não é um join, lado não suportado, ou poucas tasks map |
 
-Ordem de preferência: **função nativa > Pandas UDF > UDF Python**. Antes de escrever uma UDF, procure na lista de funções: quase sempre já existe.
+Aplique nessa ordem. **Primeiro pergunte se essas linhas são necessárias**, porque removê-las baixa $W$ e $f$ ao mesmo tempo.
+
+**Não use salting em um `groupBy` por reflexo:** as agregações decomponíveis já estão protegidas pelo passo parcial, e uma não decomponível (mediana, `countDistinct`) **dá resultados incorretos** se você agregar os grupos com salt e depois combiná-los.
+
+# 3. Cache: quando compensa
+
+## Uma desigualdade para o cache {.smaller}
+
+Um DataFrame é usado por $k$ ações. Seja $C$ = custo de calculá-lo, $M$ = custo extra de guardá-lo, $L$ = custo de lê-lo.
+
+$$\underbrace{k\,C}_{\text{sem cache}} \quad\text{vs}\quad \underbrace{C + M + (k-1)\,L}_{\text{com cache}}$$
+
+**O cache compensa se e somente se:**
+
+$$(k - 1)\,(C - L) > M$$
+
+| Consequência | Por quê |
+|--------------|---------|
+| $k = 1$ **nunca** compensa | O lado esquerdo é zero |
+| $C \leq L$ nunca compensa | Uma simples leitura de Parquet: ler de novo é quase igualmente barato |
+| Um $C$ maior justifica um $k$ menor | Joins múltiplos, agregações pesadas |
+
+O Lab 5 executou ambos os casos, com estes totais:
+
+| Caso | Sem | Com |
+|------|-----|-----|
+| Resultado pequeno de uma agregação cara | 2,44 s | 0,78 + 0,20 = **0,98 s** |
+| Tabela larga, barata de recalcular | **1,45 s** | 1,84 s |
 
 ---
 
-## Spark UI: onde olhar
+## O custo oculto: memória e pruning {.smaller}
 
-| Aba | O que procurar |
-|-----|-----------------|
-| **Jobs** | Quais ações demoraram mais |
-| **Stages** | Shuffle Read/Write, duração **máxima vs mediana** das tasks (skew) |
-| **Storage** | DataFrames em cache e quanto ocupam |
-| **SQL / DataFrame** | Plano visual com linhas e tempo por operador |
-| **Executors** | Memória, tempo de GC, tasks com falha |
+**Fazer cache de um DataFrame largo perde o column pruning.** Sem cache, cada ação lê só suas colunas do Parquet. Com cache, primeiro se calcula e se guarda tudo. Assim, $L$ é barato, mas $M$ paga todas as colunas. Selecione as colunas necessárias **antes** de `cache()`.
+
+**O cache compete com a execução** na mesma região de memória (guia de ajuste do Spark):
+
+$$M_{\text{unificada}} = (\text{heap} - 300\ \text{MiB}) \times 0{,}6 \qquad R_{\text{protegida}} = M_{\text{unificada}} \times 0{,}5$$
+
+Com um heap de 8 GiB: $M_{\text{unificada}} \approx$ 4,6 GiB, dos quais cerca de 2,3 GiB estão protegidos do despejo.
+
+| Regra | Consequência |
+|-------|--------------|
+| A execução pode despejar armazenamento, até $R$ | Um shuffle grande pode remover blocos em cache |
+| O armazenamento **não** pode despejar execução | O cache só usa o que a execução deixa livre |
+| Acima de $R$, os blocos em cache correm perigo | Então vale LRU, e o $C$ economizado é pago de novo |
+
+Assim, o cache pode **frear o job**: dentro de $R$, esses 2,3 GiB não ficam disponíveis para ordenações e tabelas hash, que então despejam em disco.
 
 ---
 
-## Resumo: sintoma, causa e ação {.smaller}
+## Cache, checkpoint ou gravar? {.smaller}
 
-| Sintoma | Causa provável | O que fazer |
-|---------|--------------|------------|
-| Muitos `Exchange` no plano | Joins e agregações em excesso | Broadcast de dimensões, agregar antes de juntar |
-| Job parado em "199/200 tasks" | Data skew | Broadcast, salting, AQE skew join |
-| Milhares de tasks de milissegundos | Partições demais | AQE ligado, ajustar `shuffle.partitions` |
-| Mesmo cálculo repetido | Reuso sem cache | `cache()` + `unpersist()` |
-| Coluna calculada muito lenta | UDF Python | Função nativa ou Pandas UDF |
-| Leitura lenta | CSV/JSON, sem pruning | Parquet/Delta, filtrar e selecionar cedo |
+| | `cache()` / `persist()` | `checkpoint()` | Gravar Parquet e reler |
+|-|-------------------------|----------------|------------------------|
+| Onde | Memória/disco de executors | Armazenamento confiável | Armazenamento confiável |
+| **Linhagem** | **Mantida** | **Cortada** | Cortada |
+| Executor perdido | Recalcula pela linhagem | Relê | Relê |
+| Sobrevive à aplicação | Não | Não, salvo reutilização explícita | **Sim** |
+| Uso típico | Várias ações em um job | Linhagem muito longa (iterativo) | Passo intermediário de um pipeline |
+
+**O cache não é um mecanismo de tolerância a falhas.** Uma partição em cache perdida é simplesmente recalculada, e com uma linhagem longa com dependências wide, esse recálculo pode ser muito caro. O artigo de RDD recomenda checkpoint justamente nesse caso (Zaharia et al., 2012, §5.4).
+
+**Níveis de armazenamento.** `df.cache()` usa `MEMORY_AND_DISK`, enquanto `rdd.cache()` usa `MEMORY_ONLY`: a mesma palavra, com padrões diferentes. `cache()` também é preguiçoso: só guarda na primeira ação, e `unpersist()` libera.
+
+# 4. Adaptive Query Execution
+
+## A ideia: os stages são pontos de medição {.smaller}
+
+A Aula 5 mostrou que o plano estático tem muito pouca informação: só tamanhos de arquivo, e supõe-se que um `Filter` não remove nada.
+
+Mas um shuffle **materializa** sua saída em disco, e nesse momento o Spark sabe o tamanho exato de cada partição. O AQE replaneja o resto da consulta com esses números:
+
+```
+ plan (estimates) ─▶ run stages with no pending parents ─▶ shuffle output on disk
+       ▲                                                         │  real sizes
+       └────────────── re-optimize what has not run ◀────────────┘
+```
+
+| Recurso | Antes | Depois |
+|---------|-------|--------|
+| **Fundir partições** | 200 partições, quase todas minúsculas | Poucas, fundindo **contíguas** |
+| **Trocar join** | Sort-merge (tamanho superestimado) | Broadcast hash join |
+| **Skew join** | Uma task gigante | Várias tasks, replicando o outro lado |
+
+**Por que "contíguas":** fundir as partições $i$ e $i+1$ de um particionamento hash é sempre correto, porque linhas com a mesma chave continuam juntas. Só muda quantas tasks as leem.
+
+**Seu limite é estrutural:** o AQE só conhece o que já passou por um shuffle. Não pode mudar o primeiro stage, nem ajudar uma consulta sem `Exchange`.
+
+---
+
+## Fundir: que alvo usa de verdade? {.smaller}
+
+`spark.sql.adaptive.advisoryPartitionSizeInBytes` (64 MB) parece o alvo, mas por padrão **não é respeitado** ao fundir:
+
+| Configuração | Padrão | Efeito |
+|--------------|--------|--------|
+| `coalescePartitions.parallelismFirst` | `true` | Ignora os 64 MB e calcula um alvo pelo paralelismo do cluster, normalmente menor |
+| `coalescePartitions.minPartitionSize` | 1 MB | O limite inferior que então se aplica |
+
+**Por quê:** busca-se não perder paralelismo frente a executar sem AQE. A documentação recomenda `false` em um cluster ocupado, para não produzir muitas tasks pequenas.
+
+**Confira no Lab 5:** `groupBy("region")` tem 5 linhas após a agregação parcial. Sem AQE, 200 partições; com AQE, **1**. Está abaixo de todos os limites, então tudo é fundido.
+
+**Ler o plano:** antes de executar, `explain()` mostra `isFinalPlan=false`, a estimativa inicial. As decisões reais aparecem no plano como `AQEShuffleRead` só depois de executada a consulta.
+
+---
+
+## Trocar o join: útil, mas não grátis {.smaller}
+
+Se em execução um lado fica abaixo de `spark.sql.adaptive.autoBroadcastJoinThreshold` (por padrão, igual ao estático, 10 MB), o AQE converte o sort-merge em broadcast.
+
+**Exemplo da Aula 5:** uma tabela de 1 GB filtrada para 1 MB. O plano estático não vê o efeito do filtro, então escolhe sort-merge. Depois de executado o shuffle do lado pequeno, aparece seu tamanho real.
+
+| | Sort-merge | Broadcast pelo AQE | Broadcast desde o início |
+|-|------------|--------------------|--------------------------|
+| Map do shuffle do lado grande | Feito | **Já feito** | Evitado |
+| Rede para o lado grande | Sim | Não: leitura local | Não |
+| Ordenação de ambos os lados | Sim | Evitada | Evitada |
+
+**Por isso a documentação diz que "não é tão eficiente quanto planejar um broadcast hash join desde o início".** O stage map do lado grande já foi pago.
+
+**Consequência prática:** se você sabe que um lado fica pequeno após filtrar, `F.broadcast()` continua melhor do que esperar o AQE descobrir.
+
+---
+
+## Skew join: a regra exata {.smaller}
+
+Uma partição tem skew se seu tamanho supera **ambos** os limites (`OptimizeSkewedJoin`):
+
+$$\text{tamanho} > \max\big(\texttt{skewedPartitionThresholdInBytes},\ \ \texttt{skewedPartitionFactor} \times \text{mediana}\big)$$
+
+com padrões de 256 MB e 5,0. É dividida em pedaços de cerca de:
+
+$$\text{alvo} = \max\big(\texttt{advisoryPartitionSizeInBytes},\ \text{média das não enviesadas}\big)$$
+
+**Exercício.** Mediana 100 MB, média das demais 100 MB, advisory padrão de 64 MB. Quais são divididas, e em quantas?
+
+::: {.fragment}
+Limiar: $\max(256, 500) = 500$ MB.
+
+| Partição | Skew? | Pedaços |
+|----------|-------|---------|
+| 400 MB | **Não**: 4× a mediana, mas abaixo do limiar | 1 |
+| 2 GB | Sim | $2000 / 100 =$ **20** tasks, com a partição do outro lado replicada 20 vezes |
+
+A regra é conservadora de propósito: abaixo de 256 MB, uma task lenta não justifica replicar.
+:::
+
+---
+
+## Skew join: como divide, e quando não pode {.smaller}
+
+Divide a partição por **faixas de saídas map**, e o outro lado é replicado uma vez por faixa:
+
+```
+ R, partition 7 (hot): Map0 Map1 │ Map2 Map3 │ Map4       S, partition 7
+                       └──task A─┘ └──task B─┘ └task C┘   ──▶ copied to A, B and C
+```
+
+Ler saídas map diferentes permite dividir uma chave sem nenhum salt. E explica seus limites:
+
+| Limite | Por quê |
+|--------|---------|
+| No máximo $M$ pedaços | A granularidade é uma saída map: uma chave de uma só task map **não pode ser dividida** |
+| Skew em ambos os lados | Produto cruzado das divisões: $p \times q$ tasks |
+| `LEFT` divide só a esquerda | O lado preservado não pode ser replicado: mesma razão da restrição de broadcast |
+| `RIGHT` divide só a direita | Igual, espelhado |
+| Só joins | Em um `groupBy`, todas as linhas de uma chave devem terminar juntas, ou o resultado seria incorreto |
+| Pode ser omitido | Se adicionaria um shuffle, a menos que `forceOptimizeSkewedJoin` esteja ativo |
+
+# 5. UDFs
+
+## O que uma UDF custa {.smaller}
+
+**1. Cruzar a fronteira.** Funções nativas rodam dentro do código gerado da JVM. Uma UDF Python envia dados a um processo Python à parte e de volta:
+
+```
+ F.when(...)    JVM ───────────────────────────────▶ JVM
+ @udf           JVM ─▶ pickle ─▶ Python, per value ─▶ pickle ─▶ JVM
+ @pandas_udf    JVM ─▶ Arrow batches ─▶ Pandas, per batch ─▶ Arrow ─▶ JVM
+```
+
+Com $n$ linhas, lotes de $B$ (padrão 10.000), custo de chamada por linha $g$ e custo de transferência por lote $b$:
+
+$$T_{\text{linha}} \approx n\,(s + g) \qquad T_{\text{pandas}} \approx \frac{n}{B}\,(b + g_{\text{vec}})$$
+
+**2. Opacidade, o maior custo.** O Catalyst não vê dentro de uma UDF:
+
+- Sem predicate pushdown através dela, nem dobra de constantes.
+- Um filtro sobre seu resultado roda **depois** de calculá-la em todas as linhas.
+- É suposta **determinística**: pode executar mais ou menos vezes do que escrito. Caso contrário, use `asNondeterministic()`.
+- **Sem curto-circuito garantido**: uma guarda como `F.when(x.isNotNull(), my_udf(x))` não assegura que não receba nulos.
+
+---
+
+## Exercício: por que a Pandas UDF foi a mais lenta? {.smaller}
+
+A ordem habitual é **nativa > Pandas UDF > UDF Python**. O Lab 5 mediu, com 5 milhões de linhas e uma função simples que retorna texto:
+
+| Método | Tempo |
+|--------|-------|
+| `F.when` nativa | 0,36 s |
+| UDF Python | 0,65 s |
+| Pandas UDF | **1,67 s** |
+
+::: {.fragment}
+O modelo diz que depende de $g$ frente a $g_{\text{vec}}$. Aqui a função são três comparações, então $g$ é minúsculo, e há pouco trabalho por linha que a vetorização possa economizar. Enquanto isso, a versão Pandas paga a conversão Arrow e a construção de uma Series de strings Python por lote.
+
+**A causa provável é essa estrutura de custos; o Lab não a isola.** A vetorização compensa quando a função faz trabalho numérico real por linha, e menos com saída de texto.
+
+**O que vale sem exceção:** a nativa é a mais rápida, e a única que o otimizador entende. Entre as duas UDFs, **meça com sua função**, em vez de confiar em uma ordem. O Spark também oferece UDFs Python otimizadas com Arrow (`useArrow=True`), que rodam linha a linha mas transferem lotes.
+:::
+
+# 6. Diagnóstico pela Spark UI
+
+## Do sintoma ao termo do modelo {.smaller}
+
+| Métrica (aba Stages) | O que mede | Se está alta |
+|----------------------|------------|--------------|
+| Duração, máxima vs mediana | $t_{\max}$ vs típica | Skew, ou um nó lento |
+| Shuffle Read Size, máxima vs mediana | Distribuição de $D$ | Skew **de dados**, se acompanha a duração |
+| Shuffle Write Size | Volume $D$ | Dados demais movidos: filtre, agregue ou faça broadcast antes |
+| Spill (Memory / Disk) | Memória de execução superada | Poucas partições, ou uma muito grande |
+| GC Time | Pressão sobre a JVM | Objetos demais, ou cache demais |
+| Scheduler Delay | Custo fixo $o$ | Tasks minúsculas demais |
+| Locality Level | Onde cada task rodou | Leituras com `ANY` sugerem localidade perdida |
+
+**Duração máxima e mediana diferem, com tamanhos de dados parelhos?** A causa não é skew de dados: procure um nó lento, GC ou trabalho pesado por linha em certos valores. A execução especulativa só ajuda no primeiro caso (`spark.speculation`, padrão `false`).
+
+---
+
+## Problema integrador: diagnostique este stage {.smaller}
+
+Um stage de sort-merge join, 200 tasks, 100 núcleos, AQE skew join desligado:
+
+| Métrica | Mediana | Máx |
+|---------|---------|-----|
+| Duração | 20 s | 600 s |
+| Shuffle Read | 100 MB | 3 GB |
+
+1. Quanto valem $W$ e os limites de $T$? 2. Quanto poderiam ganhar mais núcleos, no máximo? 3. O que se ganharia eliminando o skew? 4. Com AQE ativo, ela é dividida, e em quantas?
+
+::: {.fragment}
+1. $W \approx 199 \times 20 + 600 = 4.580$ s, $W/c = 45{,}8$ s. Limites: $600 \leq T \leq 45{,}8 + 0{,}99 \times 600 \approx 640$ s.
+2. **Nada:** $T \geq t_{\max} = 600$ s com qualquer número de núcleos.
+3. Com $t_{\max}$ perto da mediana, $T \approx$ de 46 s a 66 s: cerca de **10×**, com o mesmo hardware.
+4. $3\ \text{GB} > \max(256\ \text{MB}, 500\ \text{MB})$: **com skew**. Alvo $\max(64, 100) = 100$ MB, então cerca de **30 tasks**, desde que haja pelo menos essas saídas map com a chave. Seriam $t \approx 20$ s por pedaço.
+
+Se fosse `collect_list` em vez de um join, o AQE **não poderia** dividi-lo, e a correção teria de estar na consulta.
+:::
+
+---
+
+## Referências {.smaller}
+
+- Zaharia, M., Chowdhury, M., Das, T., et al. (2012). *Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory Cluster Computing*. NSDI '12.
+- Apache Spark 4.0.1: [Performance Tuning (AQE)](https://spark.apache.org/docs/4.0.1/sql-performance-tuning.html#adaptive-query-execution), [Tuning Guide (memory)](https://spark.apache.org/docs/4.0.1/tuning.html#memory-management-overview), [RDD Programming Guide (persistence)](https://spark.apache.org/docs/4.0.1/rdd-programming-guide.html#rdd-persistence), [Arrow in PySpark](https://spark.apache.org/docs/4.0.1/api/python/tutorial/sql/arrow_pandas.html).
+- Apache Spark 4.0.1, source code: `OptimizeSkewedJoin.scala`, `SQLConf.scala`, `pyspark/sql/udf.py`, `pyspark/sql/classic/dataframe.py`.

@@ -188,6 +188,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,18 +207,70 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="lo-que-aprenderás" class="slide level2">
-<h2>Lo que aprenderás</h2>
+<section id="lo-que-podrás-hacer" class="slide level2 smaller">
+<h2>Lo que podrás hacer</h2>
 <ul>
-<li>Data warehouse, data lake y lakehouse</li>
-<li>Arquitectura Medallion: Bronze, Silver y Gold</li>
-<li>Ingerir CSV y JSON con problemas reales</li>
-<li>Reglas de calidad y cuarentena</li>
-<li>Parquet particionado y <em>partition pruning</em></li>
+<li>Enunciar el invariante de cada capa Medallion, y comprobarlo con números</li>
+<li>Diseñar un pipeline que se pueda <strong>reejecutar sin riesgo</strong>: idempotencia</li>
+<li>Explicar por qué Parquet comprime y salta datos, con cálculos reales</li>
+<li>Elegir columnas de partición por su cardinalidad y estimar los archivos producidos</li>
+<li>Decidir qué hacer con datos malos, y medir su calidad</li>
 </ul>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Bloque</th>
+<th>Tema</th>
+<th>Min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Warehouse, lake y lakehouse</td>
+<td>10</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>Medallion como conjunto de invariantes</td>
+<td>15</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Idempotencia: sobrevivir a los reintentos</td>
+<td>20</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>La calidad de datos como medición</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Dentro de un archivo Parquet</td>
+<td>25</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Particionado</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Problema integrador</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="warehouse-lake-lakehouse" class="slide level2">
-<h2>Warehouse, lake &amp; lakehouse</h2>
+<section>
+<section id="warehouse-lake-y-lakehouse" class="title-slide slide level1 center">
+<h1>1. Warehouse, lake y lakehouse</h1>
+
+</section>
+<section id="tres-respuestas-a-un-mismo-compromiso" class="slide level2 smaller">
+<h2>Tres respuestas a un mismo compromiso</h2>
+<p>La elección es <strong>cuándo se impone la estructura</strong>, y qué garantías vienen con ella:</p>
 <table class="caption-top">
 <colgroup>
 <col style="width: 2%">
@@ -228,259 +281,588 @@ Felipe A. Moreno-Vera
 <thead>
 <tr class="header">
 <th></th>
-<th>Data Warehouse</th>
-<th>Data Lake</th>
+<th>Data warehouse</th>
+<th>Data lake</th>
 <th>Lakehouse</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Almacena</td>
-<td>Tablas estructuradas</td>
-<td>Archivos de cualquier tipo</td>
-<td>Archivos abiertos + capa de tabla</td>
+<td>Schema</td>
+<td><strong>Al escribir</strong></td>
+<td><strong>Al leer</strong></td>
+<td>Al escribir, sobre archivos abiertos</td>
 </tr>
 <tr class="even">
-<td>Formato</td>
-<td>Propietario</td>
-<td>CSV, JSON, Parquet…</td>
+<td>Se guarda como</td>
+<td>Formato propietario</td>
+<td>Archivos: CSV, JSON, Parquet</td>
 <td>Parquet + log de transacciones</td>
 </tr>
 <tr class="odd">
-<td>Costo</td>
-<td>Alto</td>
-<td>Bajo (object storage)</td>
-<td>Bajo</td>
+<td>Almacenamiento y cómputo</td>
+<td>Acoplados, en general</td>
+<td>Separados</td>
+<td>Separados</td>
 </tr>
 <tr class="even">
-<td>Transacciones (ACID)</td>
-<td>Sí</td>
-<td>No</td>
-<td>Sí</td>
+<td>Costo por GB</td>
+<td>Alto</td>
+<td>Bajo (object store)</td>
+<td>Bajo</td>
 </tr>
 <tr class="odd">
-<td>UPDATE / DELETE</td>
+<td>Transacciones</td>
 <td>Sí</td>
-<td>Difícil (reescribir archivos)</td>
+<td><strong>No</strong></td>
 <td>Sí</td>
+</tr>
+<tr class="even">
+<td>Riesgo</td>
+<td>Rígido, caro</td>
+<td>Se vuelve un “pantano de datos”</td>
+<td>Joven, requiere mantenimiento</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Schema al leer aplaza el costo, no lo elimina:</strong> cada consumidor debe rehacer el análisis y la limpieza, y cada uno puede hacerlo distinto. Así, dos informes pueden discrepar sin que nadie se equivoque.</p>
+<p><strong>La debilidad central del lake</strong> no es el formato, sino la falta de garantías: nada impide leer una tabla a medio escribir. Esa es la motivación de esta clase para la disciplina, y de la Clase 9 para las transacciones.</p>
+</section></section>
+<section>
+<section id="medallion-como-conjunto-de-invariantes" class="title-slide slide level1 center">
+<h1>2. Medallion como conjunto de invariantes</h1>
+
 </section>
-<section id="arquitectura-medallion" class="slide level2">
-<h2>Arquitectura Medallion</h2>
-<pre><code>  SOURCES          BRONZE             SILVER              GOLD
-  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
-  APIs, CDC        + metadata         typed, validated    BI / ML / API
-                   all strings        no duplicates
-                                 └──▶ QUARANTINE (rejected)</code></pre>
+<section id="qué-garantiza-cada-capa" class="slide level2 smaller">
+<h2>Qué garantiza cada capa</h2>
+<p>Medallion no trata de nombres de carpetas, sino de <strong>qué se puede suponer</strong> al leer cada capa:</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 17%">
-<col style="width: 51%">
-<col style="width: 31%">
+<col style="width: 18%">
+<col style="width: 37%">
+<col style="width: 43%">
 </colgroup>
 <thead>
 <tr class="header">
 <th>Capa</th>
-<th>Pregunta que responde</th>
-<th>Regla de oro</th>
+<th>Invariante</th>
+<th>Consecuencia</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td><strong>Bronze</strong></td>
-<td>¿Qué llegó exactamente?</td>
-<td>Nunca descartar nada. Permite reprocesar.</td>
+<td>Tiene todo lo que llegó, sin cambios, con linaje</td>
+<td>Toda capa posterior se puede reconstruir</td>
 </tr>
 <tr class="even">
 <td><strong>Silver</strong></td>
-<td>¿Cuál es la versión correcta de cada registro?</td>
-<td>Tipos correctos, una fila por entidad, reglas aplicadas.</td>
+<td>Tipada, válida, <strong>una fila por entidad</strong></td>
+<td>Los joins no multiplican filas</td>
 </tr>
 <tr class="odd">
 <td><strong>Gold</strong></td>
-<td>¿Qué necesita ver el negocio?</td>
-<td>Agregaciones y métricas, modeladas para el consumo.</td>
+<td>Métricas definidas una vez, modeladas para el uso</td>
+<td>Los informes coinciden entre sí</td>
 </tr>
 </tbody>
 </table>
+<p><strong>La propiedad clave: Silver es una función pura de Bronze, y Gold de Silver.</strong></p>
+<p><span class="math display">\[\text{Silver} = f(\text{Bronze}) \qquad \text{Gold} = g(\text{Silver})\]</span></p>
+<p>Así, un error en <span class="math inline">\(f\)</span> es <strong>recuperable</strong>: corrige <span class="math inline">\(f\)</span> y reejecuta. Sin un Bronze inmutable, un error en la limpieza destruye la única copia de los datos.</p>
+<p><strong>Por eso Bronze lee todo como string:</strong> una lectura tipada ya sería una decisión que pierde información, como convertir <code>"N/A"</code> en <code>NULL</code>, y una decisión debe estar en <span class="math inline">\(f\)</span>, donde se puede cambiar.</p>
+</section></section>
+<section>
+<section id="idempotencia-sobrevivir-a-los-reintentos" class="title-slide slide level1 center">
+<h1>3. Idempotencia: sobrevivir a los reintentos</h1>
+
 </section>
-<section id="por-qué-parquet" class="slide level2">
-<h2>Por qué Parquet</h2>
+<section id="un-job-correrá-dos-veces" class="slide level2 smaller">
+<h2>Un job correrá dos veces</h2>
+<p>Los planificadores reintentan, los operadores relanzan, y un job puede morir tras escribir pero antes de reportar éxito. Así que definimos:</p>
+<p><span class="math display">\[\text{run}(\text{run}(S, d),\ d) = \text{run}(S, d)\]</span></p>
+<p>Un paso del pipeline es <strong>idempotente</strong> si ejecutarlo otra vez con la misma entrada deja el mismo estado.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 4%">
-<col style="width: 52%">
+<col style="width: 24%">
+<col style="width: 33%">
 <col style="width: 42%">
 </colgroup>
 <thead>
 <tr class="header">
+<th>Escritura</th>
+<th>¿Idempotente?</th>
+<th>Tras un reintento</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>mode("append")</code></td>
+<td><strong>No</strong></td>
+<td>Las filas se <strong>duplican</strong></td>
+</tr>
+<tr class="even">
+<td><code>mode("overwrite")</code>, estático</td>
+<td>Sí, pero</td>
+<td>Reemplaza <strong>toda la tabla</strong>, incluidos otros días</td>
+</tr>
+<tr class="odd">
+<td><code>overwrite</code> + particiones dinámicas</td>
+<td><strong>Sí</strong></td>
+<td>Reemplaza solo las particiones presentes en los datos</td>
+</tr>
+<tr class="even">
+<td><code>MERGE</code> por clave</td>
+<td><strong>Sí</strong></td>
+<td>Mismas claves, mismo estado, con una fuente determinista</td>
+</tr>
+</tbody>
+</table>
+<p><strong>La fórmula práctica:</strong></p>
+<p><span class="math display">\[\text{entrega al menos una vez} + \text{escritura idempotente} = \text{efectivamente una vez}\]</span></p>
+<p>La <em>entrega</em> exactamente una vez es muy difícil de obtener, mientras que reintentar es fácil. Así que se diseña el <strong>efecto</strong> y no la entrega. Esto reaparece en los sinks de streaming (Clase 10).</p>
+</section>
+<section id="ejercicio-qué-pasa-en-un-reintento" class="slide level2 smaller">
+<h2>Ejercicio: ¿qué pasa en un reintento?</h2>
+<p>Un job diario procesa <code>d</code> y falla a la mitad. ¿Qué versión se puede reejecutar sin riesgo?</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>day <span class="op">=</span> df.<span class="bu">filter</span>(col(<span class="st">"date"</span>) <span class="op">==</span> d)</span>
+<span id="cb1-2"><a href=""></a><span class="co"># A</span></span>
+<span id="cb1-3"><a href=""></a>day.write.mode(<span class="st">"append"</span>).partitionBy(<span class="st">"date"</span>).parquet(path)</span>
+<span id="cb1-4"><a href=""></a><span class="co"># B</span></span>
+<span id="cb1-5"><a href=""></a>spark.conf.<span class="bu">set</span>(<span class="st">"spark.sql.sources.partitionOverwriteMode"</span>, <span class="st">"dynamic"</span>)</span>
+<span id="cb1-6"><a href=""></a>day.write.mode(<span class="st">"overwrite"</span>).partitionBy(<span class="st">"date"</span>).parquet(path)</span>
+<span id="cb1-7"><a href=""></a><span class="co"># C (same as B, with the default mode)</span></span>
+<span id="cb1-8"><a href=""></a>day.write.mode(<span class="st">"overwrite"</span>).partitionBy(<span class="st">"date"</span>).parquet(path)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="fragment">
+<table class="caption-top" style="width:100%;">
+<colgroup>
+<col style="width: 3%">
+<col style="width: 58%">
+<col style="width: 37%">
+</colgroup>
+<thead>
+<tr class="header">
 <th></th>
-<th>CSV / JSON</th>
-<th>Parquet</th>
+<th>En un reintento</th>
+<th>Veredicto</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Orientación</td>
-<td>Fila</td>
-<td><strong>Columna</strong></td>
+<td><strong>A</strong></td>
+<td>Quedan las filas del intento fallido: <strong>duplicados parciales</strong></td>
+<td>Inseguro</td>
 </tr>
 <tr class="even">
-<td>Schema</td>
-<td>Inferido en cada lectura</td>
-<td>Guardado en el archivo</td>
+<td><strong>B</strong></td>
+<td>Se reemplaza la partición <code>d</code>, y las demás quedan intactas</td>
+<td><strong>Seguro</strong></td>
 </tr>
 <tr class="odd">
-<td>Compresión</td>
-<td>Débil</td>
-<td>Fuerte (por columna)</td>
-</tr>
-<tr class="even">
-<td>Leer 2 de 20 columnas</td>
-<td>Lee todo</td>
-<td>Lee solo 2 (<em>column pruning</em>)</td>
-</tr>
-<tr class="odd">
-<td>Filtrar <code>price &gt; 100</code></td>
-<td>Lee todo</td>
-<td>Salta bloques con estadísticas min/max (<em>predicate pushdown</em>)</td>
+<td><strong>C</strong></td>
+<td>El modo <code>static</code> <strong>borra todos los demás días</strong>, sin ningún error</td>
+<td>Peligroso ya la primera vez</td>
 </tr>
 </tbody>
 </table>
-</section>
-<section id="bronze-ingerir-sin-perder-nada" class="slide level2">
-<h2>Bronze: ingerir sin perder nada</h2>
-<ul>
-<li>Leer <strong>todo como string</strong>: un precio como <code>N/A</code> no debe fallar ni volverse nulo en silencio</li>
-<li>Unir fuentes preservando columnas que solo existen en una</li>
-<li>Añadir <strong>metadatos de linaje</strong>: archivo de origen y momento de ingesta</li>
-</ul>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>raw_csv <span class="op">=</span> (spark.read.option(<span class="st">"header"</span>, <span class="va">True</span>).csv(path)</span>
-<span id="cb2-2"><a href=""></a>    .select(<span class="st">"*"</span>, F.col(<span class="st">"_metadata.file_path"</span>).alias(<span class="st">"_source_file"</span>)))</span>
-<span id="cb2-3"><a href=""></a></span>
-<span id="cb2-4"><a href=""></a>bronze <span class="op">=</span> (raw_csv.unionByName(raw_json, allowMissingColumns<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb2-5"><a href=""></a>    .withColumn(<span class="st">"_ingested_at"</span>, F.current_timestamp()))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="silver-limpiar-validar-y-deduplicar" class="slide level2">
-<h2>Silver: limpiar, validar y deduplicar</h2>
-<pre><code>  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
-                                                   └──▶ QUARANTINE (+ reason)</code></pre>
-<p><strong>El modo ANSI viene activo por defecto en Spark 4</strong>: un <code>cast</code> inválido genera error en lugar de devolver nulo.</p>
-<table class="caption-top">
-<colgroup>
-<col style="width: 18%">
-<col style="width: 52%">
-<col style="width: 29%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Operación</th>
-<th>Falla con valor inválido</th>
-<th>Devuelve nulo</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Conversión de tipo</td>
-<td><code>col.cast("int")</code></td>
-<td><code>col.try_cast("int")</code></td>
-</tr>
-<tr class="even">
-<td>Texto a timestamp</td>
-<td><code>F.to_timestamp(c, fmt)</code></td>
-<td><code>F.try_to_timestamp(c, F.lit(fmt))</code></td>
-</tr>
-<tr class="odd">
-<td>División</td>
-<td><code>a / b</code></td>
-<td><code>F.try_divide(a, b)</code></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="reglas-de-calidad-y-cuarentena" class="slide level2">
-<h2>Reglas de calidad y cuarentena</h2>
-<p>En lugar de borrar los registros malos, guárdalos <strong>con el motivo</strong>: permite medir la calidad de la fuente, avisar al equipo de origen y reprocesar.</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>RULES <span class="op">=</span> {</span>
-<span id="cb4-2"><a href=""></a>    <span class="st">"preco_invalido"</span>:      F.col(<span class="st">"price"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"price"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
-<span id="cb4-3"><a href=""></a>    <span class="st">"quantidade_invalida"</span>: F.col(<span class="st">"quantity"</span>).isNull() <span class="op">|</span> (F.col(<span class="st">"quantity"</span>) <span class="op">&lt;=</span> <span class="dv">0</span>),</span>
-<span id="cb4-4"><a href=""></a>}</span>
-<span id="cb4-5"><a href=""></a>errors <span class="op">=</span> F.array_compact(F.array(<span class="op">*</span>[F.when(c, F.lit(n)) <span class="cf">for</span> n, c <span class="kw">in</span> RULES.items()]))</span>
-<span id="cb4-6"><a href=""></a>df <span class="op">=</span> df.withColumn(<span class="st">"_errors"</span>, errors)</span>
-<span id="cb4-7"><a href=""></a>valid    <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">==</span> <span class="dv">0</span>).drop(<span class="st">"_errors"</span>)</span>
-<span id="cb4-8"><a href=""></a>rejected <span class="op">=</span> df.<span class="bu">filter</span>(F.size(<span class="st">"_errors"</span>) <span class="op">&gt;</span> <span class="dv">0</span>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="escritura-particionada" class="slide level2">
-<h2>Escritura particionada</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>(silver_df</span>
-<span id="cb5-2"><a href=""></a> .repartition(<span class="st">"order_date"</span>)      <span class="co"># all rows of a day in the same task</span></span>
-<span id="cb5-3"><a href=""></a> .write.mode(<span class="st">"overwrite"</span>)</span>
-<span id="cb5-4"><a href=""></a> .partitionBy(<span class="st">"order_date"</span>)</span>
-<span id="cb5-5"><a href=""></a> .parquet(SILVER))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<ul>
-<li>Las buenas columnas de partición tienen <strong>baja cardinalidad</strong> y se <strong>usan en filtros</strong></li>
-<li>Cada task escribe un archivo por partición que encuentra: sin el <code>repartition</code>, aparece el problema de <strong>archivos pequeños</strong></li>
-</ul>
-</section>
-<section id="pruning-en-el-plan" class="slide level2">
-<h2>Pruning en el plan</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 33%">
-<col style="width: 33%">
-<col style="width: 33%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Mecanismo</th>
-<th>Campo en el plan</th>
-<th>Efecto</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Partition pruning</td>
-<td><code>PartitionFilters</code></td>
-<td>Salta carpetas enteras</td>
-</tr>
-<tr class="even">
-<td>Predicate pushdown</td>
-<td><code>PushedFilters</code></td>
-<td>Salta bloques dentro de los archivos</td>
-</tr>
-<tr class="odd">
-<td>Column pruning</td>
-<td><code>ReadSchema</code></td>
-<td>Lee solo las columnas usadas</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="reprocesar-y-gold" class="slide level2">
-<h2>Reprocesar y Gold</h2>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a>spark.conf.<span class="bu">set</span>(<span class="st">"spark.sql.sources.partitionOverwriteMode"</span>, <span class="st">"dynamic"</span>)</span>
-<span id="cb6-2"><a href=""></a>day3.repartition(<span class="st">"order_date"</span>).write.mode(<span class="st">"overwrite"</span>) <span class="op">\</span></span>
-<span id="cb6-3"><a href=""></a>    .partitionBy(<span class="st">"order_date"</span>).parquet(SILVER)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-warning callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
+<p>La salida del Lab 7 muestra el efecto de B: el 3 de julio baja a 100 filas, mientras el 1 y el 2 siguen en 1.055 y 1.050.</p>
+<p><strong>B aún tiene una ventana:</strong> durante la sobrescritura, un lector ve la partición a medio escribir. Resolver eso requiere transacciones (Clase 9).</p>
 </div>
-<p><strong>Advertencia</strong></p>
-</div>
-<div class="callout-content">
-<p>Con el modo por defecto <code>static</code>, el mismo comando <strong>borraría todos los demás días</strong>.</p>
-</div>
-</div>
-</div>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>gold_daily <span class="op">=</span> (sales.groupBy(<span class="st">"order_date"</span>, <span class="st">"region"</span>, <span class="st">"category"</span>)</span>
-<span id="cb7-2"><a href=""></a>    .agg(F.count(<span class="st">"*"</span>).alias(<span class="st">"orders"</span>),</span>
-<span id="cb7-3"><a href=""></a>         F.<span class="bu">round</span>(F.<span class="bu">sum</span>(<span class="st">"revenue"</span>), <span class="dv">2</span>).alias(<span class="st">"revenue"</span>)))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section></section>
+<section>
+<section id="la-calidad-de-datos-como-medición" class="title-slide slide level1 center">
+<h1>4. La calidad de datos como medición</h1>
 
 </section>
+<section id="la-calidad-es-un-número-no-una-opinión" class="slide level2 smaller">
+<h2>La calidad es un número, no una opinión</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 23%">
+<col style="width: 21%">
+<col style="width: 17%">
+<col style="width: 38%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Dimensión</th>
+<th>Pregunta</th>
+<th>Medida</th>
+<th>Regla de ejemplo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Completitud</strong></td>
+<td>¿Está presente?</td>
+<td>% no nulo</td>
+<td><code>customer_id</code> no nulo</td>
+</tr>
+<tr class="even">
+<td><strong>Validez</strong></td>
+<td>¿Está en el dominio?</td>
+<td>% dentro de reglas</td>
+<td><code>price &gt; 0</code>, status en una lista</td>
+</tr>
+<tr class="odd">
+<td><strong>Unicidad</strong></td>
+<td>¿Hay una por entidad?</td>
+<td>Distintos / total</td>
+<td>Una fila por <code>order_id</code></td>
+</tr>
+<tr class="even">
+<td><strong>Consistencia</strong></td>
+<td>¿Coinciden las tablas?</td>
+<td>% de claves encontradas</td>
+<td><code>product_id</code> existe en products</td>
+</tr>
+<tr class="odd">
+<td><strong>Oportunidad</strong></td>
+<td>¿Llegó a tiempo?</td>
+<td>Percentiles de retraso</td>
+<td>Del evento a la ingesta</td>
+</tr>
+</tbody>
+</table>
+<p><strong>¿Qué hacer con una fila mala?</strong> Cada opción responde a un costo de error distinto:</p>
+<table class="caption-top" style="width:100%;">
+<colgroup>
+<col style="width: 42%">
+<col style="width: 28%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Estrategia</th>
+<th>Cuándo</th>
+<th>Riesgo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Fallar el job</strong></td>
+<td>Regla crítica: todo el lote es sospechoso</td>
+<td>Bloquea todo, por una fila</td>
+</tr>
+<tr class="even">
+<td><strong>Cuarentena</strong></td>
+<td>Caso normal: se guarda, con el motivo</td>
+<td>Alguien debe revisarla</td>
+</tr>
+<tr class="odd">
+<td><strong>Corregir</strong></td>
+<td>Solo si el valor correcto es seguro</td>
+<td>Inventa datos en silencio</td>
+</tr>
+</tbody>
+</table>
+<p>La cuarentena hace la calidad <strong>medible</strong>. Un salto del 2% al 30% de rechazos debe detener el job.</p>
+</section>
+<section id="ejercicio-audita-una-ejecución-real" class="slide level2 smaller">
+<h2>Ejercicio: audita una ejecución real</h2>
+<p>El Lab 7 reportó estos números. <strong>¿Cuadran? ¿Qué significa cada diferencia?</strong></p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Etapa</th>
+<th>Filas</th>
+<th></th>
+<th>Motivo de rechazo</th>
+<th>Filas</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Bronze</td>
+<td>4.337</td>
+<td></td>
+<td><code>invalid_price</code></td>
+<td>202</td>
+</tr>
+<tr class="even">
+<td>Válidas</td>
+<td>3.809</td>
+<td></td>
+<td><code>invalid_quantity</code></td>
+<td>160</td>
+</tr>
+<tr class="odd">
+<td>Rechazadas</td>
+<td>528</td>
+<td></td>
+<td><code>unknown_product</code></td>
+<td>89</td>
+</tr>
+<tr class="even">
+<td>Silver</td>
+<td>3.156</td>
+<td></td>
+<td><code>unknown_region</code></td>
+<td>59</td>
+</tr>
+<tr class="odd">
+<td></td>
+<td></td>
+<td></td>
+<td><code>invalid_date</code></td>
+<td>29</td>
+</tr>
+</tbody>
+</table>
+<div class="fragment">
+<p><strong>Conservación.</strong> <span class="math inline">\(3.809 + 528 = 4.337\)</span>. Se cumple: <strong>no se perdió ninguna fila</strong>. Esta comprobación es barata y debe correr en cada ejecución.</p>
+<p><strong>Los motivos suman 539, no 528.</strong> Difieren en 11, porque una fila puede romper varias reglas. Así, sumar los motivos exagera el número de rechazados.</p>
+<p><strong>De Válidas a Silver se pierden 653 filas</strong> (17%), pero no son errores: filas duplicadas y versiones anteriores de pedidos cuyo estado se actualizó. Silver tiene una fila por pedido.</p>
+<p><strong>Tasa de calidad:</strong> <span class="math inline">\(3.809 / 4.337 =\)</span> 87,8% válidas. Si eso es bueno depende del historial: <strong>una métrica significa poco hasta poder compararla con la de ayer</strong>.</p>
+</div>
+</section>
+<section id="la-deduplicación-debe-ser-determinista" class="slide level2 smaller">
+<h2>La deduplicación debe ser determinista</h2>
+<p>“Quedarse con la última versión de cada pedido” es un problema de ventana, pero ¿qué significa <strong>última</strong>?</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>w <span class="op">=</span> (Window.partitionBy(<span class="st">"order_id"</span>)</span>
+<span id="cb2-2"><a href=""></a>           .orderBy(F.col(<span class="st">"updated_at"</span>).desc(), F.col(<span class="st">"_ingested_at"</span>).desc()))</span>
+<span id="cb2-3"><a href=""></a>df.withColumn(<span class="st">"rn"</span>, F.row_number().over(w)).<span class="bu">filter</span>(<span class="st">"rn = 1"</span>).drop(<span class="st">"rn"</span>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<table class="caption-top">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 62%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Pregunta</th>
+<th>Por qué importa</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>¿Hora de negocio u hora de llegada?</td>
+<td>Un evento tardío no debe pisar un estado más nuevo</td>
+</tr>
+<tr class="even">
+<td>¿La clave de orden es única por entidad?</td>
+<td>Con empates, <code>row_number</code> elige <strong>arbitrariamente</strong>, y las reejecuciones difieren</td>
+</tr>
+<tr class="odd">
+<td>¿Cada ejecución ve toda la historia?</td>
+<td>Si no, un duplicado antiguo puede reaparecer</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>dropDuplicates(["order_id"])</code> no es equivalente:</strong> conserva <strong>una fila arbitraria</strong> de cada clave. Sirve para duplicados exactos, y es incorrecto si las versiones difieren.</p>
+<p><strong>La garantía buscada:</strong> Silver debe ser función determinista de Bronze. Si no, reejecutar un job por un arreglo también cambia filas ajenas al arreglo, y las diferencias se vuelven imposibles de auditar.</p>
+</section></section>
+<section>
+<section id="dentro-de-un-archivo-parquet" class="title-slide slide level1 center">
+<h1>5. Dentro de un archivo Parquet</h1>
+
+</section>
+<section id="estructura-por-qué-un-lector-puede-saltar-tanto" class="slide level2 smaller">
+<h2>Estructura: por qué un lector puede saltar tanto</h2>
+<pre><code> Archivo
+ ├── Grupo de filas 1
+ │     ├── Trozo de columna: price     ── páginas (codificadas, comprimidas)
+ │     ├── Trozo de columna: region    ── páginas
+ │     └── Trozo de columna: quantity  ── páginas
+ ├── Grupo de filas 2 ...
+ └── FOOTER: schema, posición de cada trozo, min/max/nulos por trozo</code></pre>
+<p>Un lector toma primero el footer, y solo entonces decide qué leer. <strong>El footer se escribe al final,</strong> lo que permite escribir en una sola pasada:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 42%">
+<col style="width: 23%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Técnica</th>
+<th>Usa</th>
+<th>Salta</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Column pruning</strong></td>
+<td>Posición de los trozos</td>
+<td>Las columnas no pedidas</td>
+</tr>
+<tr class="even">
+<td><strong>Predicate pushdown</strong></td>
+<td>min/max por grupo de filas</td>
+<td>Grupos que no pueden coincidir</td>
+</tr>
+<tr class="odd">
+<td><strong>Partition pruning</strong></td>
+<td>Nombres de directorios</td>
+<td>Archivos enteros, sin abrirlos</td>
+</tr>
+</tbody>
+</table>
+<p><strong>El pushdown depende del orden de los datos.</strong> Con <span class="math inline">\(G\)</span> grupos de filas y un filtro que selecciona una fracción <span class="math inline">\(s\)</span>:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 72%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Orden de los datos en la columna filtrada</th>
+<th>Fracción leída</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Aleatorio: el min/max de cada grupo lo cubre todo</td>
+<td>Cerca del <strong>100%</strong></td>
+</tr>
+<tr class="even">
+<td>Ordenado: cada grupo tiene un rango estrecho</td>
+<td>Cerca de <span class="math inline">\(s + 1/G\)</span></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="por-qué-comprime-codificar-antes-de-comprimir" class="slide level2 smaller">
+<h2>Por qué comprime: codificar antes de comprimir</h2>
+<p>Columna <code>region</code>, 5 valores distintos, 100 millones de filas, longitud media de 7 caracteres:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 21%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Codificación</th>
+<th>Cómo</th>
+<th>Tamaño</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>PLAIN</strong></td>
+<td>Longitud de 4 bytes + bytes, por cada valor</td>
+<td><span class="math inline">\(100\text{M} \times 11\)</span> B <span class="math inline">\(=\)</span> <strong>1,1 GB</strong></td>
+</tr>
+<tr class="even">
+<td><strong>Diccionario</strong></td>
+<td>5 valores una vez, y un índice de <span class="math inline">\(\lceil \log_2 5 \rceil = 3\)</span> bits por fila</td>
+<td><span class="math inline">\(100\text{M} \times 3 / 8\)</span> B <span class="math inline">\(=\)</span> <strong>37,5 MB</strong></td>
+</tr>
+<tr class="odd">
+<td><strong>Diccionario + RLE</strong>, ordenado</td>
+<td>5 tramos de (índice, conteo)</td>
+<td><strong>Unos pocos bytes</strong> por grupo de filas</td>
+</tr>
+</tbody>
+</table>
+<p>Son <strong>29× antes de cualquier códec de compresión</strong> (por defecto, <code>snappy</code>), y sale solo de que una columna tiene valores parecidos juntos: un formato por filas no puede hacerlo.</p>
+<p><strong>Otras codificaciones:</strong> <code>DELTA_BINARY_PACKED</code> guarda diferencias entre valores consecutivos, ideal para timestamps e IDs crecientes. Si un diccionario crece demasiado, el codificador vuelve a <code>PLAIN</code>.</p>
+<p><strong>Dos consecuencias prácticas:</strong></p>
+<ul>
+<li><strong>La baja cardinalidad comprime bien</strong>, así que una fecha en string casi no cuesta, a diferencia de un UUID.</li>
+<li><strong>Ordenar antes de escribir</strong> ayuda dos veces: tramos más largos para RLE, y min/max más estrechos para el pushdown.</li>
+</ul>
+</section></section>
+<section>
+<section id="particionado" class="title-slide slide level1 center">
+<h1>6. Particionado</h1>
+
+</section>
+<section id="cuántos-archivos-vas-a-crear" class="slide level2 smaller">
+<h2>¿Cuántos archivos vas a crear?</h2>
+<p>Cada task del último stage escribe un archivo <strong>por cada valor de partición que encuentra</strong>. Con <span class="math inline">\(T\)</span> tasks y <span class="math inline">\(V\)</span> valores de partición:</p>
+<p><span class="math display">\[\text{archivos} \leq T \times V\]</span></p>
+<p>El Lab 7 lo midió, con <span class="math inline">\(T = 8\)</span> y <span class="math inline">\(V = 3\)</span>:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Escritura</th>
+<th>Archivos por día</th>
+<th>Tamaño por día</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>.repartition(8)</code>, y <code>partitionBy</code></td>
+<td>8</td>
+<td>84 KB</td>
+</tr>
+<tr class="even">
+<td><code>.repartition("order_date")</code>, y <code>partitionBy</code></td>
+<td><strong>1</strong></td>
+<td><strong>42 KB</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Los mismos datos ocupan la mitad</strong> en un archivo: cada archivo repite su footer, sus diccionarios y sus estadísticas.</p>
+<p><strong>Elegir la columna.</strong> Con 1 TB por año:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 26%">
+<col style="width: 20%">
+<col style="width: 35%">
+<col style="width: 17%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Particionar por</th>
+<th>Directorios</th>
+<th>Tamaño por directorio</th>
+<th>Veredicto</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Día</td>
+<td>365</td>
+<td>2,7 GB</td>
+<td><strong>Bien</strong>, si las consultas filtran por fecha</td>
+</tr>
+<tr class="even">
+<td><code>customer_id</code> (1 M)</td>
+<td>1.000.000</td>
+<td><strong>1 MB</strong></td>
+<td>Terrible: archivos pequeños, y costo de listar</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Una columna de partición necesita baja cardinalidad, y aparecer en los filtros.</strong></p>
+</section></section>
+<section>
+<section id="problema-integrador" class="title-slide slide level1 center">
+<h1>7. Problema integrador</h1>
+
+</section>
+<section id="diseña-esta-tabla" class="slide level2 smaller">
+<h2>Diseña esta tabla</h2>
+<p>Pedidos: 100 GB por día de CSV, 3 años de historia. Las consultas filtran por fecha y a veces por <code>customer_id</code> (1 millón). El job puede fallar y reejecutarse, y llegan actualizaciones tardías de estado hasta 7 días después.</p>
+<ol type="1">
+<li>¿Columna de partición, y por qué no <code>customer_id</code>?</li>
+<li>¿Cómo haces rápidas las consultas por <code>customer_id</code>?</li>
+<li>¿Cómo escribes para ser idempotente?</li>
+<li>¿Archivos de salida por día, con 200 particiones de shuffle? ¿Cómo logras unos 4?</li>
+<li>Una actualización tardía de un día ya escrito: ¿qué haces?</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li><strong><code>order_date</code></strong>: cerca de 1.100 directorios. <code>customer_id</code> daría 1 millón de directorios, con archivos muy pequeños.</li>
+<li><strong>Ordena por <code>customer_id</code> dentro de cada partición antes de escribir</strong>: el min/max por grupo de filas permite saltar.</li>
+<li><strong><code>overwrite</code> con particiones dinámicas</strong>, un día a la vez. Nunca <code>append</code>, y nunca el modo estático.</li>
+<li>Hasta 200 por día. Parquet unas 10× menor da 10 GB/día: <code>repartition(4)</code> por día da unos <strong>2,5 GB cada uno</strong>.</li>
+<li><strong>Reprocesa los días afectados</strong> desde Bronze (como mucho los últimos 7): overwrite es idempotente, y el costo está acotado. Parquet solo no puede actualizar una fila, lo que lleva directo a <code>MERGE</code> (Clase 9).</li>
+</ol>
+</div>
+</section>
+<section id="referencias" class="slide level2 smaller">
+<h2>Referencias</h2>
+<ul>
+<li>Armbrust, M., Ghodsi, A., Xin, R., Zaharia, M. (2021). <em>Lakehouse: A New Generation of Open Platforms that Unify Data Warehousing and Advanced Analytics</em>. CIDR.</li>
+<li>Melnik, S., et al.&nbsp;(2010). <em>Dremel: Interactive Analysis of Web-Scale Datasets</em>. VLDB. (origin of Parquet’s columnar nested model)</li>
+<li>Apache Parquet: <a href="https://parquet.apache.org/docs/file-format/">File format</a>, <a href="https://parquet.apache.org/docs/file-format/data-pages/encodings/">Encodings</a>.</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/sql-data-sources-parquet.html">Parquet files</a>, <a href="https://spark.apache.org/docs/4.0.1/sql-performance-tuning.html">Performance Tuning</a>.</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

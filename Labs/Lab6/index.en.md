@@ -10,7 +10,7 @@ layout: default
 
 # Lab 6: Hadoop: MapReduce and HDFS
 
-The first notebook only needs PySpark. The second one installs Hadoop and starts a real HDFS: it is designed for Colab or Linux with write access to `/opt`, downloads about 500 MB and takes a few minutes.
+The first notebook only needs PySpark. The second one installs Hadoop and starts a real HDFS: it is designed for Colab or Linux with Java, installs into your home folder, downloads about 500 MB and takes a few minutes.
 
 ### Files
 

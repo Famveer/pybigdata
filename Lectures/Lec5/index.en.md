@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >In this lecture, we will learn:
 >
->* Jobs, stages, tasks and shuffles
->* Reading plans with explain()
->* Partitions, repartition and coalesce
->* Broadcast and sort-merge joins
+>* How Catalyst compiles a query: rules, cost and physical plan
+>* Narrow and wide dependencies: predicting stages and tasks
+>* A time model for a stage, and fault tolerance
+>* Anatomy and cost of the shuffle, and partial aggregation
+>* How many partitions: the read formula, repartition and coalesce
+>* Join algorithms: cost, limits and how Spark chooses
 
 
 ### Slides

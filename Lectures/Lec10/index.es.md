@@ -14,10 +14,11 @@ layout: default
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Tablas ilimitadas y micro-batches
->* Output modes y triggers
->* Ventanas y watermark
->* Checkpoint y exactly-once
+>* El modelo: tabla ilimitada, tiempo del evento y tiempo de proceso
+>* Micro-batches y capacidad: estabilidad y tiempo de recuperación
+>* Ventanas y cuánto estado cuestan
+>* Watermarks: la regla exacta, su garantía y cómo elegirlo
+>* Qué requiere de verdad exactly-once, y qué sinks lo ofrecen
 
 
 ### Slides

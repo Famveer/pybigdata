@@ -13,130 +13,242 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## What you will learn
+## What you will be able to do {.smaller}
 
-- Transformer, Estimator and Pipeline
-- Feature preparation: nulls, categories and vectors
-- Train and evaluate a classifier (customer churn)
-- Choosing the decision threshold
-- Cross-validation, saving models, batch and streaming scoring
+- Decide whether a problem needs distributed training at all
+- Explain why `fit` must see only training data, and how a Pipeline guarantees it
+- Explain how logistic regression is distributed, and estimate its network cost
+- Explain why trees use histograms, and what their parameters cost
+- Read a confusion matrix, and choose a threshold from business costs
+- Count what cross-validation costs, and avoid the optimism of selection
+
+| Block | Topic | Min |
+|-------|-------|-----|
+| 1 | Do you need distributed ML? | 15 |
+| 2 | Pipelines and data leakage | 20 |
+| 3 | Logistic regression at scale | 25 |
+| 4 | Trees: splitting without sorting | 20 |
+| 5 | Evaluation and thresholds | 25 |
+| 6 | Tuning, and integrating problem | 15 |
+
+# 1. Do you need distributed ML?
+
+## More data helps less and less {.smaller}
+
+A model's error usually falls with training size $n$ with diminishing returns: the statistical error of many models shrinks roughly as $O(1/\sqrt{n})$. **Going from 1 million to 100 million rows typically cuts that part of the error by 10, and it may already be negligible next to the model's bias.**
+
+**So test before scaling:** train on increasing samples, and plot the validation metric.
+
+| The learning curve... | Means | Action |
+|-----------------------|-------|--------|
+| Is flat by 1% of the data | More rows add nothing | **Sample**, and use scikit-learn on one machine |
+| Is still rising | Data is the bottleneck | MLlib, or a larger machine |
+
+| Use MLlib when | Use scikit-learn or similar when |
+|----------------|----------------------------------|
+| Features come from a distributed pipeline, and the curve keeps rising | A sample fits in one machine's RAM |
+| Scoring must run inside Spark, on billions of rows | You need a wider choice of algorithms |
+
+**Distributed training and distributed scoring are different problems:** a model trained on a sample can still be applied on Spark to all the data.
+
+# 2. Pipelines and data leakage
+
+## Transformer, Estimator, Pipeline: as types {.smaller}
+
+| Concept | Type | Example |
+|---------|------|---------|
+| **Transformer** | $\text{DataFrame} \to \text{DataFrame}$ | A trained model, `VectorAssembler` |
+| **Estimator** | $\text{DataFrame} \to \text{Transformer}$ | `Imputer`, `StringIndexer`, `LogisticRegression` |
+| **Pipeline** | Is itself an Estimator: `fit` gives a `PipelineModel` | |
+
+**The rule is one sentence: anything that learns from data is an Estimator, so it must be fitted on training data only.** The median, the category list and the scales are parameters of the model.
+
+**Why it matters: leakage.** Suppose a feature is the average churn per region, computed on all the data, so the test rows helped to compute their own feature. The evaluation is then **optimistic**, and that optimism disappears only in production, where nobody will warn you.
+
+| Common leak | Why it leaks |
+|-------------|--------------|
+| Imputing or scaling before the split | Test statistics entered training |
+| A feature computed after the target's date | It would not exist at prediction time |
+| Random split of time-ordered data | Trains on the future to predict the past |
+| Rows of one customer on both sides | The model recognizes the customer |
+
+# 3. Logistic regression at scale
+
+## The gradient is a sum, so it distributes {.smaller}
+
+$$P(y = 1 \mid x) = \sigma(w \cdot x) = \frac{1}{1 + e^{-w \cdot x}} \qquad \text{loss: } L(w) = -\sum_i \big[y_i \log p_i + (1 - y_i)\log(1 - p_i)\big]$$
+
+Its gradient has a very convenient form:
+
+$$\nabla L(w) = \sum_{i=1}^{n} \big(\sigma(w \cdot x_i) - y_i\big)\, x_i = \sum_{p \in \text{partitions}} \ \sum_{i \in p} \big(\sigma(w \cdot x_i) - y_i\big)\, x_i$$
+
+**It is a distributive aggregation** (Lecture 4). Each partition computes its partial sum, and these are merged. One iteration does:
+
+```
+ driver: w ──broadcast──▶ executors: gradient per partition ──tree aggregation──▶ driver: ∇L, new w
+```
+
+**Cost per iteration:** one full pass over the data, plus $w$ out and $\nabla L$ back. With $d$ features as doubles and $N$ executors, the network carries about $2 N d \times 8$ bytes.
+
+| Case | $d$ | $N$ | Per iteration | 50 iterations |
+|------|-----|-----|---------------|---------------|
+| Lab 10 | 14 | 24 | 5.4 KB | 269 KB: **irrelevant** |
+| Text features | $10^7$ | 100 | **16 GB** | **800 GB** |
+
+**So the bottleneck moves with $d$**: for few features, CPU dominates. For many, the network and the driver do. **Cache the input:** with $k = 50$ iterations, the inequality from Lecture 6 is clearly met.
 
 ---
 
-## When to use MLlib
+## Regularization, and reading the coefficients {.smaller}
 
-| | scikit-learn | Spark MLlib |
-|-|-------------|-------------|
-| Data | Fits in one machine's memory | Distributed, no practical limit |
-| Input | NumPy / Pandas | Spark DataFrame |
-| Features | A matrix `X` | **One vector column** (`features`) |
-| Algorithms | Very broad | The main ones: linear, trees, ensembles, clustering, ALS |
+MLlib minimizes the loss plus an elastic-net penalty, with $\alpha$ = `elasticNetParam`, and $\lambda$ = `regParam`:
 
-Rule of thumb: if training data fits on one machine, scikit-learn is usually simpler.
+$$\min_w\ L(w) + \lambda\left[\frac{1 - \alpha}{2}\,\|w\|_2^2 + \alpha\,\|w\|_1\right]$$
+
+| | $\alpha = 0$: ridge (L2) | $\alpha = 1$: lasso (L1) |
+|-|--------------------------|--------------------------|
+| Effect | Shrinks all coefficients | **Sets some to exactly zero** |
+| Use | Correlated features | Feature selection |
+
+**Why did regularization not help in Lab 11?** With $n$ = 160,000 and $d$ = 14, we have $n/d \approx 11{,}000$: nothing to overfit. Measured mean AUC: 0.8337 with $\lambda = 0$, 0.8331 with $\lambda = 0.1$ and L2, and **0.7786** with $\lambda = 0.1$ and L1, which removed useful features. **Regularization only pays when $d$ is large compared with $n$.**
+
+**Scale matters.** The penalty treats all coefficients alike, so a feature in thousands gets a small coefficient, and is barely penalized. So **standardize first**. Then a coefficient compares effects: `support_tickets` +1.10, `tenure_months` −0.86, while the region stays below 0.01, matching the rule that generated the data.
+
+# 4. Trees: splitting without sorting
+
+## Sorting is too expensive, so use histograms {.smaller}
+
+A single-machine decision tree tries every unique value of each feature as a split: **this requires sorting**, and it is prohibitive when distributed. MLlib discretizes first (Spark documentation):
+
+1. Compute **approximate quantiles** on a sample, to obtain up to `maxBins` candidate splits (default **32**).
+2. For each level of the tree, each partition builds a **histogram** per node, feature and bin, with the class counts.
+3. Merge the histograms. They are additive, so again a **distributive aggregation**. Then choose the best split per node on the driver.
+
+**The size of those statistics is what must travel:**
+
+$$\text{nodes} \times d \times \text{bins} \times \text{classes} \times 8\ \text{B}$$
+
+| Level (depth) | Nodes | With $d = 14$, 32 bins, 2 classes |
+|---------------|-------|-----------------------------------|
+| 3 | 8 | 57 KB |
+| 8 | 256 | **1.8 MB** |
+| 15 | 32,768 | **235 MB** |
+
+The depth grows the cost **exponentially**, so limit it. If statistics exceed `maxMemoryInMB` (default 256 MiB), nodes are processed in groups, with more passes over the data. Per the documentation, communication scales roughly linearly with features and `maxBins`.
 
 ---
 
-## Three core concepts
+## Ensembles, and a lesson on complexity {.smaller}
 
-| Concept | What it is | Method |
-|---------|-----------|--------|
-| **Transformer** | Takes a DataFrame and returns one with new columns | `.transform(df)` |
-| **Estimator** | Learns from data and produces a Transformer | `.fit(df)` |
-| **Pipeline** | Sequence of stages; itself an Estimator | `.fit(df)` gives a `PipelineModel` |
+| | Random Forest | Gradient-Boosted Trees |
+|-|---------------|------------------------|
+| Trees | **Independent**: bootstrap + random features | **Sequential**: each fits the previous one's errors |
+| Parallelism | Can train nodes of many trees at once | Only inside each tree |
+| Reduces | Variance | Bias |
+| More trees | Does not overfit, just costs more | **Can overfit** |
 
-::: {.callout-important}
-Everything learned from data is fitted **on the training set only**. Otherwise, the evaluation is optimistic (*data leakage*). The Pipeline guarantees this.
+**The model is not chosen by reputation.** In Lab 10, on the same test data:
+
+| Model | AUC-ROC | Accuracy | Precision | Recall |
+|-------|---------|----------|-----------|--------|
+| **Logistic regression** | **0.831** | 0.760 | 0.731 | 0.655 |
+| Random Forest (60 trees, depth 8) | 0.818 | 0.751 | 0.733 | 0.615 |
+
+The complex model loses, and that is **the expected result**: the data was generated by a linear rule in the logit. A tree must approximate a smooth function with steps. **Always compare with a simple baseline first**: it tells you how much complexity actually buys.
+
+# 5. Evaluation and thresholds
+
+## Every metric comes from one table {.smaller}
+
+Lab 10's confusion matrix for logistic regression, 39,909 test customers:
+
+| | Predicted: stays | Predicted: churns |
+|-|------------------|-------------------|
+| **Stays** | TN = 19,641 | FP = 3,932 |
+| **Churns** | FN = 5,636 | TP = 10,700 |
+
+$$\text{accuracy} = \frac{TP + TN}{\text{all}} = 0.760 \quad\ \text{precision} = \frac{TP}{TP + FP} = 0.731 \quad\ \text{recall} = \frac{TP}{TP + FN} = 0.655$$
+
+**Precision** is the quality of the alert, and **recall** is its coverage: "of those who churn, how many do I find?"
+
+**Why accuracy alone fails:** with a base rate of 1% churn, "nobody churns" gets **99% accuracy** and is useless. Always compare with the base rate, which in this case is 40.8%.
+
+**AUC has a precise meaning that is often missed:** it is the **probability that a random positive gets a higher score than a random negative** (Mann-Whitney). An AUC of 0.831 means that the model ranks such a pair correctly 83% of the time. So it measures **ranking**, and is independent of any threshold.
+
+---
+
+## The threshold is an economic decision {.smaller}
+
+Contacting a customer costs $c$, and losing one costs $V$. Assuming contact retains them, act when the expected loss exceeds the cost:
+
+$$p \cdot V > c \quad\Longrightarrow\quad p^* = \frac{c}{V}$$
+
+**With $c = 10$ and $V = 100$: $p^* =$ 0.1, not the default of 0.5.** The cost $10 \times \text{contacted} + 100 \times \text{FN}$, on Lab 10's table:
+
+| Threshold | Contacted | Precision | Recall | Total cost |
+|-----------|-----------|-----------|--------|------------|
+| 0.2 | 27,307 | 0.549 | 0.918 | **407,500** |
+| 0.3 | 22,384 | 0.614 | 0.841 | 483,100 |
+| 0.5 (default) | 14,632 | 0.731 | 0.655 | 710,300 |
+| 0.7 | 8,218 | 0.835 | 0.420 | 1,029,600 |
+
+**Moving the threshold saves 43% compared to the default, with the same model.** That may be worth more than weeks of tuning for a slightly better AUC.
+
+**Two warnings:** this needs **calibrated** probabilities, so verify them, or at least pick the threshold empirically, as above. And contact does not retain everyone: with effectiveness $e$, $p^* = c / (eV)$.
+
+# 6. Tuning, and integrating problem
+
+## What cross-validation costs, and promises {.smaller}
+
+$$\text{models trained} = (\text{combinations}) \times k + 1$$
+
+The last "+1" is the final refit, on all the training data, with the best parameters.
+
+| Grid | $k$ | Trainings | With 5 s each, sequential |
+|------|-----|-----------|---------------------------|
+| Lab 11: $3 \times 2$ | 3 | 19 | 95 s (measured: 14.7 s for the 18 fits, with `parallelism=2`) |
+| 5 parameters, 4 values each | 3 | 3,073 | **4.3 hours** |
+
+The grid grows **exponentially with the number of parameters**. Options: `TrainValidationSplit` (one split, not $k$), random search, or a small grid around what is known to work.
+
+**The optimism of selection.** The best of many models looks better than it is: with 3,072 tries, some win by chance. So **the CV score of the winner is biased upward**, and that is why the test set must be used **once, at the very end**. Using it to compare models makes it validation data, and you have no honest estimate left.
+
+`parallelism` trains combinations at once, with up to about 10 being enough according to the docs. This competes for the same cores as the tasks inside each fit.
+
+---
+
+## Review this project {.smaller}
+
+A team reports: *"Fraud model, accuracy 99.2%, AUC 0.97. 5 billion rows, $d$ = 200, on a 50-node cluster. Median imputed, then split 80/20 at random. Features include `chargebacks_next_30d`. Tried 500 configurations, choosing the best one by test AUC. Threshold 0.5. 0.5% of transactions are fraud."*
+
+**Find all the problems.**
+
+::: {.fragment}
+| Problem | Why |
+|---------|-----|
+| Accuracy 99.2% | "No fraud" achieves **99.5%**: this model is **worse than doing nothing** |
+| Imputing before the split | Leakage: test medians entered training. Use a Pipeline |
+| `chargebacks_next_30d` | **Direct leak from the future**: likely the reason for such an AUC |
+| Random split on transactions | It trains on the future. Split by **time** |
+| Selection on the test set | The AUC is biased: 500 tries on the test data |
+| Threshold 0.5 | Fraud costs far more than a review: $p^* = c/V$ is much lower |
+| 5 billion rows | With $d = 200$, a learning curve may well flatten far sooner: check before paying for 50 nodes |
 :::
 
 ---
 
-## Feature preparation
+## References {.smaller}
 
-| Column | Problem | Stage |
-|--------|---------|-------|
-| `last_rating`, `monthly_spend` | Nulls | `Imputer` (median) |
-| `plan`, `region` | Text | `StringIndexer` + `OneHotEncoder` |
-| All | Many columns | `VectorAssembler` |
-| Numeric | Different scales | `StandardScaler` |
-
-```python
-train, test = customers.randomSplit([0.8, 0.2], seed=42)   # before any preparation
-
-lr = LogisticRegression(featuresCol="features", labelCol="churn", maxIter=50)
-pipeline = Pipeline(stages=[imputer, indexer, encoder, assembler, scaler, lr])
-model = pipeline.fit(train)
-pred  = model.transform(test)
-```
-
----
-
-## Evaluation {.smaller}
-
-| Metric | Question | When it matters |
-|--------|----------|-----------------|
-| **AUC-ROC** | Does the model rank customers well by risk? | Comparing models, regardless of threshold |
-| **AUC-PR** | Same, focused on the positive class | Imbalanced classes |
-| **Precision** | Of those flagged as churn, how many were? | Cost of contacting a customer needlessly |
-| **Recall** | Of the actual churners, how many did I find? | Cost of losing a customer |
-| **Accuracy** | How many did I get right overall? | Misleading with imbalanced classes |
-
-The 0.5 threshold is rarely ideal: choosing it is a **business decision**.
-
----
-
-## Comparing models
-
-| | Logistic regression | Random Forest | Gradient-Boosted Trees |
-|-|---------------------|---------------|------------------------|
-| Relationships | Linear | Non-linear | Non-linear |
-| Interpretation | Coefficients | Feature importance | Feature importance |
-| Training | Fast | Parallel (independent trees) | Sequential (slower) |
-| Overfitting risk | Low | Medium | Higher, needs tuning |
-
-::: {.callout-tip}
-The most complex model is not automatically the best: always compare against a simple baseline.
-:::
-
----
-
-## Cross-validation
-
-```
-  params 1:  [train ][train ][valid ]  -> AUC_1
-             [train ][valid ][train ]  -> AUC_2
-             [valid ][train ][train ]  -> AUC_3   => mean
-  params 2:  ...                                  => mean
-```
-
-```python
-grid = (ParamGridBuilder()
-        .addGrid(lr.regParam, [0.0, 0.01, 0.1])
-        .addGrid(lr.elasticNetParam, [0.0, 1.0]).build())
-cv = CrossValidator(estimator=pipeline, estimatorParamMaps=grid,
-                    evaluator=BinaryClassificationEvaluator(labelCol="churn"),
-                    numFolds=3, parallelism=2, seed=42)
-best = cv.fit(train).bestModel
-```
-
----
-
-## Save and serve
-
-A saved `PipelineModel` contains **all stages**, so whoever loads it applies the same preparation. It also works on streaming DataFrames.
-
-```python
-best.write().overwrite().save(MODEL_PATH)
-loaded = PipelineModel.load(MODEL_PATH)
-
-stream = spark.readStream.schema(schema).json(STREAM_IN)
-q = (loaded.transform(stream)
-     .select("customer_id",
-             F.round(vector_to_array("probability")[1], 3).alias("p_churn"))
-     .filter("p_churn >= 0.5")
-     .writeStream.format("memory").queryName("at_risk")
-     .outputMode("append").start())
-```
+- Meng, X., Bradley, J., Yavuz, B., et al. (2016). *MLlib: Machine Learning in Apache Spark*. JMLR, 17(34).
+- Breiman, L. (2001). *Random Forests*. Machine Learning, 45(1).
+- Friedman, J. H. (2001). *Greedy Function Approximation: A Gradient Boosting Machine*. Annals of Statistics, 29(5).
+- Liu, D. C., Nocedal, J. (1989). *On the Limited Memory BFGS Method for Large Scale Optimization*. Mathematical Programming, 45.
+- Hanley, J. A., McNeil, B. J. (1982). *The Meaning and Use of the Area under a ROC Curve*. Radiology, 143(1).
+- Apache Spark 4.0.1: [Classification and regression](https://spark.apache.org/docs/4.0.1/ml-classification-regression.html), [Decision trees](https://spark.apache.org/docs/4.0.1/mllib-decision-tree.html), [Optimization](https://spark.apache.org/docs/4.0.1/mllib-optimization.html), [Tuning](https://spark.apache.org/docs/4.0.1/ml-tuning.html).

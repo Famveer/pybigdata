@@ -13,151 +13,291 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## O que você vai aprender
+## O que você poderá fazer {.smaller}
 
-- Data warehouse, data lake e lakehouse
-- Arquitetura Medallion: Bronze, Silver e Gold
-- Ingerir CSV e JSON com problemas reais
-- Regras de qualidade e quarentena
-- Parquet particionado e *partition pruning*
+- Enunciar o invariante de cada camada Medallion, e verificá-lo com números
+- Projetar um pipeline que possa ser **reexecutado sem risco**: idempotência
+- Explicar por que o Parquet comprime e pula dados, com cálculos reais
+- Escolher colunas de partição por sua cardinalidade e estimar os arquivos produzidos
+- Decidir o que fazer com dados ruins, e medir sua qualidade
 
----
+| Bloco | Tema | Min |
+|-------|------|-----|
+| 1 | Warehouse, lake e lakehouse | 10 |
+| 2 | Medallion como conjunto de invariantes | 15 |
+| 3 | Idempotência: sobreviver às repetições | 20 |
+| 4 | A qualidade de dados como medição | 20 |
+| 5 | Dentro de um arquivo Parquet | 25 |
+| 6 | Particionamento | 20 |
+| 7 | Problema integrador | 10 |
 
-## Warehouse, lake & lakehouse
+# 1. Warehouse, lake e lakehouse
 
-| | Data Warehouse | Data Lake | Lakehouse |
+## Três respostas a um mesmo compromisso {.smaller}
+
+A escolha é **quando a estrutura é imposta**, e que garantias vêm com ela:
+
+| | Data warehouse | Data lake | Lakehouse |
 |-|----------------|-----------|-----------|
-| Armazena | Tabelas estruturadas | Arquivos de qualquer tipo | Arquivos abertos + camada de tabela |
-| Formato | Proprietário | CSV, JSON, Parquet... | Parquet + log de transações |
-| Custo | Alto | Baixo (object storage) | Baixo |
-| Transações (ACID) | Sim | Não | Sim |
-| UPDATE / DELETE | Sim | Difícil (reescrever arquivos) | Sim |
+| Schema | **Na escrita** | **Na leitura** | Na escrita, sobre arquivos abertos |
+| Guardado como | Formato proprietário | Arquivos: CSV, JSON, Parquet | Parquet + log de transações |
+| Armazenamento e computação | Acoplados, em geral | Separados | Separados |
+| Custo por GB | Alto | Baixo (object store) | Baixo |
+| Transações | Sim | **Não** | Sim |
+| Risco | Rígido, caro | Vira um "pântano de dados" | Jovem, requer manutenção |
+
+**Schema na leitura adia o custo, não o elimina:** cada consumidor precisa refazer a análise e a limpeza, e cada um pode fazer diferente. Assim, dois relatórios podem discordar sem que ninguém esteja errado.
+
+**A fraqueza central do lake** não é o formato, mas a falta de garantias: nada impede ler uma tabela meio escrita. Essa é a motivação desta aula para a disciplina, e da Aula 9 para as transações.
+
+# 2. Medallion como conjunto de invariantes
+
+## O que cada camada garante {.smaller}
+
+Medallion não trata de nomes de pastas, mas do **que se pode supor** ao ler cada camada:
+
+| Camada | Invariante | Consequência |
+|--------|------------|--------------|
+| **Bronze** | Tem tudo que chegou, sem mudanças, com linhagem | Qualquer camada posterior pode ser reconstruída |
+| **Silver** | Tipada, válida, **uma linha por entidade** | Joins não multiplicam linhas |
+| **Gold** | Métricas definidas uma vez, modeladas para o uso | Relatórios coincidem entre si |
+
+**A propriedade chave: Silver é uma função pura de Bronze, e Gold de Silver.**
+
+$$\text{Silver} = f(\text{Bronze}) \qquad \text{Gold} = g(\text{Silver})$$
+
+Assim, um erro em $f$ é **recuperável**: corrija $f$ e reexecute. Sem um Bronze imutável, um erro na limpeza destrói a única cópia dos dados.
+
+**Por isso o Bronze lê tudo como string:** uma leitura tipada já seria uma decisão que perde informação, como converter `"N/A"` em `NULL`, e uma decisão deve estar em $f$, onde pode mudar.
+
+# 3. Idempotência: sobreviver às repetições
+
+## Um job vai rodar duas vezes {.smaller}
+
+Agendadores repetem, operadores relançam, e um job pode morrer depois de gravar mas antes de reportar sucesso. Então definimos:
+
+$$\text{run}(\text{run}(S, d),\ d) = \text{run}(S, d)$$
+
+Um passo do pipeline é **idempotente** se executá-lo de novo com a mesma entrada deixa o mesmo estado.
+
+| Escrita | Idempotente? | Após uma repetição |
+|---------|--------------|--------------------|
+| `mode("append")` | **Não** | As linhas são **duplicadas** |
+| `mode("overwrite")`, estático | Sim, mas | Substitui **toda a tabela**, incluindo outros dias |
+| `overwrite` + partições dinâmicas | **Sim** | Substitui só as partições presentes nos dados |
+| `MERGE` por chave | **Sim** | Mesmas chaves, mesmo estado, com uma fonte determinística |
+
+**A fórmula prática:**
+
+$$\text{entrega ao menos uma vez} + \text{escrita idempotente} = \text{efetivamente uma vez}$$
+
+A *entrega* exatamente uma vez é muito difícil de obter, enquanto repetir é fácil. Então projeta-se o **efeito** e não a entrega. Isso reaparece nos sinks de streaming (Aula 10).
 
 ---
 
-## Arquitetura Medallion
+## Exercício: o que acontece em uma repetição? {.smaller}
 
-```
-  SOURCES          BRONZE             SILVER              GOLD
-  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
-  APIs, CDC        + metadata         typed, validated    BI / ML / API
-                   all strings        no duplicates
-                                 └──▶ QUARANTINE (rejected)
-```
-
-| Camada | Pergunta que responde | Regra de ouro |
-|-------|---------------------|-------------|
-| **Bronze** | O que exatamente chegou? | Nunca descartar nada. Permite reprocessar. |
-| **Silver** | Qual é a versão correta de cada registro? | Tipos certos, uma linha por entidade, regras aplicadas. |
-| **Gold** | O que o negócio precisa ver? | Agregações e métricas, modeladas para o consumo. |
-
----
-
-## Por que Parquet
-
-| | CSV / JSON | Parquet |
-|-|-----------|---------|
-| Orientação | Linha | **Coluna** |
-| Schema | Inferido a cada leitura | Gravado no arquivo |
-| Compressão | Fraca | Forte (por coluna) |
-| Ler 2 de 20 colunas | Lê tudo | Lê só as 2 (*column pruning*) |
-| Filtrar `price > 100` | Lê tudo | Pula blocos via estatísticas min/max (*predicate pushdown*) |
-
----
-
-## Bronze: ingerir sem perder nada
-
-- Ler **tudo como string**: um preço como `N/A` não pode falhar nem virar nulo silenciosamente
-- Juntar as fontes preservando colunas que só existem em uma
-- Adicionar **metadados de linhagem**: arquivo de origem e momento da ingestão
+Um job diário processa `d` e falha no meio. Qual versão pode ser reexecutada sem risco?
 
 ```python
-raw_csv = (spark.read.option("header", True).csv(path)
-    .select("*", F.col("_metadata.file_path").alias("_source_file")))
-
-bronze = (raw_csv.unionByName(raw_json, allowMissingColumns=True)
-    .withColumn("_ingested_at", F.current_timestamp()))
-```
-
----
-
-## Silver: limpar, validar e deduplicar
-
-```
-  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
-                                                   └──▶ QUARANTINE (+ reason)
-```
-
-**O modo ANSI vem ligado por padrão no Spark 4**: um `cast` inválido gera erro em vez de retornar nulo.
-
-| Operação | Falha com valor inválido | Retorna nulo |
-|---------|-------------------------|--------------|
-| Conversão de tipo | `col.cast("int")` | `col.try_cast("int")` |
-| Texto para timestamp | `F.to_timestamp(c, fmt)` | `F.try_to_timestamp(c, F.lit(fmt))` |
-| Divisão | `a / b` | `F.try_divide(a, b)` |
-
----
-
-## Regras de qualidade e quarentena
-
-Em vez de apagar registros ruins, guarde-os **com o motivo**: permite medir a qualidade da fonte, avisar o time de origem e reprocessar.
-
-```python
-RULES = {
-    "preco_invalido":      F.col("price").isNull() | (F.col("price") <= 0),
-    "quantidade_invalida": F.col("quantity").isNull() | (F.col("quantity") <= 0),
-}
-errors = F.array_compact(F.array(*[F.when(c, F.lit(n)) for n, c in RULES.items()]))
-df = df.withColumn("_errors", errors)
-valid    = df.filter(F.size("_errors") == 0).drop("_errors")
-rejected = df.filter(F.size("_errors") > 0)
-```
-
----
-
-## Escrita particionada
-
-```python
-(silver_df
- .repartition("order_date")      # all rows of a day in the same task
- .write.mode("overwrite")
- .partitionBy("order_date")
- .parquet(SILVER))
-```
-
-- Boas colunas de partição têm **baixa cardinalidade** e são **usadas em filtros**
-- Cada task escreve um arquivo por partição que encontrar: sem o `repartition`, surge o problema dos **arquivos pequenos**
-
----
-
-## Pruning no plano
-
-| Mecanismo | Campo no plano | Efeito |
-|---|---|---|
-| Partition pruning | `PartitionFilters` | Pula pastas inteiras |
-| Predicate pushdown | `PushedFilters` | Pula blocos dentro dos arquivos |
-| Column pruning | `ReadSchema` | Lê só as colunas usadas |
-
----
-
-## Reprocessar e Gold
-
-```python
+day = df.filter(col("date") == d)
+# A
+day.write.mode("append").partitionBy("date").parquet(path)
+# B
 spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
-day3.repartition("order_date").write.mode("overwrite") \
-    .partitionBy("order_date").parquet(SILVER)
+day.write.mode("overwrite").partitionBy("date").parquet(path)
+# C (same as B, with the default mode)
+day.write.mode("overwrite").partitionBy("date").parquet(path)
 ```
 
-::: {.callout-warning}
-Com o modo padrão `static`, o mesmo comando **apagaria todos os outros dias**.
+::: {.fragment}
+| | Em uma repetição | Veredito |
+|-|------------------|----------|
+| **A** | Ficam as linhas da tentativa falha: **duplicatas parciais** | Inseguro |
+| **B** | A partição `d` é substituída, e as outras ficam intactas | **Seguro** |
+| **C** | O modo `static` **apaga todos os outros dias**, sem nenhum erro | Perigoso já na primeira vez |
+
+A saída do Lab 7 mostra o efeito de B: 3 de julho cai para 100 linhas, enquanto 1 e 2 seguem em 1.055 e 1.050.
+
+**B ainda tem uma janela:** durante a sobrescrita, um leitor vê a partição meio escrita. Resolver isso requer transações (Aula 9).
 :::
 
+# 4. A qualidade de dados como medição
+
+## A qualidade é um número, não uma opinião {.smaller}
+
+| Dimensão | Pergunta | Medida | Regra de exemplo |
+|----------|----------|--------|------------------|
+| **Completude** | Está presente? | % não nulo | `customer_id` não nulo |
+| **Validade** | Está no domínio? | % dentro das regras | `price > 0`, status em uma lista |
+| **Unicidade** | Há uma por entidade? | Distintos / total | Uma linha por `order_id` |
+| **Consistência** | As tabelas coincidem? | % de chaves encontradas | `product_id` existe em products |
+| **Pontualidade** | Chegou a tempo? | Percentis de atraso | Do evento à ingestão |
+
+**O que fazer com uma linha ruim?** Cada opção responde a um custo de erro diferente:
+
+| Estratégia | Quando | Risco |
+|------------|--------|-------|
+| **Falhar o job** | Regra crítica: todo o lote é suspeito | Bloqueia tudo, por uma linha |
+| **Quarentena** | Caso normal: é guardada, com o motivo | Alguém precisa revisar |
+| **Corrigir ou pôr valor** | Só se o valor correto é certo | Inventa dados em silêncio |
+
+A quarentena separa "o pipeline roda" de "os dados são bons", e torna a qualidade **mensurável no tempo**. Adicione um limiar: um salto de 2% para 30% de rejeições deve parar o job, pois indica uma fonte quebrada.
+
+---
+
+## Exercício: audite uma execução real {.smaller}
+
+O Lab 7 reportou estes números. **Eles fecham? O que significa cada diferença?**
+
+| Etapa | Linhas | | Motivo de rejeição | Linhas |
+|-------|--------|-|--------------------|--------|
+| Bronze | 4.337 | | `invalid_price` | 202 |
+| Válidas | 3.809 | | `invalid_quantity` | 160 |
+| Rejeitadas | 528 | | `unknown_product` | 89 |
+| Silver | 3.156 | | `unknown_region` | 59 |
+| | | | `invalid_date` | 29 |
+
+::: {.fragment}
+**Conservação.** $3.809 + 528 = 4.337$. Vale: **nenhuma linha foi perdida**. Essa verificação é barata e deve rodar em cada execução.
+
+**Os motivos somam 539, não 528.** Diferem em 11, porque uma linha pode quebrar várias regras. Assim, somar os motivos exagera o número de rejeitadas.
+
+**De Válidas a Silver perdem-se 653 linhas** (17%), mas não são erros: linhas duplicadas e versões anteriores de pedidos cujo status foi atualizado. Silver tem uma linha por pedido.
+
+**Taxa de qualidade:** $3.809 / 4.337 =$ 87,8% válidas. Se isso é bom depende do histórico: **uma métrica significa pouco até poder compará-la com a de ontem**.
+:::
+
+---
+
+## A deduplicação deve ser determinística {.smaller}
+
+"Ficar com a última versão de cada pedido" é um problema de janela, mas o que significa **última**?
+
 ```python
-gold_daily = (sales.groupBy("order_date", "region", "category")
-    .agg(F.count("*").alias("orders"),
-         F.round(F.sum("revenue"), 2).alias("revenue")))
+w = (Window.partitionBy("order_id")
+           .orderBy(F.col("updated_at").desc(), F.col("_ingested_at").desc()))
+df.withColumn("rn", F.row_number().over(w)).filter("rn = 1").drop("rn")
 ```
+
+| Pergunta | Por que importa |
+|----------|-----------------|
+| Hora de negócio ou hora de chegada? | Um evento tardio não deve sobrescrever um estado mais novo |
+| A chave de ordenação é única por entidade? | Com empates, `row_number` escolhe **arbitrariamente**, e as reexecuções diferem |
+| Cada execução vê toda a história? | Se não, uma duplicata antiga pode reaparecer |
+
+**`dropDuplicates(["order_id"])` não é equivalente:** mantém **uma linha arbitrária** de cada chave. Serve para duplicatas exatas, e é errado se as versões diferem.
+
+**A garantia buscada:** Silver deve ser função determinística de Bronze. Senão, reexecutar um job por uma correção também muda linhas alheias à correção, e as diferenças ficam impossíveis de auditar.
+
+# 5. Dentro de um arquivo Parquet
+
+## Estrutura: por que um leitor pode pular tanto {.smaller}
+
+```
+ Arquivo
+ ├── Grupo de linhas 1
+ │     ├── Pedaço de coluna: price     ── páginas (codificadas, comprimidas)
+ │     ├── Pedaço de coluna: region    ── páginas
+ │     └── Pedaço de coluna: quantity  ── páginas
+ ├── Grupo de linhas 2 ...
+ └── FOOTER: schema, posição de cada pedaço, min/max/nulos por pedaço
+```
+
+Um leitor pega primeiro o footer, e só então decide o que ler. **O footer é gravado por último,** o que permite gravar em uma só passada:
+
+| Técnica | Usa | Pula |
+|---------|-----|------|
+| **Column pruning** | Posição dos pedaços | As colunas não pedidas |
+| **Predicate pushdown** | min/max por grupo de linhas | Grupos que não podem coincidir |
+| **Partition pruning** | Nomes de diretórios | Arquivos inteiros, sem abri-los |
+
+**O pushdown depende da ordem dos dados.** Com $G$ grupos de linhas e um filtro que seleciona uma fração $s$:
+
+| Ordem dos dados na coluna filtrada | Fração lida |
+|------------------------------------|-------------|
+| Aleatória: o min/max de cada grupo cobre tudo | Cerca de **100%** |
+| Ordenada: cada grupo tem uma faixa estreita | Cerca de $s + 1/G$ |
+
+---
+
+## Por que comprime: codificar antes de comprimir {.smaller}
+
+Coluna `region`, 5 valores distintos, 100 milhões de linhas, comprimento médio de 7 caracteres:
+
+| Codificação | Como | Tamanho |
+|-------------|------|---------|
+| **PLAIN** | Comprimento de 4 bytes + bytes, para cada valor | $100\text{M} \times 11$ B $=$ **1,1 GB** |
+| **Dicionário** | 5 valores uma vez, e um índice de $\lceil \log_2 5 \rceil = 3$ bits por linha | $100\text{M} \times 3 / 8$ B $=$ **37,5 MB** |
+| **Dicionário + RLE**, ordenado | 5 trechos de (índice, contagem) | **Poucos bytes** por grupo de linhas |
+
+São **29× antes de qualquer codec de compressão** (por padrão, `snappy`), e vem só de uma coluna ter valores parecidos juntos: um formato por linhas não pode fazer isso.
+
+**Outras codificações:** `DELTA_BINARY_PACKED` guarda diferenças entre valores consecutivos, ideal para timestamps e IDs crescentes. Se um dicionário cresce demais, o codificador volta a `PLAIN`.
+
+**Duas consequências práticas:**
+
+- **Baixa cardinalidade comprime bem**, então uma data em string quase não custa, ao contrário de um UUID.
+- **Ordenar antes de gravar** ajuda duas vezes: trechos mais longos para RLE, e min/max mais estreitos para o pushdown.
+
+# 6. Particionamento
+
+## Quantos arquivos você vai criar? {.smaller}
+
+Cada task do último stage grava um arquivo **por cada valor de partição que encontra**. Com $T$ tasks e $V$ valores de partição:
+
+$$\text{arquivos} \leq T \times V$$
+
+O Lab 7 mediu isso, com $T = 8$ e $V = 3$:
+
+| Escrita | Arquivos por dia | Tamanho por dia |
+|---------|------------------|-----------------|
+| `.repartition(8)`, e `partitionBy` | 8 | 84 KB |
+| `.repartition("order_date")`, e `partitionBy` | **1** | **42 KB** |
+
+**Os mesmos dados ocupam metade** em um arquivo: cada arquivo repete footer e dicionários.
+
+**Escolher a coluna** (1 TB por ano):
+
+| Por | Diretórios | Tamanho por diretório | Veredito |
+|-----------------|------------|-----------------------|----------|
+| Dia | 365 | 2,7 GB | **Bom**, se filtram por data |
+| `customer_id` (1 M) | 1.000.000 | **1 MB** | Terrível: arquivos pequenos, e custo de listar |
+
+**Uma coluna de partição precisa de baixa cardinalidade, e aparecer nos filtros.**
+
+# 7. Problema integrador
+
+## Projete esta tabela {.smaller}
+
+Pedidos: 100 GB por dia de CSV, 3 anos de história. As consultas filtram por data e às vezes por `customer_id` (1 milhão). O job pode falhar e ser reexecutado, e chegam atualizações tardias de status até 7 dias depois.
+
+1. Coluna de partição, e por que não `customer_id`?
+2. Como tornar rápidas as consultas por `customer_id`?
+3. Como gravar para ser idempotente?
+4. Arquivos de saída por dia, com 200 partições de shuffle? Como obter cerca de 4?
+5. Uma atualização tardia de um dia já gravado: o que fazer?
+
+::: {.fragment}
+1. **`order_date`**: cerca de 1.100 diretórios. `customer_id` daria 1 milhão de diretórios, com arquivos muito pequenos.
+2. **Ordene por `customer_id` dentro de cada partição antes de gravar**: o min/max por grupo de linhas permite pular.
+3. **`overwrite` com partições dinâmicas**, um dia por vez. Nunca `append`, e nunca o modo estático.
+4. Até 200 por dia. Parquet cerca de 10× menor dá 10 GB/dia: `repartition(4)` por dia dá cerca de **2,5 GB cada**.
+5. **Reprocesse os dias afetados** a partir do Bronze (no máximo os últimos 7): overwrite é idempotente, e o custo é limitado. Parquet sozinho não pode atualizar uma linha, o que leva direto ao `MERGE` (Aula 9).
+:::
+
+---
+
+## Referências {.smaller}
+
+- Armbrust, M., Ghodsi, A., Xin, R., Zaharia, M. (2021). *Lakehouse: A New Generation of Open Platforms that Unify Data Warehousing and Advanced Analytics*. CIDR.
+- Melnik, S., et al. (2010). *Dremel: Interactive Analysis of Web-Scale Datasets*. VLDB. (origin of Parquet's columnar nested model)
+- Apache Parquet: [File format](https://parquet.apache.org/docs/file-format/), [Encodings](https://parquet.apache.org/docs/file-format/data-pages/encodings/).
+- Apache Spark 4.0.1: [Parquet files](https://spark.apache.org/docs/4.0.1/sql-data-sources-parquet.html), [Performance Tuning](https://spark.apache.org/docs/4.0.1/sql-performance-tuning.html).

@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >In this lecture, we will learn:
 >
->* The transaction log
->* MERGE and time travel
->* Schema enforcement and evolution
->* OPTIMIZE and VACUUM
+>* What plain Parquet cannot do: anomalies and ACID
+>* The transaction log: state, commit protocol and checkpoints
+>* Optimistic concurrency: what conflicts with what, and why
+>* The cost of UPDATE and MERGE: how many files are rewritten
+>* Data skipping and Z-order: what they gain and their limit
+>* Versions, retention and when data is really deleted
 
 
 ### Slides

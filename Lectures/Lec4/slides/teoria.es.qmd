@@ -13,108 +13,290 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## Lo que aprenderás
+## Lo que podrás hacer {.smaller}
 
-- `groupBy`, agregaciones y funciones de ventana
-- Joins y uniones
-- Consultar cualquier DataFrame con Spark SQL
-- Transformaciones vs acciones: evaluación perezosa
-- Primer vistazo a `explain()`, cache y particiones
+- Traducir una consulta de DataFrame a álgebra relacional y razonar sobre su resultado
+- Predecir qué hace `NULL` en filtros, joins y agregaciones
+- Clasificar una agregación por su estado, y saber cuáles escalan
+- Elegir bien el marco de una ventana, y evitar la trampa de su valor por defecto
+- Acotar el número de filas de un join antes de ejecutarlo
+- Explicar qué gana la evaluación perezosa, y qué cuesta
 
----
+| Bloque | Tema | Min |
+|--------|------|-----|
+| 1 | El modelo relacional detrás de la API | 15 |
+| 2 | `NULL` y lógica de tres valores | 20 |
+| 3 | Agregación: cuáles escalan | 25 |
+| 4 | Funciones de ventana | 20 |
+| 5 | Semántica de los joins | 20 |
+| 6 | Evaluación perezosa | 10 |
+| 7 | Problema integrador | 10 |
 
-## GroupBy y agregaciones
+# 1. El modelo relacional detrás de la API
 
-```python
-# Pandas
-pdf.groupby("category").agg(
-    orders=("order_id", "count"), total_revenue=("total", "sum"))
+## DataFrame, SQL y álgebra son lo mismo {.smaller}
 
-# Spark
-(sdf.groupBy("category")
-    .agg(F.count("order_id").alias("orders"),
-         F.sum("total").alias("total_revenue"),
-         F.round(F.avg("price"), 2).alias("avg_price"))
-    .orderBy(F.col("total_revenue").desc()))
-```
+| Álgebra | DataFrame | SQL |
+|---------|-----------|-----|
+| $\sigma_p(R)$ selección | `filter(p)` | `WHERE p` |
+| $\pi_A(R)$ proyección | `select(A)` | `SELECT A` |
+| $R \bowtie_k S$ join | `join(S, k)` | `JOIN S USING (k)` |
+| $\gamma_{k,\,f(x)}(R)$ agrupación | `groupBy(k).agg(f(x))` | `GROUP BY k` |
+| $R \cup S$ unión | `union(S)` | `UNION ALL` |
 
----
+La API de DataFrames y SQL se compilan al **mismo plan lógico** en Catalyst: no hay diferencia de rendimiento entre ambos. Elige lo que deje más clara la consulta.
 
-## Funciones de ventana
+**Trabaja con multiconjuntos, no conjuntos.** A diferencia del álgebra relacional de los libros, los duplicados se conservan:
 
-Calculan valores sobre un grupo **sin colapsar** el DataFrame, como `.groupby().transform()` en Pandas.
+- `union` **no** elimina duplicados: añade `distinct()`, que cuesta un shuffle.
+- `union` empareja columnas **por posición**: si los schemas están en otro orden, los valores terminan en silencio en las columnas equivocadas. Usa `unionByName`.
 
-```python
-w_cat       = Window.partitionBy("category")
-w_cat_price = Window.partitionBy("category").orderBy(F.col("price").desc())
+# 2. NULL y lógica de tres valores
 
-(sdf
- .withColumn("avg_price_cat", F.round(F.avg("price").over(w_cat), 2))
- .withColumn("rank_in_cat",   F.rank().over(w_cat_price)))
-```
+## `NULL` significa desconocido, y su comparación también {.smaller}
 
----
+Una comparación con `NULL` no es verdadera ni falsa, sino **desconocida**:
 
-## Joins
+| $a$ | $b$ | `a AND b` | `a OR b` |
+|-----|-----|-----------|----------|
+| `TRUE` | `NULL` | `NULL` | `TRUE` |
+| `FALSE` | `NULL` | `FALSE` | `NULL` |
+| `NULL` | `NULL` | `NULL` | `NULL` |
 
-| Tipo | Pandas | Spark | Comportamiento |
-|------|--------|-------|----------|
-| Inner | `how="inner"` | `how="inner"` | Solo filas con coincidencia |
-| Left | `how="left"` | `how="left"` | Toda la izquierda + coincidencias |
-| Right | `how="right"` | `how="right"` | Toda la derecha + coincidencias |
-| Full outer | `how="outer"` | `how="outer"` | Todas las filas de ambos |
-| Apilar filas | `pd.concat([...])` | `df1.union(df2)` | Añade filas (UNION) |
+`NOT NULL` es `NULL`, y `NULL = NULL` es `NULL`.
 
----
-
-## Spark SQL
-
-Registra un DataFrame como **vista temporal** y escribe SQL. Usa el mismo planificador optimizado.
+**La regla que lo explica todo:** un `WHERE` o una condición de join conserva una fila **solo si da `TRUE`**. Desconocido se comporta como falso en el filtro, pero no es falso: su negación también es desconocida.
 
 ```python
-sdf.createOrReplaceTempView("sales")
-
-spark.sql("""
-    SELECT product, category, price,
-           RANK() OVER (PARTITION BY category ORDER BY price DESC) AS rank_in_cat
-    FROM   sales
-    WHERE  price > 100
-    ORDER  BY category, rank_in_cat
-""").show()
+df.filter(F.col("x") > 0)          # quita las filas donde x es NULL
+df.filter(~(F.col("x") > 0))       # TAMBIÉN quita esas filas
+df.filter(F.col("x").eqNullSafe(None))   # la forma de comparar con NULL: <=>
 ```
+
+Así, `filter(p)` y `filter(~p)` juntos **no necesariamente suman todas las filas**.
 
 ---
 
-## Transformaciones vs acciones
+## Ejercicio: donde `NULL` cambia la respuesta {.smaller}
 
-| | Tipo | Ejemplos | Efecto |
-|-|------|----------|--------|
-| **Transformaciones** | Perezosas | `filter`, `select`, `withColumn`, `groupBy`, `join` | Construye un plan: **nada se ejecuta** |
-| **Acciones** | Inmediatas | `show()`, `count()`, `collect()`, `write`, `toPandas()` | **Ejecuta todo el plan** |
+`x` tiene los valores 10, `NULL`, 20. ¿Qué devuelve cada expresión?
 
-```
-  TRANSFORMATION ──▶ TRANSFORMATION ──▶ TRANSFORMATION ──▶  ACTION
-    .filter()          .withColumn()      .groupBy()        .show()
-```
+| Expresión | Tu respuesta |
+|-----------|--------------|
+| `count(*)`, `count(x)` | |
+| `sum(x)`, `avg(x)` | |
+| `avg(x)` tras `fillna(0)` | |
+| `WHERE x NOT IN (10, NULL)` | |
 
-Spark aprovecha esto para construir un **plan optimizado** antes de ejecutar.
+::: {.fragment}
+| Expresión | Resultado | Por qué |
+|-----------|-----------|---------|
+| `count(*)`, `count(x)` | 3, **2** | `count(*)` cuenta filas; las demás ignoran `NULL` |
+| `sum(x)`, `avg(x)` | 30, **15** | `avg` divide entre 2 y no entre 3 |
+| `avg(x)` tras `fillna(0)` | **10** | Rellenar cambia la media: decídelo a conciencia |
+| `WHERE x NOT IN (10, NULL)` | **ninguna fila** | Para 20: `20 <> NULL` es desconocido, y el `AND` nunca llega a `TRUE` |
+
+`NOT IN` sobre una subconsulta con un solo `NULL` no devuelve **nada**, sin ningún error. `NOT EXISTS`, o `left_anti` en un DataFrame, no se ve afectado.
+:::
 
 ---
 
-## Plan, cache y particiones
+## `NULL` por operación, y la diferencia con Pandas {.smaller}
+
+| Operación | `NULL` | Pandas, para comparar |
+|-----------|--------|-----------------------|
+| Filtro | Se descarta salvo `isNull` | Comparar `NaN` da `False` |
+| Clave de join | **No coincide** (usa `eqNullSafe` para que sí) | `merge` **sí une** claves `NaN` |
+| `groupBy` | Forma **un grupo** | **Se descarta** por defecto (`dropna=True`) |
+| `distinct` | Se tratan como iguales: una fila | `drop_duplicates` las trata como iguales |
+| `orderBy` | Primero en ascendente | Último por defecto |
+
+La misma consulta puede devolver otro número de filas o grupos en cada motor.
+
+**`NaN` no es `NULL`.** En Spark son valores distintos:
+
+- `NaN = NaN` es **verdadero**, a diferencia de IEEE 754.
+- `NaN` se trata como un valor normal en claves de join y agregaciones.
+- Se ordena como mayor que cualquier número, así que un `max` puede devolver `NaN`.
+
+`F.isnan(c)` y `F.isnull(c)` comprueban cosas distintas.
+
+# 3. Agregación: cuáles escalan
+
+## La pregunta es cuánto estado necesita un grupo {.smaller}
+
+Para correr en paralelo, una agregación debe calcularse por partición y luego **fusionarse**. Las funciones se clasifican por lo que hay que guardar por grupo (Gray et al., 1997):
+
+| Clase | Definición | Ejemplos | Estado por grupo |
+|-------|------------|----------|------------------|
+| **Distributiva** | $f(A \cup B) = g(f(A), f(B))$ | `sum`, `count`, `min`, `max` | 1 valor |
+| **Algebraica** | Se calcula con un número fijo de valores distributivos | `avg` = (sum, count), `stddev` | Tupla fija |
+| **Holística** | No existe un resumen de tamaño fijo | `median`, `countDistinct`, `collect_list` | **Crece con los datos** |
+
+**Por qué lo decide todo:**
+
+- Distributivas y algebraicas permiten **agregación parcial**: el shuffle lleva estados de tamaño fijo.
+- La holística obliga a llevar **todos los valores** al mismo lugar: más red, más memoria, y expuesta al skew.
+
+El plan real lo muestra como `partial_sum` antes del `Exchange` y `sum` después.
+
+---
+
+## Dos errores clásicos {.smaller}
+
+**1. La media de medias no es la media.** Grupos $A = \{1, 1, 1, 1\}$ y $B = \{100\}$:
+
+$$\frac{\text{avg}(A) + \text{avg}(B)}{2} = \frac{1 + 100}{2} = 50{,}5 \qquad \text{pero} \qquad \text{avg}(A \cup B) = \frac{104}{5} = 20{,}8$$
+
+`avg` es algebraica, no distributiva: su estado fusionable es $(\sum x,\ n)$. Spark guarda ambos, pero una tabla preagregada con solo `avg_price` **ya perdió la información**. Guarda la suma y el conteo.
+
+**2. Los conteos distintos no se suman.** Usuarios del lunes: {a, b}; del martes: {b, c}. Da 2 + 2 = 4, pero el valor real es **3**. Un conteo diario de usuarios distintos **no se puede sumar** para obtener el mensual.
+
+**La misma prueba vale para cualquier métrica de un data lake:** ¿una tabla Gold con esta columna se puede volver a agregar? Solo si la columna es distributiva, o si se guardó su estado.
+
+---
+
+## Cuando lo exacto es muy caro: aproximación {.smaller}
+
+Una agregación holística se puede reemplazar por una **aproximación algebraica**: un resumen de tamaño fijo que se puede fusionar, a cambio de un error acotado.
+
+| Exacta | Aproximada | Parámetro | Algoritmo |
+|--------|------------|-----------|-----------|
+| `countDistinct(x)` | `approx_count_distinct(x, rsd)` | Desviación estándar relativa, por defecto 5% | HyperLogLog++ |
+| `median(x)`, `percentile(x, p)` | `percentile_approx(x, p, accuracy)` | Error relativo $1/\text{accuracy}$, accuracy por defecto 10.000 | Sketch de cuantiles |
+
+**Por qué escalan:** cada partición construye su sketch, los sketches se fusionan, y el estado está acotado sin importar cuántos valores haya. Así recuperan la agregación parcial.
+
+**Por qué funciona HyperLogLog, intuitivamente:** al aplicar un hash uniforme, ver un hash con $b$ ceros iniciales sugiere unos $2^b$ valores distintos. Los duplicados dan el mismo hash, así que no pueden cambiar la estimación.
+
+**Decide según la pregunta:** un panel que muestra 1,2 M de usuarios no necesita la cifra exacta. Un informe de facturación sí, y debe pagarlo.
+
+# 4. Funciones de ventana
+
+## Una ventana tiene tres partes {.smaller}
+
+`groupBy` colapsa cada grupo en una fila. Una ventana **conserva todas las filas** y calcula, para cada una, un valor sobre sus filas relacionadas:
 
 ```python
-plan.explain(mode="simple")        # logical and physical plan
-
-cached = sdf.cache()               # stored on the first action
-cached.count(); cached.count()     # the second one reads from memory
-cached.unpersist()
-
-sdf.rdd.getNumPartitions()
-sdf.repartition(4, "category")     # full shuffle, evenly distributed
-sdf.coalesce(2)                    # no full shuffle, less balanced
+w = Window.partitionBy("category").orderBy("date").rowsBetween(-6, 0)
+df.withColumn("sum_7d", F.sum("revenue").over(w))
 ```
+
+| Parte | Significado | Si se omite |
+|-------|-------------|-------------|
+| `partitionBy` | Qué filas se relacionan | **Todas las filas van a una partición** (Spark avisa) |
+| `orderBy` | Orden dentro de la partición | Los rankings fallan |
+| Marco | Subconjunto alrededor de la fila actual | Ver la slide siguiente |
+
+**Costo:** un `Exchange` por la clave de partición, más ordenar cada partición. O sea $O(n \log (n/P))$, con todas las filas de una clave en una task, y sin agregación parcial posible. Por eso las ventanas están **expuestas al skew**, como los joins.
+
+**Funciones de ranking con empates.** Con precios 100, 100, 90, 80:
+
+| | 100 | 100 | 90 | 80 |
+|-|-----|-----|----|----|
+| `row_number` | 1 | 2 | 3 | 4 |
+| `rank` | 1 | 1 | 3 | 4 |
+| `dense_rank` | 1 | 1 | 2 | 3 |
+
+---
+
+## La trampa del marco por defecto {.smaller}
+
+La documentación define el marco por defecto:
+
+| | Marco por defecto |
+|-|-------------------|
+| Sin `orderBy` | Toda la partición: `rowsBetween(unboundedPreceding, unboundedFollowing)` |
+| **Con `orderBy`** | **`rangeBetween(unboundedPreceding, currentRow)`** |
+
+`RANGE` trabaja con valores, así que **las filas empatadas en la clave de orden son pares** y entran juntas al marco. Una suma acumulada sobre 10, 10, 20:
+
+| Marco | 10 | 10 | 20 |
+|-------|----|----|----|
+| `ROWS` hasta la fila actual | 10 | 20 | 40 |
+| **`RANGE` (por defecto)** | **20** | **20** | 40 |
+
+Mismos datos, otra columna, ningún error. El síntoma clásico es `F.last("x").over(w)`, que parece devolver la fila actual, porque el marco termina en ella.
+
+**Determinismo.** Con empates, `row_number` los numera **arbitrariamente**. Una deduplicación con `row_number() == 1` puede quedarse con otra fila en cada ejecución. Añade una columna de desempate al `orderBy`.
+
+# 5. Semántica de los joins
+
+## Acotar las filas de un join {.smaller}
+
+Con $n$ filas en $R$ y $m$ en $S$, el tamaño exacto de un inner join es $\sum_k a_k b_k$ (ver Clase 5). Antes de ejecutarlo, cada tipo ya tiene cotas:
+
+| Join | Semántica | Mínimo | Máximo |
+|------|-----------|--------|--------|
+| Inner | Pares que coinciden | $0$ | $n \cdot m$ |
+| Left outer | Todo $R$ + coincidencias | $n$ | $\max(n,\ n \cdot m)$ |
+| Full outer | Todo de ambos | $\max(n, m)$ | $\max(n \cdot m,\ n + m)$ |
+| **Left semi** | $R$ con alguna coincidencia | $0$ | **$n$** |
+| **Left anti** | $R$ sin coincidencia | $0$ | **$n$** |
+| Cross | Todos los pares | $n \cdot m$ | $n \cdot m$ |
+
+**Semi y anti nunca multiplican filas ni añaden columnas.** Para preguntar "¿qué clientes tienen pedidos?", un `left_semi` responde directamente, mientras que `inner` + `distinct` cuesta una multiplicación y luego un shuffle para deshacerla.
+
+**Si $S$ tiene clave única:** inner $\leq n$, y left es exactamente $n$. Un left join con más filas que su tabla izquierda demuestra que **la clave no era única**: una aserción que vale la pena tener en un pipeline.
+
+# 6. Evaluación perezosa
+
+## Qué gana, y sus sorpresas {.smaller}
+
+**Qué gana.** Con toda la consulta conocida antes de ejecutar, el optimizador puede actuar entre pasos: un `filter` escrito al final baja hasta la lectura, y las columnas nunca usadas no se leen. Un motor inmediato, como Pandas, ya pagó cada paso.
+
+**Sus sorpresas**, todas de un mismo hecho: **un DataFrame es una receta, y cada acción la cocina de nuevo**.
+
+| Código | Efecto |
+|--------|--------|
+| Dos acciones sobre un DataFrame | Todo se calcula dos veces, salvo con cache |
+| `df.withColumn("r", F.rand())`, y dos acciones | Valores posiblemente **distintos** cada vez |
+| `F.current_timestamp()` | Cada acción ve otra hora |
+| Cambia un archivo entre acciones | Cada acción ve otros datos |
+
+**¿Cuándo aparecen los errores?**
+
+| Error | Aparece | Por qué |
+|-------|---------|---------|
+| La columna no existe | **Inmediatamente** | El análisis corre al construir el DataFrame |
+| Cast inválido (ANSI), división por cero | **En la acción** | Depende de los datos |
+
+Así, un error puede surgir lejos de la línea que lo causó, y solo para algunas filas.
+
+# 7. Problema integrador
+
+## ¿Por qué se duplicó la facturación? {.smaller}
+
+Un panel reporta el doble de la facturación real. No hay ningún error en los logs.
+
+```python
+report = (orders.join(addresses, "customer_id", "left")     # 1,000,000 orders
+                .groupBy("region").agg(F.sum("revenue").alias("revenue"),
+                                       F.avg("revenue").alias("avg_ticket")))
+```
+
+1. ¿Qué hecho de `addresses` lo explicaría? ¿Cómo lo detectas? 2. ¿`avg_ticket` también se duplica? 3. Propón una corrección que no haga shuffle de `orders` dos veces.
+
+::: {.fragment}
+1. Algunos clientes tienen varias direcciones, así que la clave **no es única** a la derecha: las filas se multiplican ($\sum_k a_k b_k$). Detección: las filas tras el join `> orders.count()`, o `addresses.groupBy("customer_id").count().filter("count > 1")`.
+2. **No necesariamente.** Crecen el numerador y el denominador, así que un `avg` duplicado de forma uniforme parece correcto. Solo `sum` revela el error: una función algebraica puede ocultar lo que una distributiva expone.
+3. Reduce `addresses` a una fila por cliente **antes** del join, eligiéndola con `row_number` más un desempate. Esto además hace exacta la cota del left: `n` filas de salida. **Nunca lo arregles con `distinct()` después**: se perderían dos pedidos legítimos iguales.
+:::
+
+---
+
+## Referencias {.smaller}
+
+- Codd, E. F. (1970). *A Relational Model of Data for Large Shared Data Banks*. Communications of the ACM, 13(6).
+- Gray, J., et al. (1997). *Data Cube: A Relational Aggregation Operator Generalizing Group-By, Cross-Tab, and Sub-Totals*. Data Mining and Knowledge Discovery, 1.
+- Heule, S., Nunkesser, M., Hall, A. (2013). *HyperLogLog in Practice*. EDBT.
+- Armbrust, M., et al. (2015). *Spark SQL: Relational Data Processing in Spark*. SIGMOD.
+- Apache Spark 4.0.1: [NULL semantics](https://spark.apache.org/docs/4.0.1/sql-ref-null-semantics.html), [NaN semantics](https://spark.apache.org/docs/4.0.1/sql-ref-datatypes.html), [Window functions](https://spark.apache.org/docs/4.0.1/sql-ref-syntax-qry-select-window.html), [SQL functions](https://spark.apache.org/docs/4.0.1/api/sql/index.html).
+- Apache Spark 4.0.1, source code: `pyspark/sql/window.py` (default frames).

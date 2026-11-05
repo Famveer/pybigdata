@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >In this lecture, we will learn:
 >
->* Transformers, Estimators and Pipelines
->* Feature preparation
->* Evaluation and decision threshold
->* Cross-validation, saving models and scoring
+>* Whether you need distributed ML: learning curves
+>* Pipelines, and why data leakage inflates results
+>* Logistic regression at scale: gradient as aggregation, and network cost
+>* Trees: histograms in place of sorting, and what depth costs
+>* Metrics, AUC, and the threshold as an economic decision
+>* Cross-validation: its cost and the optimism of selection
 
 
 ### Slides

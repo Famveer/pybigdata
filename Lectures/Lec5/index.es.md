@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Jobs, stages, tasks y shuffles
->* Leer planes con explain()
->* Particiones, repartition y coalesce
->* Joins broadcast y sort-merge
+>* Cómo Catalyst compila una consulta: reglas, costo y plan físico
+>* Dependencias narrow y wide: predecir stages y tasks
+>* Un modelo de tiempo para un stage, y tolerancia a fallos
+>* Anatomía y costo del shuffle, y agregación parcial
+>* Cuántas particiones: la fórmula de lectura, repartition y coalesce
+>* Algoritmos de join: costo, límites y cómo elige Spark
 
 
 ### Slides

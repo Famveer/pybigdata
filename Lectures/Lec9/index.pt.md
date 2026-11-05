@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* O log de transações
->* MERGE e time travel
->* Schema enforcement e evolution
->* OPTIMIZE e VACUUM
+>* O que Parquet puro não pode fazer: anomalias e ACID
+>* O log de transações: estado, protocolo de commit e checkpoints
+>* Concorrência otimista: o que conflita com o quê, e por quê
+>* O custo de UPDATE e MERGE: quantos arquivos são reescritos
+>* Salto de dados e Z-order: o que ganham e seu limite
+>* Versões, retenção e quando os dados são realmente apagados
 
 
 ### Slides

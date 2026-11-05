@@ -14,11 +14,11 @@ layout: default
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Los tres pilares de Hadoop: HDFS, MapReduce y YARN
->* MapReduce con scripts de Python, comparado con Spark
->* La API FileSystem de Hadoop y por qué funciona `s3a://`
->* HDFS de un nodo con Spark y Pandas
->* Hadoop hoy y el paso a la nube
+>* Supuestos de diseño: por qué Hadoop es como es
+>* HDFS en números: tamaño de bloque, memoria del NameNode, pérdida de datos, localidad
+>* MapReduce: el modelo, los fallos, las tareas lentas y sus límites
+>* YARN: repartir un clúster y dimensionar executors
+>* API FileSystem y por qué un almacén de objetos no es un sistema de archivos
 
 
 ### Slides

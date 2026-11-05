@@ -13,151 +13,291 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## What you will learn
+## What you will be able to do {.smaller}
 
-- Data warehouse, data lake and lakehouse
-- Medallion architecture: Bronze, Silver and Gold
-- Ingest messy CSV and JSON
-- Quality rules and quarantine
-- Partitioned Parquet and *partition pruning*
+- State the invariant of each Medallion layer, and check it with numbers
+- Design a pipeline that can be **re-run safely**: idempotence
+- Explain why Parquet compresses and skips data, with real calculations
+- Choose partition columns from their cardinality and estimate the files produced
+- Decide what to do with bad data, and measure its quality
 
----
+| Block | Topic | Min |
+|-------|-------|-----|
+| 1 | Warehouse, lake and lakehouse | 10 |
+| 2 | Medallion as a set of invariants | 15 |
+| 3 | Idempotence: surviving retries | 20 |
+| 4 | Data quality as measurement | 20 |
+| 5 | Inside a Parquet file | 25 |
+| 6 | Partitioning | 20 |
+| 7 | Integrating problem | 10 |
 
-## Warehouse, lake & lakehouse
+# 1. Warehouse, lake and lakehouse
 
-| | Data Warehouse | Data Lake | Lakehouse |
+## Three answers to one trade-off {.smaller}
+
+The choice is **when the structure is enforced**, and what guarantees come with it:
+
+| | Data warehouse | Data lake | Lakehouse |
 |-|----------------|-----------|-----------|
-| Stores | Structured tables | Files of any type | Open files + table layer |
-| Format | Proprietary | CSV, JSON, Parquet... | Parquet + transaction log |
-| Cost | High | Low (object storage) | Low |
-| Transactions (ACID) | Yes | No | Yes |
-| UPDATE / DELETE | Yes | Hard (rewrite files) | Yes |
+| Schema | **On write** | **On read** | On write, on open files |
+| Stored as | Proprietary format | Files: CSV, JSON, Parquet | Parquet + transaction log |
+| Storage and compute | Coupled, in general | Separated | Separated |
+| Cost per GB | High | Low (object store) | Low |
+| Transactions | Yes | **No** | Yes |
+| Risk | Rigid, expensive | Becomes a "data swamp" | Young, needs maintenance |
+
+**Schema on read defers the cost, and does not remove it:** every consumer must re-do the parsing and the cleaning, and each may do it differently. So two reports can disagree with no one being wrong.
+
+**The lake's central weakness** is not format, but the lack of guarantees: nothing stops a half-written table from being read. That is this lecture's motivation for discipline, and Lecture 9's for transactions.
+
+# 2. Medallion as a set of invariants
+
+## What each layer guarantees {.smaller}
+
+Medallion is not about folder names, but about **what can be assumed** when reading each layer:
+
+| Layer | Invariant | Consequence |
+|-------|-----------|-------------|
+| **Bronze** | Holds everything that arrived, unchanged, with lineage | Any later layer can be rebuilt |
+| **Silver** | Typed, valid, **one row per entity** | Joins do not multiply rows |
+| **Gold** | Metrics defined once, modeled for use | Reports agree with each other |
+
+**The key property: Silver is a pure function of Bronze, and Gold of Silver.**
+
+$$\text{Silver} = f(\text{Bronze}) \qquad \text{Gold} = g(\text{Silver})$$
+
+So a bug in $f$ is **recoverable**: fix $f$ and re-run. Without an immutable Bronze, a bug in the cleaning destroys the only copy of the data.
+
+**That is why Bronze reads everything as strings:** a typed read would already be a decision that loses information, such as turning `"N/A"` into `NULL`, and a decision belongs in $f$, where it can change.
+
+# 3. Idempotence: surviving retries
+
+## A job will run twice {.smaller}
+
+Schedulers retry, operators re-launch, and a job can die after writing but before reporting success. So define:
+
+$$\text{run}(\text{run}(S, d),\ d) = \text{run}(S, d)$$
+
+A pipeline step is **idempotent** if running it again on the same input leaves the same state.
+
+| Write | Idempotent? | After a retry |
+|-------|-------------|---------------|
+| `mode("append")` | **No** | Rows are **duplicated** |
+| `mode("overwrite")`, static | Yes, but | Replaces the **entire table**, including other days |
+| `overwrite` + dynamic partitions | **Yes** | Replaces only the partitions in the data |
+| `MERGE` by key | **Yes** | Same keys, same state, given a deterministic source |
+
+**The practical formula:**
+
+$$\text{at-least-once delivery} + \text{idempotent write} = \text{effectively once}$$
+
+Exactly-once *delivery* is very hard to obtain, whereas retrying is easy. So engineer the **effect** rather than the delivery. This reappears in streaming sinks (Lecture 10).
 
 ---
 
-## Medallion architecture
+## Exercise: what happens on a retry? {.smaller}
 
-```
-  SOURCES          BRONZE             SILVER              GOLD
-  CSV, JSON  ──▶   raw data     ──▶   clean data    ──▶   aggregated data
-  APIs, CDC        + metadata         typed, validated    BI / ML / API
-                   all strings        no duplicates
-                                 └──▶ QUARANTINE (rejected)
-```
-
-| Layer | Question it answers | Golden rule |
-|-------|---------------------|-------------|
-| **Bronze** | What exactly arrived? | Never discard anything. Allows reprocessing. |
-| **Silver** | What is the correct version of each record? | Right types, one row per entity, rules applied. |
-| **Gold** | What does the business need to see? | Aggregations and metrics, modeled for consumption. |
-
----
-
-## Why Parquet
-
-| | CSV / JSON | Parquet |
-|-|-----------|---------|
-| Orientation | Row | **Column** |
-| Schema | Inferred on every read | Stored in the file |
-| Compression | Weak | Strong (per column) |
-| Read 2 of 20 columns | Reads everything | Reads only 2 (*column pruning*) |
-| Filter `price > 100` | Reads everything | Skips blocks with min/max stats (*predicate pushdown*) |
-
----
-
-## Bronze: ingest without losing anything
-
-- Read **everything as string**: a price like `N/A` must not fail or silently become null
-- Merge sources while keeping columns that exist in only one
-- Add **lineage metadata**: source file and ingestion time
+A daily job processes `d` and fails halfway. Which version is safe to re-run?
 
 ```python
-raw_csv = (spark.read.option("header", True).csv(path)
-    .select("*", F.col("_metadata.file_path").alias("_source_file")))
-
-bronze = (raw_csv.unionByName(raw_json, allowMissingColumns=True)
-    .withColumn("_ingested_at", F.current_timestamp()))
-```
-
----
-
-## Silver: clean, validate, deduplicate
-
-```
-  bronze ──▶ clean() ──▶ enrich() ──▶ validate() ──┬──▶ deduplicate() ──▶ SILVER
-                                                   └──▶ QUARANTINE (+ reason)
-```
-
-**ANSI mode is on by default in Spark 4**: an invalid `cast` raises an error instead of returning null.
-
-| Operation | Fails on invalid value | Returns null |
-|---------|-------------------------|--------------|
-| Type conversion | `col.cast("int")` | `col.try_cast("int")` |
-| Text to timestamp | `F.to_timestamp(c, fmt)` | `F.try_to_timestamp(c, F.lit(fmt))` |
-| Division | `a / b` | `F.try_divide(a, b)` |
-
----
-
-## Quality rules and quarantine
-
-Instead of deleting bad records, keep them **with the reason**: you can measure source quality, warn the source team and reprocess.
-
-```python
-RULES = {
-    "preco_invalido":      F.col("price").isNull() | (F.col("price") <= 0),
-    "quantidade_invalida": F.col("quantity").isNull() | (F.col("quantity") <= 0),
-}
-errors = F.array_compact(F.array(*[F.when(c, F.lit(n)) for n, c in RULES.items()]))
-df = df.withColumn("_errors", errors)
-valid    = df.filter(F.size("_errors") == 0).drop("_errors")
-rejected = df.filter(F.size("_errors") > 0)
-```
-
----
-
-## Partitioned writes
-
-```python
-(silver_df
- .repartition("order_date")      # all rows of a day in the same task
- .write.mode("overwrite")
- .partitionBy("order_date")
- .parquet(SILVER))
-```
-
-- Good partition columns have **low cardinality** and are **used in filters**
-- Each task writes one file per partition it finds: without the `repartition`, you get the **small files** problem
-
----
-
-## Pruning in the plan
-
-| Mechanism | Field in the plan | Effect |
-|---|---|---|
-| Partition pruning | `PartitionFilters` | Skips whole folders |
-| Predicate pushdown | `PushedFilters` | Skips blocks inside files |
-| Column pruning | `ReadSchema` | Reads only the columns used |
-
----
-
-## Reprocessing and Gold
-
-```python
+day = df.filter(col("date") == d)
+# A
+day.write.mode("append").partitionBy("date").parquet(path)
+# B
 spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
-day3.repartition("order_date").write.mode("overwrite") \
-    .partitionBy("order_date").parquet(SILVER)
+day.write.mode("overwrite").partitionBy("date").parquet(path)
+# C (same as B, with the default mode)
+day.write.mode("overwrite").partitionBy("date").parquet(path)
 ```
 
-::: {.callout-warning}
-With the default `static` mode, the same command would **delete every other day**.
+::: {.fragment}
+| | On a retry | Verdict |
+|-|------------|---------|
+| **A** | The rows of the failed attempt remain: **partial duplicates** | Unsafe |
+| **B** | Partition `d` is replaced, and the others stay intact | **Safe** |
+| **C** | `static` mode **deletes all the other days**, with no error at all | Dangerous even the first time |
+
+The output of Lab 7 shows B's effect: July 3 drops to 100 rows, while 1 and 2 stay at 1,055 and 1,050.
+
+**B still has a window:** during the overwrite, a reader sees the partition partially written. Solving that requires transactions (Lecture 9).
 :::
 
+# 4. Data quality as measurement
+
+## Quality is a number, not an opinion {.smaller}
+
+| Dimension | Question | Measure | Example rule |
+|-----------|----------|---------|--------------|
+| **Completeness** | Is it present? | % not null | `customer_id` not null |
+| **Validity** | Is it in the domain? | % within rules | `price > 0`, status in a list |
+| **Uniqueness** | Is there one per entity? | Distinct / total | One row per `order_id` |
+| **Consistency** | Do tables agree? | % of keys matched | `product_id` exists in products |
+| **Timeliness** | Did it arrive on time? | Delay percentiles | Event to ingestion time |
+
+**What to do with a bad row?** Each option fits a different cost of error:
+
+| Strategy | When | Risk |
+|----------|------|------|
+| **Fail the job** | Critical rule: the whole batch is suspect | Blocks everything, for one row |
+| **Quarantine** | Normal case: keep it, with the reason | Someone must review it |
+| **Fix or default** | Only if the correct value is certain | Silently invents data |
+
+Quarantine separates "the pipeline runs" from "the data is good", and it makes quality **measurable over time**. Add a threshold: a jump from 2% to 30% rejects should stop the job, since it signals a broken source.
+
+---
+
+## Exercise: audit a real run {.smaller}
+
+Lab 7 reported these numbers. **Do they add up? What does each difference mean?**
+
+| Stage | Rows | | Rejection reason | Rows |
+|-------|------|-|------------------|------|
+| Bronze | 4,337 | | `invalid_price` | 202 |
+| Valid | 3,809 | | `invalid_quantity` | 160 |
+| Rejected | 528 | | `unknown_product` | 89 |
+| Silver | 3,156 | | `unknown_region` | 59 |
+| | | | `invalid_date` | 29 |
+
+::: {.fragment}
+**Conservation.** $3{,}809 + 528 = 4{,}337$. It holds: **no row was lost**. This check is cheap and should run on every execution.
+
+**Reasons add up to 539, not 528.** They differ by 11, since a row may break several rules. So summing the reasons overstates the number rejected.
+
+**Valid → Silver loses 653 rows** (17%), yet these are not errors: duplicate rows and earlier versions of orders whose status was later updated. Silver has one row per order.
+
+**Quality rate:** $3{,}809 / 4{,}337 =$ 87.8% valid. Whether that is good depends on history: **a metric means little until you can compare it with yesterday's**.
+:::
+
+---
+
+## Deduplication must be deterministic {.smaller}
+
+"Keep the latest version of each order" is a window problem, but what does **latest** mean?
+
 ```python
-gold_daily = (sales.groupBy("order_date", "region", "category")
-    .agg(F.count("*").alias("orders"),
-         F.round(F.sum("revenue"), 2).alias("revenue")))
+w = (Window.partitionBy("order_id")
+           .orderBy(F.col("updated_at").desc(), F.col("_ingested_at").desc()))
+df.withColumn("rn", F.row_number().over(w)).filter("rn = 1").drop("rn")
 ```
+
+| Question | Why it matters |
+|----------|----------------|
+| Business time or arrival time? | A late event must not overwrite a newer state |
+| Is the sort key unique per entity? | With ties, `row_number` chooses **arbitrarily**, so re-runs differ |
+| Does each run see all of the history? | If not, an old duplicate can reappear |
+
+**`dropDuplicates(["order_id"])` is not equivalent:** it keeps **an arbitrary row** of each key. It is fine for exact duplicates, and wrong when versions differ.
+
+**The guarantee to aim for:** Silver must be a deterministic function of Bronze. Otherwise re-running a job for a bug fix also changes rows unrelated to the fix, and differences become impossible to audit.
+
+# 5. Inside a Parquet file
+
+## Structure: why a reader can skip so much {.smaller}
+
+```
+ File
+ ├── Row group 1
+ │     ├── Column chunk: price     ── pages (encoded, compressed)
+ │     ├── Column chunk: region    ── pages
+ │     └── Column chunk: quantity  ── pages
+ ├── Row group 2 ...
+ └── FOOTER: schema, position of each chunk, min/max/null count per chunk
+```
+
+A reader takes the footer first, and only then decides what to read. **The footer is written last,** which allows a single-pass write:
+
+| Technique | Uses | Skips |
+|-----------|------|-------|
+| **Column pruning** | Chunk positions | The columns not requested |
+| **Predicate pushdown** | min/max per row group | Row groups that cannot match |
+| **Partition pruning** | Directory names | Entire files, without opening them |
+
+**Pushdown depends on the data's order.** With $G$ row groups and a filter selecting a fraction $s$:
+
+| Data order on the filter column | Fraction read |
+|---------------------------------|---------------|
+| Random: each group's min/max covers everything | About **100%** |
+| Sorted: each group has a narrow range | About $s + 1/G$ |
+
+---
+
+## Why it compresses: encoding before compression {.smaller}
+
+Column `region`, 5 distinct values, 100 million rows, average length 7 characters:
+
+| Encoding | How | Size |
+|----------|-----|------|
+| **PLAIN** | 4-byte length + bytes, for each value | $100\text{M} \times 11$ B $=$ **1.1 GB** |
+| **Dictionary** | 5 values once, then an index of $\lceil \log_2 5 \rceil = 3$ bits per row | $100\text{M} \times 3 / 8$ B $=$ **37.5 MB** |
+| **Dictionary + RLE**, sorted | 5 runs of (index, count) | **A few bytes** per row group |
+
+That is **29× before any compression codec** (the default is `snappy`), and it comes purely from a column holding similar values next to each other: a row format could not do this.
+
+**Other encodings:** `DELTA_BINARY_PACKED` stores differences between consecutive values, ideal for timestamps and growing IDs. If a dictionary grows too large, the encoder falls back to `PLAIN`.
+
+**Two practical consequences:**
+
+- **Low cardinality compresses well**, so a date string costs almost nothing, unlike a UUID.
+- **Sorting before writing** helps twice: longer runs for RLE, and narrower min/max for pushdown.
+
+# 6. Partitioning
+
+## How many files will you create? {.smaller}
+
+Each task of the last stage writes one file **per partition value it encounters**. With $T$ tasks and $V$ partition values:
+
+$$\text{files} \leq T \times V$$
+
+Lab 7 measured it, with $T = 8$ and $V = 3$:
+
+| Write | Files per day | Size per day |
+|-------|---------------|--------------|
+| `.repartition(8)`, then `partitionBy` | 8 | 84 KB |
+| `.repartition("order_date")`, then `partitionBy` | **1** | **42 KB** |
+
+**The same data takes half the space** in one file: each file repeats its footer, its dictionaries and its statistics.
+
+**Choosing the column.** With 1 TB per year:
+
+| Partition by | Directories | Size per directory | Verdict |
+|--------------|-------------|--------------------|---------|
+| Day | 365 | 2.7 GB | **Good**, if queries filter by date |
+| `customer_id` (1 M) | 1,000,000 | **1 MB** | Terrible: small files, and listing costs |
+
+**A partition column needs low cardinality, and to appear in the filters.**
+
+# 7. Integrating problem
+
+## Design this table {.smaller}
+
+Orders: 100 GB per day of CSV, 3 years of history. Queries filter by date and sometimes by `customer_id` (1 million). The job can fail and re-run, and late status updates arrive up to 7 days later.
+
+1. Partition column, and why not `customer_id`?
+2. How do you make queries by `customer_id` fast?
+3. How do you write to be idempotent?
+4. Output files per day, with 200 shuffle partitions? How do you get about 4?
+5. A late update for a day that has already been written: what do you do?
+
+::: {.fragment}
+1. **`order_date`**: about 1,100 directories. `customer_id` would give 1 million directories, with very small files.
+2. **Sort by `customer_id` within each partition before writing**: min/max per row group then allows skipping.
+3. **`overwrite` with dynamic partitions**, one day at a time. Never `append`, and never static mode.
+4. Up to 200 per day. Parquet at about 10× smaller means 10 GB/day: `repartition(4)` per day gives about **2.5 GB each**.
+5. **Reprocess the affected days** from Bronze (at most the last 7): overwrite is idempotent, and the cost is bounded. Parquet alone cannot update one row, which leads directly to `MERGE` (Lecture 9).
+:::
+
+---
+
+## References {.smaller}
+
+- Armbrust, M., Ghodsi, A., Xin, R., Zaharia, M. (2021). *Lakehouse: A New Generation of Open Platforms that Unify Data Warehousing and Advanced Analytics*. CIDR.
+- Melnik, S., et al. (2010). *Dremel: Interactive Analysis of Web-Scale Datasets*. VLDB. (origin of Parquet's columnar nested model)
+- Apache Parquet: [File format](https://parquet.apache.org/docs/file-format/), [Encodings](https://parquet.apache.org/docs/file-format/data-pages/encodings/).
+- Apache Spark 4.0.1: [Parquet files](https://spark.apache.org/docs/4.0.1/sql-data-sources-parquet.html), [Performance Tuning](https://spark.apache.org/docs/4.0.1/sql-performance-tuning.html).

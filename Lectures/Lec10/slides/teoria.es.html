@@ -188,6 +188,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,233 +207,662 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="lo-que-aprenderás" class="slide level2">
-<h2>Lo que aprenderás</h2>
+<section id="lo-que-podrás-hacer" class="slide level2 smaller">
+<h2>Lo que podrás hacer</h2>
 <ul>
-<li>El modelo de tabla ilimitada y el micro-batch</li>
-<li>Sources, sinks, output modes y triggers</li>
-<li>Agregar por <strong>tiempo del evento</strong> con ventanas</li>
-<li>Tratar datos atrasados con <strong>watermark</strong></li>
-<li>Tolerancia a fallos con <strong>checkpoint</strong></li>
+<li>Distinguir el tiempo del evento del tiempo de proceso, y decir qué mide cada uno</li>
+<li>Decidir si un pipeline da abasto, y calcular cuánto tarda en ponerse al día</li>
+<li>Estimar el estado que una consulta con ventanas mantiene en memoria</li>
+<li>Trazar un watermark a mano, y elegir su retraso</li>
+<li>Decir exactamente qué requiere “exactly-once”, y qué sinks lo ofrecen</li>
 </ul>
-</section>
-<section id="batch-vs-streaming" class="slide level2">
-<h2>Batch vs streaming</h2>
 <table class="caption-top">
 <thead>
 <tr class="header">
-<th></th>
-<th>Batch</th>
-<th>Streaming</th>
+<th>Bloque</th>
+<th>Tema</th>
+<th>Min</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Datos</td>
-<td>Conjunto cerrado</td>
-<td>Flujo sin fin</td>
+<td>1</td>
+<td>El modelo: tabla ilimitada y dos tiempos</td>
+<td>20</td>
 </tr>
 <tr class="even">
-<td>Ejecución</td>
-<td>Corre una vez y termina</td>
-<td>Corre continuamente</td>
+<td>2</td>
+<td>Micro-batches y capacidad</td>
+<td>20</td>
 </tr>
 <tr class="odd">
-<td>Lectura</td>
-<td><code>spark.read</code></td>
-<td><code>spark.readStream</code></td>
+<td>3</td>
+<td>Ventanas y estado</td>
+<td>20</td>
 </tr>
 <tr class="even">
-<td>Escritura</td>
-<td><code>df.write</code></td>
-<td><code>df.writeStream</code></td>
+<td>4</td>
+<td>Watermarks</td>
+<td>25</td>
 </tr>
 <tr class="odd">
-<td>Latencia típica</td>
-<td>Minutos a horas</td>
-<td>Segundos</td>
+<td>5</td>
+<td>Exactly-once, con precisión</td>
+<td>25</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Problema integrador</td>
+<td>10</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="la-tabla-ilimitada" class="slide level2">
-<h2>La tabla ilimitada</h2>
-<p>El flujo es una <strong>tabla que crece sin parar</strong>. Escribes la consulta como si fuera sobre toda la tabla; Spark la ejecuta <strong>de forma incremental</strong>.</p>
-<pre><code>   source     [e1 e2]        [e3 e4 e5]        [e6]
-                 │               │               │
-   query      groupBy        groupBy        groupBy
-                 │               │               │
-   result     [A:2]          [A:3 B:2]      [A:3 B:3]</code></pre>
-<pre><code>   SOURCE ──▶ TRANSFORMATIONS ──▶ SINK
-              CHECKPOINT: processed offsets + aggregation state
-              TRIGGER   : when each micro-batch runs</code></pre>
+<section>
+<section id="el-modelo-tabla-ilimitada-y-dos-tiempos" class="title-slide slide level1 center">
+<h1>1. El modelo: tabla ilimitada y dos tiempos</h1>
+
 </section>
-<section id="modos-de-salida" class="slide level2">
-<h2>Modos de salida</h2>
+<section id="un-stream-es-una-tabla-que-solo-crece" class="slide level2 smaller">
+<h2>Un stream es una tabla que solo crece</h2>
+<p>La entrada es una <strong>tabla ilimitada</strong> a la que se añaden filas. Escribes una consulta como si corriera sobre toda la tabla, y el motor la calcula <strong>de forma incremental</strong> (Armbrust et al., 2018).</p>
+<p><strong>Consistencia de prefijo:</strong> el resultado en cualquier momento es igual al de la misma consulta, en batch, sobre <strong>algún prefijo</strong> de la entrada. Es la promesa central del modelo, y por eso se puede razonar sobre la lógica de un stream como sobre la de un batch.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 12%">
-<col style="width: 60%">
-<col style="width: 27%">
+<col style="width: 30%">
+<col style="width: 50%">
+<col style="width: 19%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Modo</th>
-<th>Qué se escribe en cada micro-batch</th>
-<th>Uso típico</th>
+<th>Modo de salida</th>
+<th>Qué escribe cada trigger</th>
+<th>Requiere</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td><code>append</code></td>
-<td>Solo filas nuevas que <strong>ya no cambiarán</strong></td>
-<td>Eventos sin agregación; ventanas cerradas por el watermark</td>
+<td>Solo filas que <strong>nunca cambiarán</strong></td>
+<td>Con agregación: un watermark</td>
 </tr>
 <tr class="even">
 <td><code>update</code></td>
-<td>Solo filas del resultado que <strong>cambiaron</strong></td>
-<td>Dashboards, upserts</td>
+<td>Filas que cambiaron</td>
+<td></td>
 </tr>
 <tr class="odd">
 <td><code>complete</code></td>
-<td>El resultado <strong>completo</strong>, de nuevo</td>
-<td>Agregaciones pequeñas</td>
+<td>Todo el resultado, otra vez</td>
+<td>El estado <strong>nunca</strong> se limpia</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Processing time:</strong> cuándo Spark recibió el evento. <strong>Event time:</strong> cuándo ocurrió. Para métricas de negocio casi siempre queremos event time, lo que exige tratar datos atrasados.</p>
+<p><strong>Por qué <code>append</code> necesita un watermark en una agregación:</strong> un conteo de las 10:00 aún puede cambiar, y escribirlo sería una promesa imposible de cumplir. Solo puede escribirse cuando el motor decide que la ventana no cambiará. Así, <strong>algo de latencia es el precio de una salida inmutable</strong>.</p>
 </section>
-<section id="fuentes-de-archivos-dos-cuidados" class="slide level2">
-<h2>Fuentes de archivos: dos cuidados</h2>
-<ul>
-<li><strong>El schema es obligatorio:</strong> debe ser estable durante toda la vida de la consulta</li>
-<li><strong>Los archivos deben aparecer completos:</strong> escribe en otra carpeta y luego <strong>mueve</strong> (atómico en el mismo sistema de archivos)</li>
-</ul>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>orders_stream <span class="op">=</span> (spark.readStream.schema(event_schema)</span>
-<span id="cb3-2"><a href=""></a>                 .option(<span class="st">"maxFilesPerTrigger"</span>, <span class="dv">1</span>).json(INPUT))</span>
-<span id="cb3-3"><a href=""></a></span>
-<span id="cb3-4"><a href=""></a>q <span class="op">=</span> (orders_stream.groupBy(<span class="st">"region"</span>).count()</span>
-<span id="cb3-5"><a href=""></a>     .writeStream.<span class="bu">format</span>(<span class="st">"memory"</span>).queryName(<span class="st">"by_region"</span>)</span>
-<span id="cb3-6"><a href=""></a>     .outputMode(<span class="st">"complete"</span>).start())</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="ventanas" class="slide level2">
-<h2>Ventanas</h2>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>.groupBy(F.window(<span class="st">"event_time"</span>, <span class="st">"5 minutes"</span>))                <span class="co"># tumbling</span></span>
-<span id="cb4-2"><a href=""></a>.groupBy(F.window(<span class="st">"event_time"</span>, <span class="st">"10 minutes"</span>, <span class="st">"5 minutes"</span>))  <span class="co"># sliding</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<pre><code>  Tumbling (5 min)                         Sliding (10 min, every 5 min)
-  |10:00-10:05|10:05-10:10|10:10-10:15|    |10:00-------10:10|
-                                                 |10:05-------10:15|
-  each event falls in 1 window             each event falls in 2 windows</code></pre>
-</section>
-<section id="watermark" class="slide level2">
-<h2>Watermark</h2>
-<pre><code>  watermark = latest event_time seen − tolerated delay
-
-  tolerated delay 5 min, latest event_time = 10:11  -&gt;  watermark = 10:06
-
-  - window 10:00-10:05 -&gt; end &lt; watermark: closed, emitted, state released
-  - event at 10:07     -&gt; window 10:05-10:10 still open: accepted
-  - event at 10:02     -&gt; its window is closed: dropped</code></pre>
-<p><strong>Compromiso:</strong> un atraso mayor acepta más eventos atrasados, pero retiene más estado en memoria y retrasa los resultados.</p>
-</section>
-<section id="checkpoint" class="slide level2">
-<h2>Checkpoint</h2>
-<pre><code>  checkpoint/
-  ├── offsets/    &lt;- what each micro-batch will read (written BEFORE processing)
-  ├── commits/    &lt;- which micro-batches finished    (written AFTER the sink)
-  ├── sources/    &lt;- files already seen by the source
-  └── state/      &lt;- aggregation and window state</code></pre>
-<p>Reiniciar con el <strong>mismo checkpoint</strong> continúa donde se detuvo. Con un sink transaccional (archivos de Spark, Delta), la garantía es <strong>exactly-once</strong>. Cada consulta necesita su propio checkpoint.</p>
-</section>
-<section id="triggers" class="slide level2">
-<h2>Triggers</h2>
+<section id="dos-relojes-que-no-coinciden" class="slide level2 smaller">
+<h2>Dos relojes que no coinciden</h2>
+<pre><code> tiempo de proceso
+   10:20 │                                     ● pedido de las 10:01, sin señal
+   10:10 │                  ●
+   10:05 │         ●                 ●
+   10:00 │ ●
+         └───────────────────────────────────────── tiempo del evento
+          10:00   10:01   10:03    10:05      ideal: ambos iguales</code></pre>
 <table class="caption-top">
 <colgroup>
-<col style="width: 37%">
-<col style="width: 41%">
+<col style="width: 2%">
+<col style="width: 48%">
+<col style="width: 48%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Tiempo del evento</th>
+<th>Tiempo de proceso</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Qué es</td>
+<td>Cuándo ocurrió</td>
+<td>Cuándo lo vio Spark</td>
+</tr>
+<tr class="even">
+<td>Determinista al reprocesar</td>
+<td><strong>Sí</strong>: forma parte del dato</td>
+<td>No</td>
+</tr>
+<tr class="odd">
+<td>Sirve para</td>
+<td>Métricas de negocio</td>
+<td>Métricas del sistema, como el throughput</td>
+</tr>
+<tr class="even">
+<td>Problema</td>
+<td>Los datos llegan <strong>desordenados</strong></td>
+<td>El resultado depende de los retrasos</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Por qué esto no se puede evitar.</strong> En un stream ilimitado y desordenado, no se puede saber si una ventana está completa. <strong>Dataflow</strong> lo plantea como un compromiso forzoso entre tres objetivos: <strong>corrección, latencia y costo</strong> (Akidau et al., 2015). Cada parámetro de esta clase elige un punto de ese compromiso.</p>
+</section></section>
+<section>
+<section id="micro-batches-y-capacidad" class="title-slide slide level1 center">
+<h1>2. Micro-batches y capacidad</h1>
+
+</section>
+<section id="el-pipeline-da-abasto" class="slide level2 smaller">
+<h2>¿El pipeline da abasto?</h2>
+<p>Con tasa de llegada <span class="math inline">\(\lambda\)</span> (filas/s) y capacidad <span class="math inline">\(\mu\)</span> (filas/s que el job procesa), sea <span class="math inline">\(\rho = \lambda / \mu\)</span>.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 5%">
+<col style="width: 94%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Comportamiento</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(\rho &lt; 1\)</span></td>
+<td><strong>Estable</strong>: cada micro-batch drena lo que llegó</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\rho &gt; 1\)</span></td>
+<td><strong>Inestable</strong>: el atraso crece sin límite, como <span class="math inline">\((\lambda - \mu)\,t\)</span></td>
+</tr>
+</tbody>
+</table>
+<p><strong>La latencia tiene un piso:</strong> un evento espera a que empiece su lote, y luego a que termine. Con una duración de lote <span class="math inline">\(B\)</span>, la latencia ronda <span class="math inline">\(2B\)</span> en el peor caso. Los lotes se alargan con más datos, así que con <span class="math inline">\(\rho \to 1\)</span> la latencia crece rápido.</p>
+<p><strong>Tras una caída de duración <span class="math inline">\(T\)</span></strong>, el atraso es <span class="math inline">\(\lambda T\)</span>, y se drena a <span class="math inline">\(\mu - \lambda\)</span>:</p>
+<p><span class="math display">\[T_{\text{recuperar}} = \frac{\lambda T}{\mu - \lambda} = T \cdot \frac{\rho}{1 - \rho}\]</span></p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th><span class="math inline">\(\rho\)</span> (carga normal)</th>
+<th>Recuperación tras 1 h de caída</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>50%</td>
+<td>1 h</td>
+</tr>
+<tr class="even">
+<td>80%</td>
+<td><strong>4 h</strong></td>
+</tr>
+<tr class="odd">
+<td>95%</td>
+<td><strong>19 h</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>El criterio real de dimensionamiento no es “¿da abasto hoy?” sino “¿cuánto tarda en recuperarse?”</strong></p>
+</section>
+<section id="triggers-latencia-frente-a-costo" class="slide level2 smaller">
+<h2>Triggers: latencia frente a costo</h2>
+<table class="caption-top">
+<colgroup>
 <col style="width: 20%">
+<col style="width: 39%">
+<col style="width: 23%">
+<col style="width: 16%">
 </colgroup>
 <thead>
 <tr class="header">
 <th>Trigger</th>
-<th>Comportamiento</th>
-<th>Uso</th>
+<th>El lote empieza</th>
+<th>Latencia</th>
+<th>Costo</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>(por defecto)</td>
-<td>Nuevo micro-batch al terminar el anterior</td>
-<td>Menor latencia</td>
+<td>Por defecto</td>
+<td>Al terminar el anterior</td>
+<td>La menor en micro-batch</td>
+<td>Clúster siempre encendido</td>
 </tr>
 <tr class="even">
 <td><code>processingTime="1 minute"</code></td>
-<td>Un micro-batch por intervalo</td>
-<td>Controlar costo y tamaño de archivos</td>
+<td>En cada intervalo</td>
+<td>Hasta unos 2 min</td>
+<td>Lotes y archivos mayores</td>
 </tr>
 <tr class="odd">
 <td><code>availableNow=True</code></td>
-<td>Procesa <strong>todo lo disponible</strong> y <strong>se detiene</strong></td>
-<td>Ingesta incremental programada</td>
+<td>Una vez: drena, y <strong>para</strong></td>
+<td>La de la agenda</td>
+<td><strong>Solo pagas mientras corre</strong></td>
 </tr>
 <tr class="even">
 <td><code>continuous="1 second"</code></td>
-<td>Continuo, sin micro-batch (experimental)</td>
-<td>Latencia de milisegundos, operaciones simples</td>
+<td>Sin lotes (experimental)</td>
+<td>Milisegundos</td>
+<td>Pocas operaciones, at-least-once</td>
 </tr>
 </tbody>
 </table>
+<p><strong><code>availableNow</code> es la opción que se suele olvidar.</strong> ¿De verdad necesitas resultados en segundos? Si basta cada hora, esto corre un job por hora con <strong>el mismo código y checkpoint de streaming</strong>: procesa solo lo nuevo y libera el clúster.</p>
+<p><strong>Triggers pequeños son archivos pequeños:</strong> un sink de archivos con trigger de 10 s escribe al menos 8.640 commits al día, y al menos tantos archivos, que luego requieren compactación (Clases 8 y 9).</p>
+</section></section>
+<section>
+<section id="ventanas-y-estado" class="title-slide slide level1 center">
+<h1>3. Ventanas y estado</h1>
+
 </section>
-<section id="otras-operaciones" class="slide level2 smaller">
-<h2>Otras operaciones</h2>
+<section id="cuánta-memoria-cuesta-una-ventana" class="slide level2 smaller">
+<h2>¿Cuánta memoria cuesta una ventana?</h2>
+<p>Una ventana de longitud <span class="math inline">\(L\)</span> que avanza cada <span class="math inline">\(S\)</span>: cada evento pertenece a <span class="math inline">\(\lceil L / S \rceil\)</span> ventanas, así que el trabajo por evento se multiplica por ese factor.</p>
+<p><strong>Estado.</strong> Una agregación guarda, por ventana y clave, su estado parcial (el estado distributivo o algebraico de la Clase 4). Una ventana sigue abierta mientras pueda recibir datos: su longitud más el retraso <span class="math inline">\(\tau\)</span> del watermark. Con <span class="math inline">\(K\)</span> claves activas y <span class="math inline">\(b\)</span> bytes por entrada:</p>
+<p><span class="math display">\[\text{estado} \approx \frac{L + \tau}{S} \times K \times b\]</span></p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 42%">
-<col style="width: 34%">
+<col style="width: 67%">
 <col style="width: 23%">
+<col style="width: 9%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Operación</th>
-<th>Soporte</th>
-<th>Observación</th>
+<th>Consulta, <span class="math inline">\(K = 100.000\)</span>, <span class="math inline">\(b = 200\)</span> B, <span class="math inline">\(\tau = 10\)</span> min</th>
+<th>Ventanas abiertas</th>
+<th>Estado</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>select</code>, <code>filter</code>, <code>withColumn</code></td>
-<td>Sí</td>
-<td>Igual que en batch</td>
+<td>Tumbling, 5 min</td>
+<td>3</td>
+<td><strong>60 MB</strong></td>
 </tr>
 <tr class="even">
-<td>Join stream + estático</td>
-<td>Sí</td>
-<td>Enriquecer con dimensiones</td>
+<td>Deslizante, 10 min cada 1 min</td>
+<td>20</td>
+<td><strong>400 MB</strong></td>
 </tr>
 <tr class="odd">
-<td>Join stream + stream</td>
-<td>Sí</td>
-<td>Watermark en ambos lados y condición de tiempo</td>
+<td>Deslizante, 1 h cada 1 min</td>
+<td>70</td>
+<td><strong>1,4 GB</strong></td>
 </tr>
 <tr class="even">
-<td><code>dropDuplicatesWithinWatermark</code></td>
-<td>Sí (3.5+)</td>
-<td>Deduplicación con estado limitado</td>
-</tr>
-<tr class="odd">
-<td><code>orderBy</code></td>
-<td>Solo tras agregación en <code>complete</code></td>
-<td>Ordenar un flujo infinito no tiene sentido</td>
-</tr>
-<tr class="even">
-<td><code>show()</code>, <code>collect()</code></td>
-<td>No</td>
-<td>Usa un sink (memory, foreachBatch)</td>
+<td><strong><code>complete</code>, o sin watermark</strong></td>
+<td>Crece sin fin</td>
+<td><strong>Hasta fallar</strong></td>
 </tr>
 </tbody>
 </table>
+<p><strong>El estado pertenece a los executors,</strong> en memoria con el almacén por defecto, donde causa pausas de GC al crecer. <strong>RocksDB</strong> lo lleva a memoria nativa y disco local. Se respalda en el checkpoint, así que suma a la duración del lote.</p>
+</section></section>
+<section>
+<section id="watermarks" class="title-slide slide level1 center">
+<h1>4. Watermarks</h1>
 
 </section>
+<section id="la-regla-formal-y-su-garantía" class="slide level2 smaller">
+<h2>La regla formal, y su garantía</h2>
+<p><span class="math display">\[W = \max(\text{tiempo de evento visto}) - \tau\]</span></p>
+<p>Una ventana que termina en <span class="math inline">\(T\)</span> se conserva hasta que <span class="math inline">\(W &gt; T\)</span>. Entonces se emite (en <code>append</code>) y se libera su estado.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 39%">
+<col style="width: 60%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Detalle</th>
+<th>Consecuencia</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(W\)</span> solo avanza</td>
+<td>Un evento tardío nunca lo hace retroceder</td>
+</tr>
+<tr class="even">
+<td>Se recalcula al <strong>final</strong> de cada lote</td>
+<td>Rige desde el lote siguiente</td>
+</tr>
+<tr class="odd">
+<td>Lo deciden las <strong>ventanas</strong>, no los eventos</td>
+<td>Un tardío entra si <strong>su ventana sigue abierta</strong></td>
+</tr>
+<tr class="even">
+<td>Con varias entradas: el <span class="math inline">\(W\)</span> <strong>mínimo</strong></td>
+<td>El stream más lento frena todos los resultados</td>
+</tr>
+</tbody>
+</table>
+<p><strong>La garantía va en una sola dirección</strong> (documentación de Spark):</p>
+<ul>
+<li>Datos con retraso <strong>menor</strong> que <span class="math inline">\(\tau\)</span>: <strong>nunca se descartan</strong>.</li>
+<li>Datos con retraso <strong>mayor</strong> que <span class="math inline">\(\tau\)</span>: <strong>pueden agregarse o no</strong>.</li>
+</ul>
+<p>Así, <span class="math inline">\(\tau\)</span> es una cota inferior de tolerancia, y no un corte exacto. <strong>No confíes en que los tardíos se descarten</strong>: el resultado puede diferir entre ejecuciones, según cómo cayeron los lotes.</p>
+</section>
+<section id="ejercicio-trázalo-a-mano" class="slide level2 smaller">
+<h2>Ejercicio: trázalo a mano</h2>
+<p>Ventanas tumbling de 5 min, <span class="math inline">\(\tau = 5\)</span> min, <code>append</code>. Antes de ver la respuesta, completa el watermark vigente <strong>durante</strong> cada lote, qué se emite, y el destino de cada evento tardío.</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Lote</th>
+<th>Eventos</th>
+<th><span class="math inline">\(W\)</span> vigente</th>
+<th>¿Tardío?</th>
+<th>Emite</th>
+<th><span class="math inline">\(W\)</span> después</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>10:00 a 10:04</td>
+<td>?</td>
+<td></td>
+<td>?</td>
+<td>?</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>10:05 a 10:09, <strong>+10:01</strong></td>
+<td>?</td>
+<td>?</td>
+<td>?</td>
+<td>?</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>10:16 ×3, <strong>+10:03</strong></td>
+<td>?</td>
+<td>?</td>
+<td>?</td>
+<td>?</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td><strong>10:02</strong>, 10:12</td>
+<td>?</td>
+<td>?</td>
+<td>?</td>
+<td>?</td>
+</tr>
+</tbody>
+</table>
+<div class="fragment">
+<table class="caption-top">
+<colgroup>
+<col style="width: 11%">
+<col style="width: 24%">
+<col style="width: 27%">
+<col style="width: 12%">
+<col style="width: 24%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Lote</th>
+<th><span class="math inline">\(W\)</span> vigente</th>
+<th>Evento tardío</th>
+<th>Emite</th>
+<th><span class="math inline">\(W\)</span> después</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>ninguno</td>
+<td></td>
+<td>Nada</td>
+<td>09:59</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>09:59</td>
+<td>10:01 <strong>aceptado</strong></td>
+<td>Nada</td>
+<td><strong>10:04</strong></td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>10:04</td>
+<td>10:03 <strong>aceptado</strong>: su ventana sigue abierta</td>
+<td>[10:00, 10:05) = <strong>7</strong>; [10:05, 10:10) = <strong>5</strong></td>
+<td><strong>10:11</strong></td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>10:11</td>
+<td>10:02 <strong>descartado</strong>: su ventana cerró</td>
+<td>Nada</td>
+<td>10:11</td>
+</tr>
+</tbody>
+</table>
+<p>Es la salida real del Lab 9: 7 y 5 pedidos, con <code>dropped = 1</code> en el lote 4. Nota que <strong>en el lote 3, 10:03 es anterior a <span class="math inline">\(W\)</span> = 10:04 y aun así entra</strong>, porque la regla la decide la ventana.</p>
+</div>
+</section>
+<section id="elegir-tau-es-elegir-entre-tres-costos" class="slide level2 smaller">
+<h2>Elegir <span class="math inline">\(\tau\)</span> es elegir entre tres costos</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 68%">
+<col style="width: 32%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Aumentar <span class="math inline">\(\tau\)</span></th>
+<th>Efecto</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Corrección</strong></td>
+<td>Menos eventos descartados</td>
+</tr>
+<tr class="even">
+<td><strong>Latencia</strong></td>
+<td>Los resultados aparecen más tarde: al menos <span class="math inline">\(\tau\)</span> tras el fin de la ventana, en <code>append</code></td>
+</tr>
+<tr class="odd">
+<td><strong>Costo</strong></td>
+<td>Más ventanas abiertas, y por tanto más estado: <span class="math inline">\((L + \tau)/S\)</span></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Por eso <span class="math inline">\(\tau\)</span> debe salir de los datos, no de la costumbre.</strong> Mide la distribución del retraso <span class="math inline">\(D = t_{\text{proceso}} - t_{\text{evento}}\)</span>:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Percentil de retraso</th>
+<th>Ejemplo</th>
+<th>Si <span class="math inline">\(\tau\)</span> = este valor</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>p50</td>
+<td>2 s</td>
+<td>La mitad de los eventos en peligro</td>
+</tr>
+<tr class="even">
+<td>p99</td>
+<td>3 min</td>
+<td>Cerca del 1% en riesgo</td>
+</tr>
+<tr class="odd">
+<td>p99,9</td>
+<td>2 h</td>
+<td>Casi nada en riesgo, pero resultados 2 h tarde</td>
+</tr>
+</tbody>
+</table>
+<p>La cola suele ser larga, porque un celular sin señal puede tardar horas, y seguirla cuesta en proporción. <strong>Lo habitual es que <span class="math inline">\(\tau\)</span> cubra el p99</strong>, y lo que llegue después se trata aparte: una corrección diaria por lotes, con <code>MERGE</code>, sobre los datos de Bronze.</p>
+<p>Es un <strong>patrón tipo lambda</strong> con un solo código: el streaming da velocidad, y el reproceso da completitud.</p>
+</section></section>
+<section>
+<section id="exactly-once-con-precisión" class="title-slide slide level1 center">
+<h1>5. Exactly-once, con precisión</h1>
+
+</section>
+<section id="qué-requiere-de-verdad-exactly-once" class="slide level2 smaller">
+<h2>Qué requiere de verdad exactly-once</h2>
+<p>Un evento puede <em>procesarse</em> varias veces. Lo que se garantiza es que <strong>su efecto en la salida se aplica una vez</strong>, lo que necesita:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 34%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Componente</th>
+<th>Requisito</th>
+<th>Ejemplo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Fuente</strong></td>
+<td>Reproducible, con offsets</td>
+<td>Kafka, archivos. <strong>Un socket no sirve</strong></td>
+</tr>
+<tr class="even">
+<td><strong>Motor</strong></td>
+<td>Registra qué lee cada lote, y es determinista</td>
+<td>Checkpoint</td>
+</tr>
+<tr class="odd">
+<td><strong>Sink</strong></td>
+<td>Idempotente o transaccional</td>
+<td>Sink de archivos, Delta</td>
+</tr>
+</tbody>
+</table>
+<pre><code> 1. escribe offsets/N   ← "el lote N leerá este rango"      (antes de procesar)
+ 2. procesa, escribe en el sink
+ 3. escribe commits/N   ← "el lote N terminó"               (tras el sink)</code></pre>
+<p><strong>Ejercicio: el proceso muere. ¿Qué pasa al reiniciar?</strong></p>
+<div class="fragment">
+<table class="caption-top" style="width:100%;">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 35%">
+<col style="width: 47%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Caída</th>
+<th>Al reiniciar</th>
+<th>Por qué es seguro</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Entre 1 y 2</td>
+<td>Reejecuta N con <strong>el mismo rango</strong></td>
+<td>Determinista</td>
+</tr>
+<tr class="even">
+<td>Durante 2</td>
+<td>Reejecuta N: <strong>reescribe en el sink</strong></td>
+<td>El sink debe ser idempotente</td>
+</tr>
+<tr class="odd">
+<td>Entre 2 y 3</td>
+<td><strong>Reejecuta un lote terminado</strong></td>
+<td>Aquí está el truco: misma razón</td>
+</tr>
+</tbody>
+</table>
+<p><strong>En el sink se gana o se pierde la garantía.</strong> El sink de archivos escribe un manifiesto por lote, y Delta una transacción con el par <code>(appId, version)</code>, de modo que un lote repetido se ignora.</p>
+</div>
+</section>
+<section id="no-todo-sink-lo-ofrece" class="slide level2 smaller">
+<h2>No todo sink lo ofrece</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 24%">
+<col style="width: 40%">
+<col style="width: 36%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Sink</th>
+<th>Garantía</th>
+<th>Por qué</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Archivos</strong></td>
+<td><strong>Exactly-once</strong></td>
+<td>Los lectores pasan por el manifiesto: los archivos sin confirmar son invisibles</td>
+</tr>
+<tr class="even">
+<td><strong>Delta</strong></td>
+<td><strong>Exactly-once</strong></td>
+<td>Transacción con <code>(appId, version)</code></td>
+</tr>
+<tr class="odd">
+<td><strong>Kafka</strong></td>
+<td><strong>At-least-once</strong></td>
+<td>No puede retirar lo publicado. Un reintento duplica</td>
+</tr>
+<tr class="even">
+<td><strong><code>foreach</code></strong></td>
+<td>At-least-once</td>
+<td>Tu código corre por fila</td>
+</tr>
+<tr class="odd">
+<td><strong><code>foreachBatch</code></strong></td>
+<td><strong>Depende de ti</strong></td>
+<td>Usa <code>batchId</code> para deduplicar</td>
+</tr>
+</tbody>
+</table>
+<p><strong>El error más común, en <code>foreachBatch</code>:</strong></p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="kw">def</span> write(df, batch_id):</span>
+<span id="cb3-2"><a href=""></a>    df.write.mode(<span class="st">"append"</span>).jdbc(url, table)           <span class="co"># duplica</span></span>
+<span id="cb3-3"><a href=""></a><span class="kw">def</span> write(df, batch_id):</span>
+<span id="cb3-4"><a href=""></a>    merge_target(df, on<span class="op">=</span><span class="st">"event_id"</span>)                    <span class="co"># idempotente</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Exactly-once termina en el sink.</strong> Si luego un consumidor envía un correo por cada fila, los duplicados de un reintento llegan al cliente: el efecto secundario es responsabilidad tuya.</p>
+</section></section>
+<section>
+<section id="problema-integrador" class="title-slide slide level1 center">
+<h1>6. Problema integrador</h1>
+
+</section>
+<section id="dimensiona-este-stream" class="slide level2 smaller">
+<h2>Dimensiona este stream</h2>
+<p>10.000 eventos/s desde Kafka. Facturación por producto en ventanas deslizantes de 10 min cada 1 min. 50.000 productos activos, 200 B por entrada de estado. Una muestra da un retraso p99 de 2 min. El job procesa 12.500 eventos/s como máximo. Escribe en Delta.</p>
+<ol type="1">
+<li>¿<span class="math inline">\(\tau\)</span>? 2. ¿Tamaño del estado? 3. ¿Es estable? 4. ¿Recuperación tras 2 h de caída? 5. ¿Garantía de extremo a extremo?</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li><strong>2 min</strong> cubre el p99. Un job diario por lotes puede conciliar el resto.</li>
+<li><span class="math inline">\((10 + 2) / 1 =\)</span> 12 ventanas abiertas <span class="math inline">\(\times\)</span> 50.000 <span class="math inline">\(\times\)</span> 200 B <span class="math inline">\(=\)</span> <strong>120 MB</strong>. Manejable. Una ventana por segundo lo multiplicaría por 60.</li>
+<li><span class="math inline">\(\rho = 10.000 / 12.500 =\)</span> <strong>80%</strong>: estable, con un margen escaso.</li>
+<li><span class="math inline">\(2\ \text{h} \times 0{,}8 / 0{,}2 =\)</span> <strong>8 horas</strong> con frescura reducida. Si no es aceptable, duplica la capacidad: <span class="math inline">\(\rho = 40\%\)</span> da 80 min.</li>
+<li><strong>Exactly-once</strong>: Kafka es reproducible, el checkpoint registra los offsets, y Delta es transaccional. Si la retención de Kafka es menor que la caída, los datos <strong>se pierden</strong>: la garantía suponía una fuente reproducible, así que dimensiona esa retención por encima de tu caída más larga plausible.</li>
+</ol>
+</div>
+</section>
+<section id="referencias" class="slide level2 smaller">
+<h2>Referencias</h2>
+<ul>
+<li>Armbrust, M., Das, T., Torres, J., et al.&nbsp;(2018). <em>Structured Streaming: A Declarative API for Real-Time Applications in Apache Spark</em>. SIGMOD.</li>
+<li>Akidau, T., Bradshaw, R., Chambers, C., et al.&nbsp;(2015). <em>The Dataflow Model: A Practical Approach to Balancing Correctness, Latency, and Cost in Massive-Scale, Unbounded, Out-of-Order Data Processing</em>. PVLDB, 8(12).</li>
+<li>Zaharia, M., Das, T., Li, H., et al.&nbsp;(2013). <em>Discretized Streams: Fault-Tolerant Streaming Computation at Scale</em>. SOSP.</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/streaming/getting-started.html">Structured Streaming: Getting Started</a>, <a href="https://spark.apache.org/docs/4.0.1/streaming/apis-on-dataframes-and-datasets.html">APIs on DataFrames and Datasets</a>.</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

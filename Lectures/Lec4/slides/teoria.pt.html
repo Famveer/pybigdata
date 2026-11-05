@@ -188,6 +188,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,152 +207,678 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="o-que-você-vai-aprender" class="slide level2">
-<h2>O que você vai aprender</h2>
+<section id="o-que-você-poderá-fazer" class="slide level2 smaller">
+<h2>O que você poderá fazer</h2>
 <ul>
-<li><code>groupBy</code>, agregações e funções de janela</li>
-<li>Joins e uniões</li>
-<li>Consultar qualquer DataFrame com Spark SQL</li>
-<li>Transformações vs ações: avaliação preguiçosa</li>
-<li>Primeiro olhar sobre <code>explain()</code>, cache e partições</li>
+<li>Traduzir uma consulta de DataFrame para álgebra relacional e raciocinar sobre seu resultado</li>
+<li>Prever o que <code>NULL</code> faz em filtros, joins e agregações</li>
+<li>Classificar uma agregação pelo seu estado, e saber quais escalam</li>
+<li>Escolher bem o quadro de uma janela, e evitar a armadilha do seu padrão</li>
+<li>Limitar o número de linhas de um join antes de executá-lo</li>
+<li>Explicar o que a avaliação preguiçosa ganha, e o que custa</li>
 </ul>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Bloco</th>
+<th>Tema</th>
+<th>Min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>O modelo relacional por trás da API</td>
+<td>15</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td><code>NULL</code> e lógica de três valores</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Agregação: quais escalam</td>
+<td>25</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Funções de janela</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Semântica dos joins</td>
+<td>20</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Avaliação preguiçosa</td>
+<td>10</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Problema integrador</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="groupby-e-agregações" class="slide level2">
-<h2>GroupBy e agregações</h2>
-<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a><span class="co"># Pandas</span></span>
-<span id="cb1-2"><a href=""></a>pdf.groupby(<span class="st">"category"</span>).agg(</span>
-<span id="cb1-3"><a href=""></a>    orders<span class="op">=</span>(<span class="st">"order_id"</span>, <span class="st">"count"</span>), total_revenue<span class="op">=</span>(<span class="st">"total"</span>, <span class="st">"sum"</span>))</span>
-<span id="cb1-4"><a href=""></a></span>
-<span id="cb1-5"><a href=""></a><span class="co"># Spark</span></span>
-<span id="cb1-6"><a href=""></a>(sdf.groupBy(<span class="st">"category"</span>)</span>
-<span id="cb1-7"><a href=""></a>    .agg(F.count(<span class="st">"order_id"</span>).alias(<span class="st">"orders"</span>),</span>
-<span id="cb1-8"><a href=""></a>         F.<span class="bu">sum</span>(<span class="st">"total"</span>).alias(<span class="st">"total_revenue"</span>),</span>
-<span id="cb1-9"><a href=""></a>         F.<span class="bu">round</span>(F.avg(<span class="st">"price"</span>), <span class="dv">2</span>).alias(<span class="st">"avg_price"</span>))</span>
-<span id="cb1-10"><a href=""></a>    .orderBy(F.col(<span class="st">"total_revenue"</span>).desc()))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section>
+<section id="o-modelo-relacional-por-trás-da-api" class="title-slide slide level1 center">
+<h1>1. O modelo relacional por trás da API</h1>
+
 </section>
-<section id="funções-de-janela" class="slide level2">
-<h2>Funções de janela</h2>
-<p>Calculam valores sobre um grupo <strong>sem colapsar</strong> o DataFrame, como <code>.groupby().transform()</code> no Pandas.</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>w_cat       <span class="op">=</span> Window.partitionBy(<span class="st">"category"</span>)</span>
-<span id="cb2-2"><a href=""></a>w_cat_price <span class="op">=</span> Window.partitionBy(<span class="st">"category"</span>).orderBy(F.col(<span class="st">"price"</span>).desc())</span>
-<span id="cb2-3"><a href=""></a></span>
-<span id="cb2-4"><a href=""></a>(sdf</span>
-<span id="cb2-5"><a href=""></a> .withColumn(<span class="st">"avg_price_cat"</span>, F.<span class="bu">round</span>(F.avg(<span class="st">"price"</span>).over(w_cat), <span class="dv">2</span>))</span>
-<span id="cb2-6"><a href=""></a> .withColumn(<span class="st">"rank_in_cat"</span>,   F.rank().over(w_cat_price)))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="joins" class="slide level2">
-<h2>Joins</h2>
+<section id="dataframe-sql-e-álgebra-são-a-mesma-coisa" class="slide level2 smaller">
+<h2>DataFrame, SQL e álgebra são a mesma coisa</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 19%">
-<col style="width: 25%">
-<col style="width: 22%">
-<col style="width: 32%">
+<col style="width: 36%">
+<col style="width: 44%">
+<col style="width: 20%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Tipo</th>
-<th>Pandas</th>
-<th>Spark</th>
-<th>Comportamento</th>
+<th>Álgebra</th>
+<th>DataFrame</th>
+<th>SQL</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(\sigma_p(R)\)</span> seleção</td>
+<td><code>filter(p)</code></td>
+<td><code>WHERE p</code></td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\pi_A(R)\)</span> projeção</td>
+<td><code>select(A)</code></td>
+<td><code>SELECT A</code></td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(R \bowtie_k S\)</span> join</td>
+<td><code>join(S, k)</code></td>
+<td><code>JOIN S USING (k)</code></td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\gamma_{k,\,f(x)}(R)\)</span> agrupamento</td>
+<td><code>groupBy(k).agg(f(x))</code></td>
+<td><code>GROUP BY k</code></td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(R \cup S\)</span> união</td>
+<td><code>union(S)</code></td>
+<td><code>UNION ALL</code></td>
+</tr>
+</tbody>
+</table>
+<p>A API de DataFrames e SQL são compiladas para o <strong>mesmo plano lógico</strong> no Catalyst: não há diferença de desempenho entre as duas. Escolha o que deixar a consulta mais clara.</p>
+<p><strong>Trabalha com multiconjuntos, não conjuntos.</strong> Ao contrário da álgebra relacional dos livros, as duplicatas são mantidas:</p>
+<ul>
+<li><code>union</code> <strong>não</strong> elimina duplicatas: adicione <code>distinct()</code>, que custa um shuffle.</li>
+<li><code>union</code> emparelha colunas <strong>por posição</strong>: se os schemas estão em outra ordem, os valores terminam em silêncio nas colunas erradas. Use <code>unionByName</code>.</li>
+</ul>
+</section></section>
+<section>
+<section id="null-e-lógica-de-três-valores" class="title-slide slide level1 center">
+<h1>2. NULL e lógica de três valores</h1>
+
+</section>
+<section id="null-significa-desconhecido-e-sua-comparação-também" class="slide level2 smaller">
+<h2><code>NULL</code> significa desconhecido, e sua comparação também</h2>
+<p>Uma comparação com <code>NULL</code> não é verdadeira nem falsa, mas <strong>desconhecida</strong>:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th><span class="math inline">\(a\)</span></th>
+<th><span class="math inline">\(b\)</span></th>
+<th><code>a AND b</code></th>
+<th><code>a OR b</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>TRUE</code></td>
+<td><code>NULL</code></td>
+<td><code>NULL</code></td>
+<td><code>TRUE</code></td>
+</tr>
+<tr class="even">
+<td><code>FALSE</code></td>
+<td><code>NULL</code></td>
+<td><code>FALSE</code></td>
+<td><code>NULL</code></td>
+</tr>
+<tr class="odd">
+<td><code>NULL</code></td>
+<td><code>NULL</code></td>
+<td><code>NULL</code></td>
+<td><code>NULL</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>NOT NULL</code> é <code>NULL</code>, e <code>NULL = NULL</code> é <code>NULL</code>.</p>
+<p><strong>A regra que explica tudo:</strong> um <code>WHERE</code> ou uma condição de join mantém uma linha <strong>só se der <code>TRUE</code></strong>. Desconhecido se comporta como falso no filtro, mas não é falso: sua negação também é desconhecida.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>df.<span class="bu">filter</span>(F.col(<span class="st">"x"</span>) <span class="op">&gt;</span> <span class="dv">0</span>)          <span class="co"># remove as linhas onde x é NULL</span></span>
+<span id="cb1-2"><a href=""></a>df.<span class="bu">filter</span>(<span class="op">~</span>(F.col(<span class="st">"x"</span>) <span class="op">&gt;</span> <span class="dv">0</span>))       <span class="co"># TAMBÉM remove essas linhas</span></span>
+<span id="cb1-3"><a href=""></a>df.<span class="bu">filter</span>(F.col(<span class="st">"x"</span>).eqNullSafe(<span class="va">None</span>))   <span class="co"># a forma de comparar com NULL: &lt;=&gt;</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Assim, <code>filter(p)</code> e <code>filter(~p)</code> juntos <strong>não necessariamente somam todas as linhas</strong>.</p>
+</section>
+<section id="exercício-onde-null-muda-a-resposta" class="slide level2 smaller">
+<h2>Exercício: onde <code>NULL</code> muda a resposta</h2>
+<p><code>x</code> tem os valores 10, <code>NULL</code>, 20. O que cada expressão retorna?</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Expressão</th>
+<th>Sua resposta</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>count(*)</code>, <code>count(x)</code></td>
+<td></td>
+</tr>
+<tr class="even">
+<td><code>sum(x)</code>, <code>avg(x)</code></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><code>avg(x)</code> após <code>fillna(0)</code></td>
+<td></td>
+</tr>
+<tr class="even">
+<td><code>WHERE x NOT IN (10, NULL)</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<div class="fragment">
+<table class="caption-top">
+<colgroup>
+<col style="width: 35%">
+<col style="width: 35%">
+<col style="width: 29%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Expressão</th>
+<th>Resultado</th>
+<th>Por quê</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>count(*)</code>, <code>count(x)</code></td>
+<td>3, <strong>2</strong></td>
+<td><code>count(*)</code> conta linhas; as demais ignoram <code>NULL</code></td>
+</tr>
+<tr class="even">
+<td><code>sum(x)</code>, <code>avg(x)</code></td>
+<td>30, <strong>15</strong></td>
+<td><code>avg</code> divide por 2 e não por 3</td>
+</tr>
+<tr class="odd">
+<td><code>avg(x)</code> após <code>fillna(0)</code></td>
+<td><strong>10</strong></td>
+<td>Preencher muda a média: decida conscientemente</td>
+</tr>
+<tr class="even">
+<td><code>WHERE x NOT IN (10, NULL)</code></td>
+<td><strong>nenhuma linha</strong></td>
+<td>Para 20: <code>20 &lt;&gt; NULL</code> é desconhecido, e o <code>AND</code> nunca chega a <code>TRUE</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>NOT IN</code> sobre uma subconsulta com um só <code>NULL</code> não retorna <strong>nada</strong>, sem nenhum erro. <code>NOT EXISTS</code>, ou <code>left_anti</code> em um DataFrame, não é afetado.</p>
+</div>
+</section>
+<section id="null-por-operação-e-a-diferença-com-o-pandas" class="slide level2 smaller">
+<h2><code>NULL</code> por operação, e a diferença com o Pandas</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 24%">
+<col style="width: 19%">
+<col style="width: 56%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operação</th>
+<th><code>NULL</code></th>
+<th>Pandas, para comparar</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Filtro</td>
+<td>Descartado salvo <code>isNull</code></td>
+<td>Comparar <code>NaN</code> dá <code>False</code></td>
+</tr>
+<tr class="even">
+<td>Chave de join</td>
+<td><strong>Não coincide</strong> (use <code>eqNullSafe</code> para coincidir)</td>
+<td><code>merge</code> <strong>une</strong> chaves <code>NaN</code></td>
+</tr>
+<tr class="odd">
+<td><code>groupBy</code></td>
+<td>Forma <strong>um grupo</strong></td>
+<td><strong>Descartado</strong> por padrão (<code>dropna=True</code>)</td>
+</tr>
+<tr class="even">
+<td><code>distinct</code></td>
+<td>Tratados como iguais: uma linha</td>
+<td><code>drop_duplicates</code> os trata como iguais</td>
+</tr>
+<tr class="odd">
+<td><code>orderBy</code></td>
+<td>Primeiro em ascendente</td>
+<td>Último por padrão</td>
+</tr>
+</tbody>
+</table>
+<p>A mesma consulta pode retornar outro número de linhas ou grupos em cada motor.</p>
+<p><strong><code>NaN</code> não é <code>NULL</code>.</strong> No Spark são valores diferentes:</p>
+<ul>
+<li><code>NaN = NaN</code> é <strong>verdadeiro</strong>, ao contrário do IEEE 754.</li>
+<li><code>NaN</code> é tratado como um valor normal em chaves de join e agregações.</li>
+<li>É ordenado como maior que qualquer número, então um <code>max</code> pode retornar <code>NaN</code>.</li>
+</ul>
+<p><code>F.isnan(c)</code> e <code>F.isnull(c)</code> testam coisas diferentes.</p>
+</section></section>
+<section>
+<section id="agregação-quais-escalam" class="title-slide slide level1 center">
+<h1>3. Agregação: quais escalam</h1>
+
+</section>
+<section id="a-pergunta-é-quanto-estado-um-grupo-precisa" class="slide level2 smaller">
+<h2>A pergunta é quanto estado um grupo precisa</h2>
+<p>Para rodar em paralelo, uma agregação deve ser calculada por partição e depois <strong>fundida</strong>. As funções são classificadas pelo que é preciso guardar por grupo (Gray et al., 1997):</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 23%">
+<col style="width: 21%">
+<col style="width: 38%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Classe</th>
+<th>Definição</th>
+<th>Exemplos</th>
+<th>Estado por grupo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Distributiva</strong></td>
+<td><span class="math inline">\(f(A \cup B) = g(f(A), f(B))\)</span></td>
+<td><code>sum</code>, <code>count</code>, <code>min</code>, <code>max</code></td>
+<td>1 valor</td>
+</tr>
+<tr class="even">
+<td><strong>Algébrica</strong></td>
+<td>Calculada com um número fixo de valores distributivos</td>
+<td><code>avg</code> = (sum, count), <code>stddev</code></td>
+<td>Tupla fixa</td>
+</tr>
+<tr class="odd">
+<td><strong>Holística</strong></td>
+<td>Não existe um resumo de tamanho fixo</td>
+<td><code>median</code>, <code>countDistinct</code>, <code>collect_list</code></td>
+<td><strong>Cresce com os dados</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Por que decide tudo:</strong></p>
+<ul>
+<li>Distributivas e algébricas permitem <strong>agregação parcial</strong>: o shuffle leva estados de tamanho fixo.</li>
+<li>A holística obriga a levar <strong>todos os valores</strong> para o mesmo lugar: mais rede, mais memória, e exposta ao skew.</li>
+</ul>
+<p>O plano real mostra isso como <code>partial_sum</code> antes do <code>Exchange</code> e <code>sum</code> depois.</p>
+</section>
+<section id="dois-erros-clássicos" class="slide level2 smaller">
+<h2>Dois erros clássicos</h2>
+<p><strong>1. A média das médias não é a média.</strong> Grupos <span class="math inline">\(A = \{1, 1, 1, 1\}\)</span> e <span class="math inline">\(B = \{100\}\)</span>:</p>
+<p><span class="math display">\[\frac{\text{avg}(A) + \text{avg}(B)}{2} = \frac{1 + 100}{2} = 50{,}5 \qquad \text{mas} \qquad \text{avg}(A \cup B) = \frac{104}{5} = 20{,}8\]</span></p>
+<p><code>avg</code> é algébrica, não distributiva: seu estado fundível é <span class="math inline">\((\sum x,\ n)\)</span>. O Spark guarda ambos, mas uma tabela pré-agregada só com <code>avg_price</code> <strong>já perdeu a informação</strong>. Guarde a soma e a contagem.</p>
+<p><strong>2. Contagens distintas não se somam.</strong> Usuários de segunda: {a, b}; de terça: {b, c}. Dá 2 + 2 = 4, mas o valor real é <strong>3</strong>. Uma contagem diária de usuários distintos <strong>não pode ser somada</strong> para obter a mensal.</p>
+<p><strong>O mesmo teste vale para qualquer métrica de um data lake:</strong> uma tabela Gold com esta coluna pode ser reagregada? Só se a coluna for distributiva, ou se seu estado foi guardado.</p>
+</section>
+<section id="quando-o-exato-é-caro-demais-aproximação" class="slide level2 smaller">
+<h2>Quando o exato é caro demais: aproximação</h2>
+<p>Uma agregação holística pode ser substituída por uma <strong>aproximação algébrica</strong>: um resumo de tamanho fixo que pode ser fundido, em troca de um erro limitado.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 29%">
+<col style="width: 26%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Exata</th>
+<th>Aproximada</th>
+<th>Parâmetro</th>
+<th>Algoritmo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>countDistinct(x)</code></td>
+<td><code>approx_count_distinct(x, rsd)</code></td>
+<td>Desvio padrão relativo, padrão 5%</td>
+<td>HyperLogLog++</td>
+</tr>
+<tr class="even">
+<td><code>median(x)</code>, <code>percentile(x, p)</code></td>
+<td><code>percentile_approx(x, p, accuracy)</code></td>
+<td>Erro relativo <span class="math inline">\(1/\text{accuracy}\)</span>, accuracy padrão 10.000</td>
+<td>Sketch de quantis</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Por que escalam:</strong> cada partição constrói seu sketch, os sketches são fundidos, e o estado é limitado não importa quantos valores existam. Assim recuperam a agregação parcial.</p>
+<p><strong>Por que o HyperLogLog funciona, intuitivamente:</strong> ao aplicar um hash uniforme, ver um hash com <span class="math inline">\(b\)</span> zeros iniciais sugere cerca de <span class="math inline">\(2^b\)</span> valores distintos. Duplicatas geram o mesmo hash, então não podem mudar a estimativa.</p>
+<p><strong>Decida pela pergunta:</strong> um painel que mostra 1,2 M de usuários não precisa do número exato. Um relatório de faturamento precisa, e deve pagar por isso.</p>
+</section></section>
+<section>
+<section id="funções-de-janela" class="title-slide slide level1 center">
+<h1>4. Funções de janela</h1>
+
+</section>
+<section id="uma-janela-tem-três-partes" class="slide level2 smaller">
+<h2>Uma janela tem três partes</h2>
+<p><code>groupBy</code> colapsa cada grupo em uma linha. Uma janela <strong>mantém todas as linhas</strong> e calcula, para cada uma, um valor sobre suas linhas relacionadas:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>w <span class="op">=</span> Window.partitionBy(<span class="st">"category"</span>).orderBy(<span class="st">"date"</span>).rowsBetween(<span class="op">-</span><span class="dv">6</span>, <span class="dv">0</span>)</span>
+<span id="cb2-2"><a href=""></a>df.withColumn(<span class="st">"sum_7d"</span>, F.<span class="bu">sum</span>(<span class="st">"revenue"</span>).over(w))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<table class="caption-top">
+<colgroup>
+<col style="width: 21%">
+<col style="width: 40%">
+<col style="width: 37%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Parte</th>
+<th>Significado</th>
+<th>Se omitida</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>partitionBy</code></td>
+<td>Quais linhas se relacionam</td>
+<td><strong>Todas as linhas vão para uma partição</strong> (o Spark avisa)</td>
+</tr>
+<tr class="even">
+<td><code>orderBy</code></td>
+<td>Ordem dentro da partição</td>
+<td>Rankings falham</td>
+</tr>
+<tr class="odd">
+<td>Quadro</td>
+<td>Subconjunto ao redor da linha atual</td>
+<td>Veja o próximo slide</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Custo:</strong> um <code>Exchange</code> pela chave de partição, mais ordenar cada partição. Ou seja <span class="math inline">\(O(n \log (n/P))\)</span>, com todas as linhas de uma chave em uma task, e sem agregação parcial possível. Por isso as janelas estão <strong>expostas ao skew</strong>, como os joins.</p>
+<p><strong>Funções de ranking com empates.</strong> Com preços 100, 100, 90, 80:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th></th>
+<th>100</th>
+<th>100</th>
+<th>90</th>
+<th>80</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>row_number</code></td>
+<td>1</td>
+<td>2</td>
+<td>3</td>
+<td>4</td>
+</tr>
+<tr class="even">
+<td><code>rank</code></td>
+<td>1</td>
+<td>1</td>
+<td>3</td>
+<td>4</td>
+</tr>
+<tr class="odd">
+<td><code>dense_rank</code></td>
+<td>1</td>
+<td>1</td>
+<td>2</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="a-armadilha-do-quadro-padrão" class="slide level2 smaller">
+<h2>A armadilha do quadro padrão</h2>
+<p>A documentação define o quadro padrão:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 93%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Quadro padrão</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Sem <code>orderBy</code></td>
+<td>Toda a partição: <code>rowsBetween(unboundedPreceding, unboundedFollowing)</code></td>
+</tr>
+<tr class="even">
+<td><strong>Com <code>orderBy</code></strong></td>
+<td><strong><code>rangeBetween(unboundedPreceding, currentRow)</code></strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>RANGE</code> trabalha com valores, então <strong>linhas empatadas na chave de ordenação são pares</strong> e entram juntas no quadro. Uma soma acumulada sobre 10, 10, 20:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Quadro</th>
+<th>10</th>
+<th>10</th>
+<th>20</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>ROWS</code> até a linha atual</td>
+<td>10</td>
+<td>20</td>
+<td>40</td>
+</tr>
+<tr class="even">
+<td><strong><code>RANGE</code> (padrão)</strong></td>
+<td><strong>20</strong></td>
+<td><strong>20</strong></td>
+<td>40</td>
+</tr>
+</tbody>
+</table>
+<p>Mesmos dados, outra coluna, nenhum erro. O sintoma clássico é <code>F.last("x").over(w)</code>, que parece retornar a linha atual, porque o quadro termina nela.</p>
+<p><strong>Determinismo.</strong> Com empates, <code>row_number</code> os numera <strong>arbitrariamente</strong>. Uma deduplicação com <code>row_number() == 1</code> pode ficar com outra linha em cada execução. Adicione uma coluna de desempate ao <code>orderBy</code>.</p>
+</section></section>
+<section>
+<section id="semântica-dos-joins" class="title-slide slide level1 center">
+<h1>5. Semântica dos joins</h1>
+
+</section>
+<section id="limitar-as-linhas-de-um-join" class="slide level2 smaller">
+<h2>Limitar as linhas de um join</h2>
+<p>Com <span class="math inline">\(n\)</span> linhas em <span class="math inline">\(R\)</span> e <span class="math inline">\(m\)</span> em <span class="math inline">\(S\)</span>, o tamanho exato de um inner join é <span class="math inline">\(\sum_k a_k b_k\)</span> (veja a Aula 5). Antes de executá-lo, cada tipo já tem limites:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 18%">
+<col style="width: 33%">
+<col style="width: 24%">
+<col style="width: 24%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Join</th>
+<th>Semântica</th>
+<th>Mínimo</th>
+<th>Máximo</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td>Inner</td>
-<td><code>how="inner"</code></td>
-<td><code>how="inner"</code></td>
-<td>Só linhas correspondentes</td>
+<td>Pares que coincidem</td>
+<td><span class="math inline">\(0\)</span></td>
+<td><span class="math inline">\(n \cdot m\)</span></td>
 </tr>
 <tr class="even">
-<td>Left</td>
-<td><code>how="left"</code></td>
-<td><code>how="left"</code></td>
-<td>Toda a esquerda + correspondências</td>
+<td>Left outer</td>
+<td>Todo <span class="math inline">\(R\)</span> + coincidências</td>
+<td><span class="math inline">\(n\)</span></td>
+<td><span class="math inline">\(\max(n,\ n \cdot m)\)</span></td>
 </tr>
 <tr class="odd">
-<td>Right</td>
-<td><code>how="right"</code></td>
-<td><code>how="right"</code></td>
-<td>Toda a direita + correspondências</td>
-</tr>
-<tr class="even">
 <td>Full outer</td>
-<td><code>how="outer"</code></td>
-<td><code>how="outer"</code></td>
-<td>Todas as linhas dos dois</td>
+<td>Tudo de ambos</td>
+<td><span class="math inline">\(\max(n, m)\)</span></td>
+<td><span class="math inline">\(\max(n \cdot m,\ n + m)\)</span></td>
+</tr>
+<tr class="even">
+<td><strong>Left semi</strong></td>
+<td><span class="math inline">\(R\)</span> com alguma coincidência</td>
+<td><span class="math inline">\(0\)</span></td>
+<td><strong><span class="math inline">\(n\)</span></strong></td>
 </tr>
 <tr class="odd">
-<td>Empilhar linhas</td>
-<td><code>pd.concat([...])</code></td>
-<td><code>df1.union(df2)</code></td>
-<td>Adiciona linhas (UNION)</td>
+<td><strong>Left anti</strong></td>
+<td><span class="math inline">\(R\)</span> sem coincidência</td>
+<td><span class="math inline">\(0\)</span></td>
+<td><strong><span class="math inline">\(n\)</span></strong></td>
+</tr>
+<tr class="even">
+<td>Cross</td>
+<td>Todos os pares</td>
+<td><span class="math inline">\(n \cdot m\)</span></td>
+<td><span class="math inline">\(n \cdot m\)</span></td>
 </tr>
 </tbody>
 </table>
+<p><strong>Semi e anti nunca multiplicam linhas nem adicionam colunas.</strong> Para perguntar “quais clientes têm pedidos?”, um <code>left_semi</code> responde diretamente, enquanto <code>inner</code> + <code>distinct</code> custa uma multiplicação e depois um shuffle para desfazê-la.</p>
+<p><strong>Se <span class="math inline">\(S\)</span> tem chave única:</strong> inner <span class="math inline">\(\leq n\)</span>, e left é exatamente <span class="math inline">\(n\)</span>. Um left join com mais linhas que sua tabela esquerda prova que <strong>a chave não era única</strong>: uma asserção que vale a pena ter em um pipeline.</p>
+</section></section>
+<section>
+<section id="avaliação-preguiçosa" class="title-slide slide level1 center">
+<h1>6. Avaliação preguiçosa</h1>
+
 </section>
-<section id="spark-sql" class="slide level2">
-<h2>Spark SQL</h2>
-<p>Registre um DataFrame como <strong>view temporária</strong> e escreva SQL. Usa o mesmo planejador otimizado.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>sdf.createOrReplaceTempView(<span class="st">"sales"</span>)</span>
-<span id="cb3-2"><a href=""></a></span>
-<span id="cb3-3"><a href=""></a>spark.sql(<span class="st">"""</span></span>
-<span id="cb3-4"><a href=""></a><span class="st">    SELECT product, category, price,</span></span>
-<span id="cb3-5"><a href=""></a><span class="st">           RANK() OVER (PARTITION BY category ORDER BY price DESC) AS rank_in_cat</span></span>
-<span id="cb3-6"><a href=""></a><span class="st">    FROM   sales</span></span>
-<span id="cb3-7"><a href=""></a><span class="st">    WHERE  price &gt; 100</span></span>
-<span id="cb3-8"><a href=""></a><span class="st">    ORDER  BY category, rank_in_cat</span></span>
-<span id="cb3-9"><a href=""></a><span class="st">"""</span>).show()</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="transformações-vs-ações" class="slide level2">
-<h2>Transformações vs ações</h2>
+<section id="o-que-ganha-e-suas-surpresas" class="slide level2 smaller">
+<h2>O que ganha, e suas surpresas</h2>
+<p><strong>O que ganha.</strong> Com toda a consulta conhecida antes de executar, o otimizador pode agir entre passos: um <code>filter</code> escrito no final desce até a leitura, e as colunas nunca usadas não são lidas. Um motor imediato, como o Pandas, já pagou cada passo.</p>
+<p><strong>Suas surpresas</strong>, todas de um mesmo fato: <strong>um DataFrame é uma receita, e cada ação a cozinha de novo</strong>.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 4%">
-<col style="width: 24%">
-<col style="width: 40%">
-<col style="width: 32%">
+<col style="width: 50%">
+<col style="width: 50%">
 </colgroup>
 <thead>
 <tr class="header">
-<th></th>
-<th>Tipo</th>
-<th>Exemplos</th>
+<th>Código</th>
 <th>Efeito</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Transformações</strong></td>
-<td>Preguiçosas</td>
-<td><code>filter</code>, <code>select</code>, <code>withColumn</code>, <code>groupBy</code>, <code>join</code></td>
-<td>Constrói um plano: <strong>nada roda</strong></td>
+<td>Duas ações sobre um DataFrame</td>
+<td>Tudo é calculado duas vezes, salvo com cache</td>
 </tr>
 <tr class="even">
-<td><strong>Ações</strong></td>
-<td>Imediatas</td>
-<td><code>show()</code>, <code>count()</code>, <code>collect()</code>, <code>write</code>, <code>toPandas()</code></td>
-<td><strong>Executa o plano inteiro</strong></td>
+<td><code>df.withColumn("r", F.rand())</code>, e duas ações</td>
+<td>Valores possivelmente <strong>diferentes</strong> a cada vez</td>
+</tr>
+<tr class="odd">
+<td><code>F.current_timestamp()</code></td>
+<td>Cada ação vê outra hora</td>
+</tr>
+<tr class="even">
+<td>Um arquivo muda entre ações</td>
+<td>Cada ação vê outros dados</td>
 </tr>
 </tbody>
 </table>
-<pre><code>  TRANSFORMATION ──▶ TRANSFORMATION ──▶ TRANSFORMATION ──▶  ACTION
-    .filter()          .withColumn()      .groupBy()        .show()</code></pre>
-<p>O Spark usa isso para construir um <strong>plano otimizado</strong> antes de executar.</p>
-</section>
-<section id="plano-cache-e-partições" class="slide level2">
-<h2>Plano, cache e partições</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>plan.explain(mode<span class="op">=</span><span class="st">"simple"</span>)        <span class="co"># logical and physical plan</span></span>
-<span id="cb5-2"><a href=""></a></span>
-<span id="cb5-3"><a href=""></a>cached <span class="op">=</span> sdf.cache()               <span class="co"># stored on the first action</span></span>
-<span id="cb5-4"><a href=""></a>cached.count()<span class="op">;</span> cached.count()     <span class="co"># the second one reads from memory</span></span>
-<span id="cb5-5"><a href=""></a>cached.unpersist()</span>
-<span id="cb5-6"><a href=""></a></span>
-<span id="cb5-7"><a href=""></a>sdf.rdd.getNumPartitions()</span>
-<span id="cb5-8"><a href=""></a>sdf.repartition(<span class="dv">4</span>, <span class="st">"category"</span>)     <span class="co"># full shuffle, evenly distributed</span></span>
-<span id="cb5-9"><a href=""></a>sdf.coalesce(<span class="dv">2</span>)                    <span class="co"># no full shuffle, less balanced</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Quando aparecem os erros?</strong></p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 37%">
+<col style="width: 37%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Erro</th>
+<th>Aparece</th>
+<th>Por quê</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>A coluna não existe</td>
+<td><strong>Imediatamente</strong></td>
+<td>A análise roda ao construir o DataFrame</td>
+</tr>
+<tr class="even">
+<td>Cast inválido (ANSI), divisão por zero</td>
+<td><strong>Na ação</strong></td>
+<td>Depende dos dados</td>
+</tr>
+</tbody>
+</table>
+<p>Assim, um erro pode surgir longe da linha que o causou, e só para algumas linhas.</p>
+</section></section>
+<section>
+<section id="problema-integrador" class="title-slide slide level1 center">
+<h1>7. Problema integrador</h1>
 
 </section>
+<section id="por-que-o-faturamento-dobrou" class="slide level2 smaller">
+<h2>Por que o faturamento dobrou?</h2>
+<p>Um painel reporta o dobro do faturamento real. Não há nenhum erro nos logs.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>report <span class="op">=</span> (orders.join(addresses, <span class="st">"customer_id"</span>, <span class="st">"left"</span>)     <span class="co"># 1,000,000 orders</span></span>
+<span id="cb3-2"><a href=""></a>                .groupBy(<span class="st">"region"</span>).agg(F.<span class="bu">sum</span>(<span class="st">"revenue"</span>).alias(<span class="st">"revenue"</span>),</span>
+<span id="cb3-3"><a href=""></a>                                       F.avg(<span class="st">"revenue"</span>).alias(<span class="st">"avg_ticket"</span>)))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ol type="1">
+<li>Que fato sobre <code>addresses</code> explicaria isso? Como detectar? 2. <code>avg_ticket</code> também dobra? 3. Proponha uma correção que não faça shuffle de <code>orders</code> duas vezes.</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li>Alguns clientes têm vários endereços, então a chave <strong>não é única</strong> à direita: as linhas se multiplicam (<span class="math inline">\(\sum_k a_k b_k\)</span>). Detecção: as linhas após o join <code>&gt; orders.count()</code>, ou <code>addresses.groupBy("customer_id").count().filter("count &gt; 1")</code>.</li>
+<li><strong>Não necessariamente.</strong> Crescem o numerador e o denominador, então um <code>avg</code> duplicado de forma uniforme parece correto. Só <code>sum</code> revela o erro: uma função algébrica pode ocultar o que uma distributiva expõe.</li>
+<li>Reduza <code>addresses</code> a uma linha por cliente <strong>antes</strong> do join, escolhendo-a com <code>row_number</code> mais um desempate. Isso também torna exato o limite do left: <code>n</code> linhas de saída. <strong>Nunca corrija com <code>distinct()</code> depois</strong>: dois pedidos legítimos iguais seriam perdidos.</li>
+</ol>
+</div>
+</section>
+<section id="referências" class="slide level2 smaller">
+<h2>Referências</h2>
+<ul>
+<li>Codd, E. F. (1970). <em>A Relational Model of Data for Large Shared Data Banks</em>. Communications of the ACM, 13(6).</li>
+<li>Gray, J., et al.&nbsp;(1997). <em>Data Cube: A Relational Aggregation Operator Generalizing Group-By, Cross-Tab, and Sub-Totals</em>. Data Mining and Knowledge Discovery, 1.</li>
+<li>Heule, S., Nunkesser, M., Hall, A. (2013). <em>HyperLogLog in Practice</em>. EDBT.</li>
+<li>Armbrust, M., et al.&nbsp;(2015). <em>Spark SQL: Relational Data Processing in Spark</em>. SIGMOD.</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/sql-ref-null-semantics.html">NULL semantics</a>, <a href="https://spark.apache.org/docs/4.0.1/sql-ref-datatypes.html">NaN semantics</a>, <a href="https://spark.apache.org/docs/4.0.1/sql-ref-syntax-qry-select-window.html">Window functions</a>, <a href="https://spark.apache.org/docs/4.0.1/api/sql/index.html">SQL functions</a>.</li>
+<li>Apache Spark 4.0.1, source code: <code>pyspark/sql/window.py</code> (default frames).</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

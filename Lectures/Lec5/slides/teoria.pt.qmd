@@ -13,113 +13,642 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## O que você vai aprender
+## O que você poderá prever {.smaller}
 
-- Job, stage, task e o que é um shuffle
-- Ler um plano de execução com `explain()`
-- Partições: `repartition` vs `coalesce`
-- Escolher a estratégia de join correta
+Antes de executar uma consulta, você deve conseguir deduzir:
+
+- quantos **stages e tasks** ela criará, e por quê
+- quantos dados **cruzam a rede**, e um limite inferior do seu tempo
+- qual **algoritmo de join** o Spark escolherá, e quando não pode escolher outro
+- quando um número de **partições** é baixo ou alto demais
+
+| Bloco | Tema | Min |
+|-------|------|-----|
+| 1 | Do código ao plano físico | 20 |
+| 2 | Dependências, stages e tasks | 20 |
+| 3 | Modelo de tempo e tolerância a falhas | 15 |
+| 4 | Anatomia e custo do shuffle | 20 |
+| 5 | Quantas partições | 10 |
+| 6 | Algoritmos de join | 25 |
+| 7 | Problema integrador | 10 |
+
+# 1. Do código ao plano físico
+
+## A cadeia de compilação {.smaller}
+
+Um DataFrame não são dados: é a **descrição de um cálculo**. Uma ação o compila.
+
+```
+ DataFrame / SQL
+      │  Catalyst
+      ▼
+ unresolved logical plan ─▶ logical plan ─▶ optimized logical plan
+                                                     │
+                                                     ▼
+                     selected physical plan ◀─ candidate physical plans
+                                │  code generation
+                                ▼
+                       DAG of RDDs ─▶ stages ─▶ tasks ─▶ executors
+```
+
+`explain()` mostra o estado da cadeia antes do DAG. Todo o conteúdo desta aula é consequência de decisões tomadas ao longo dela.
 
 ---
 
-## O Spark é sempre mais rápido?
+## As quatro fases do Catalyst {.smaller}
 
-Em uma única máquina, com dados que cabem na RAM, o Pandas frequentemente empata ou ganha: o Spark paga um custo fixo (planejamento, JVM, coordenação de tasks).
+| Fase | O que faz | Decide com |
+|------|-----------|------------|
+| **Análise** | Resolve nomes e tipos de colunas contra o catálogo | Regras |
+| **Otimização lógica** | Reescreve o plano em outro equivalente | Regras |
+| **Planejamento físico** | Gera algoritmos e seleciona um | **Custo** + regras |
+| **Geração de código** | Compila expressões para bytecode da JVM | Regras |
 
-O Spark compensa quando:
+Só uma fase compara alternativas. No artigo original, o custo era usado **só para escolher o algoritmo de join** (Armbrust et al., 2015, §4.3).
 
-- os dados **não cabem** na memória de uma máquina;
-- existe um **cluster**: o mesmo código escala sem mudanças;
-- o pipeline lê de fontes distribuídas (data lake, S3, HDFS).
-
----
-
-## Job, stage & task
-
-| Conceito | O que é | Quantos |
-|---------|-----------|---------|
-| **Job** | Trabalho disparado por uma ação | 1 por ação (às vezes mais) |
-| **Stage** | Operações que rodam sem trocar dados entre partições | Novo stage a cada shuffle |
-| **Task** | Um stage executado sobre **uma** partição | 1 por partição |
-
-```
-                                JOB
-       ┌─────────────────────────┴──────────────────────┐
-    STAGE 1                                          STAGE 2
- read + filter + partial sum                       final sum
- [T1] [T2] [T3] [T4]  ──── SHUFFLE (Exchange) ───▶ [T1] [T2] [T3]
-```
+**Consequência:** a maior parte do otimizador não olha seus dados. Aplica transformações válidas para *qualquer* dado.
 
 ---
 
-## Narrow vs wide {.smaller}
+## As regras são equivalências algébricas {.smaller}
+
+Uma regra é correta só se ambos os planos retornam o mesmo para **toda** entrada.
+
+**Predicate pushdown.** Se $p$ só usa atributos de $R$:
+
+$$\sigma_p(R \bowtie S) = \sigma_p(R) \bowtie S$$
+
+**Column pruning.** Se a consulta só precisa dos atributos $A$, o resto não é lido:
+
+$$\pi_A(R \bowtie S) = \pi_A\big(\pi_{A \cup K}(R) \bowtie \pi_{A \cup K}(S)\big)$$
+
+onde $K$ é a chave do join.
+
+Ambas reduzem $|R|$ *antes* dos operadores caros, e daí vem o ganho: todo custo posterior nesta aula é proporcional ao volume que chega a ele.
+
+---
+
+## Uma reescrita que parece válida e não é {.smaller}
+
+Com um `LEFT JOIN` e um filtro no lado direito, em geral:
+
+$$\sigma_{S.x>0}(R \mathbin{\text{ LEFT JOIN }} S) \;\neq\; R \mathbin{\text{ LEFT JOIN }} \sigma_{S.x>0}(S)$$
+
+Contraexemplo: $R = \{k{=}1\}$ e $S = \{(k{=}1,\ x{=}{-}5)\}$.
+
+| Expressão | Resultado |
+|-----------|-----------|
+| Filtro **depois** do join | vazio |
+| Filtro **antes** do join | $(1,\ \text{NULL})$ |
+
+Como `NULL > 0` não é verdadeiro, o filtro elimina as linhas que o `LEFT JOIN` adiciona para preservar $R$. O Catalyst sabe disso e reescreve a primeira forma como **inner join**, que admite pushdown.
+
+**Escrever o filtro de um lado ou do outro não é questão de estilo: muda o resultado.**
+
+---
+
+## O que a estimativa de custo realmente sabe {.smaller}
+
+`spark.sql.cbo.enabled` é `false` por padrão. Sem CBO, a estimativa tem **uma dimensão: tamanho em bytes**.
+
+- Scan: tamanho dos arquivos em disco.
+- `Project`: escala pela razão de larguras de linha.
+- `Filter`: **supõe que não elimina nenhuma linha**.
+
+Assim, uma tabela de 1 GB filtrada para 1 MB continua estimada em cerca de 1 GB, e **não** recebe broadcast ao construir o plano.
+
+| Mecanismo | Informação | Quando |
+|-----------|------------|--------|
+| Estimativa por tamanho | Tamanho dos arquivos | Antes de executar (padrão) |
+| CBO + `ANALYZE TABLE` | Linhas, estatísticas de colunas | Antes de executar (opcional) |
+| AQE | Tamanho **real** de cada shuffle | Entre stages (padrão) |
+
+O planejamento estático adivinha com pouca informação, e é exatamente essa lacuna que o AQE preenche (Aula 6).
+
+---
+
+## Ler o plano: operadores e `*(n)` {.smaller}
+
+Plano real do Lab 4 (abreviado). É lido **de baixo para cima**, como uma árvore de operadores:
 
 ```
-   NARROW                          WIDE (shuffle)
-   P1 ──▶ P1'                      P1 ──┬──▶ P1'
-   P2 ──▶ P2'                      P2 ──┼──▶ P2'
-   P3 ──▶ P3'                      P3 ──┴──▶ P3'
+*(4) Sort [n DESC]
++- Exchange rangepartitioning(n DESC, 200)
+   +- *(3) HashAggregate(keys=[category], functions=[count(1)])
+      +- Exchange hashpartitioning(category, 200)
+         +- *(2) HashAggregate(keys=[category], functions=[partial_count(1)])
+            +- *(2) BroadcastHashJoin [product_id], [product_id], Inner, BuildRight
+               :- *(2) FileScan parquet orders  ReadSchema: struct<product_id:int>
+               +- BroadcastExchange
+                  +- *(1) FileScan parquet products
 ```
 
-| Tipo | Cada partição de saída depende de | Exemplos | Shuffle |
-|------|---------------------------------|----------|---------|
-| **Narrow** | uma partição de entrada | `select`, `filter`, `withColumn`, `union` | Não |
-| **Wide** | várias partições de entrada | `groupBy`, `join`, `orderBy`, `distinct`, `repartition` | Sim |
+`*(n)` marca a **geração de código por stage inteiro**: os operadores com o mesmo `n` são compilados em uma só função Java, sem uma chamada virtual por operador e por linha. **`n` não é um número de stage**: aqui `*(1)` e `*(2)` rodam em jobs diferentes, e os stages são definidos pelos `Exchange`.
 
-::: {.callout-important}
-O **shuffle** é a operação mais cara: os dados são serializados, gravados em disco, transferidos pela rede e lidos de novo.
+# 2. Dependências, stages e tasks
+
+## A abstração sob o plano: RDD {.smaller}
+
+O plano físico executa como um grafo de RDDs. Um RDD é definido por cinco coisas (Zaharia et al., 2012, Tabela 3):
+
+| Operação | Significado |
+|----------|-------------|
+| `partitions()` | Peças atômicas do dataset |
+| `dependencies()` | Quais partições pai cada uma precisa |
+| `iterator(p, parents)` | Como calcular a partição `p` a partir dos pais |
+| `partitioner()` | Se está particionado por hash ou por faixa |
+| `preferredLocations(p)` | Nós onde `p` é acessada mais rápido |
+
+Um RDD **não guarda resultados**, só como obtê-los. Esse grafo é a **linhagem**, e sustenta as duas propriedades centrais do motor: pipelining e recuperação.
+
+---
+
+## Narrow e wide: a definição precisa {.smaller}
+
+Considere o grafo bipartido entre partições pai e filhas.
+
+- **Narrow:** cada partição **pai** é usada por **no máximo uma** partição filha.
+- **Wide:** uma partição pai pode ser usada por **várias** filhas.
+
+A condição é sobre o pai. Uma filha pode ler vários pais e continuar narrow:
+
+```
+   map / filter         union            coalesce          groupBy (wide)
+   P1 ──▶ C1            P1 ──▶ C1        P1 ──┐            P1 ──┬──▶ C1
+   P2 ──▶ C2            P2 ──▶ C2        P2 ──┴▶ C1        P2 ──┼──▶ C2
+   P3 ──▶ C3            Q1 ──▶ C3        P3 ──┐            P3 ──┴──▶ C3
+                                         P4 ──┴▶ C2      (Pi ──▶ C1, C2, C3)
+```
+
+Uma dependência ser wide depende da **disposição dos dados**, não do nome da operação: um `join` de duas entradas já particionadas por hash com o mesmo particionador é narrow (Zaharia et al., 2012, §4).
+
+---
+
+## Por que a distinção importa {.smaller}
+
+| Propriedade | Narrow | Wide |
+|-------------|--------|------|
+| **Execução** | Encadeada registro a registro em um nó | Precisa antes da saída de todos os pais |
+| **Memória** | $O(1)$ por registro: compõe iteradores | Armazena, ordena, pode despejar em disco |
+| **Falha** | Recalcula só as partições pai perdidas, em paralelo | Um nó pode perder um pedaço de *cada* partição ancestral |
+
+Encadear significa que `filter` seguido de `map` **não** são duas passadas sobre os dados:
+
+```python
+for row in parent:                     # conceitualmente, um só laço
+    if predicate(row):
+        yield transform(row)
+```
+
+O número de transformações narrow quase não tem custo estrutural. **O número de dependências wide determina a forma do job.**
+
+---
+
+## Do grafo aos stages {.smaller}
+
+**Algoritmo.** A partir da ação, percorra a linhagem para trás e corte em cada dependência wide. Cada componente conexa resultante é um **stage** (Zaharia et al., 2012, §5.1).
+
+**Proposição.** Se o plano é uma árvore com $k$ nós `Exchange` de shuffle, o job tem $k + 1$ stages.
+
+*Demonstração.* Remover $k$ arestas de uma árvore deixa exatamente $k + 1$ componentes conexas. $\square$
+
+Além disso, em um stage com $P$ partições de saída há $P$ tasks, então:
+
+$$\text{tasks} = \sum_{i=1}^{k+1} P_i$$
+
+**Ressalvas:** `BroadcastExchange` não corta o stage (roda como job à parte); `rangepartitioning` lança um job extra de amostragem, e por isso uma ação pode produzir mais de um job; e um exchange reutilizado transforma o plano em um DAG em vez de uma árvore.
+
+---
+
+## Exercício: contar antes de executar {.smaller}
+
+`orders` tem 24 partições de leitura, `spark.sql.shuffle.partitions = 200`, AQE desligado. Quantos stages e tasks?
+
+```python
+orders.filter(F.col("price") > 100) \
+      .withColumn("revenue", F.col("price") * F.col("quantity")) \
+      .groupBy("region").agg(F.sum("revenue")) \
+      .write.format("noop").mode("overwrite").save()
+```
+
+::: {.fragment}
+Um `Exchange`, então $k = 1$ e **2 stages**. `filter`, `withColumn` e a agregação parcial são encadeados no primeiro.
+
+Tasks: $24 + 200 =$ **224**. Mas `region` tem só 5 valores distintos, então **pelo menos 195 dessas 200 tasks não recebem nada**. O modelo já encontrou um problema sem executar nada.
+:::
+
+::: {.fragment}
+Confira no Lab 4 com `explain()` e a aba Stages da Spark UI.
+:::
+
+# 3. Modelo de tempo e tolerância a falhas
+
+## Quanto tempo leva um stage? {.smaller}
+
+Um stage é um conjunto de tasks independentes com durações $t_1, \dots, t_P$ em $c$ núcleos idênticos. Seja:
+
+$$W = \sum_i t_i \qquad t_{\max} = \max_i t_i$$
+
+**Limite inferior.** O trabalho não pode ser dividido melhor que por igual, e uma task não é divisível:
+
+$$T \;\geq\; \max\left(\frac{W}{c},\ t_{\max}\right)$$
+
+**Como ler o limite:**
+
+- Se $t_{\max} > W/c$, **adicionar núcleos não ajuda**: a maior task define o tempo.
+- Com $P < c$, usam-se no máximo $P$ núcleos, qualquer que seja o tamanho do cluster.
+
+Um stage termina quando termina sua task **mais lenta**, e o lado reduce de um shuffle espera todas as saídas map do pai. Por isso stages em sequência se somam:
+
+$$T_{\text{job}} = \sum_{\text{stages no caminho mais longo}} T_{\text{stage}}$$
+
+---
+
+## Um limite superior: list scheduling {.smaller}
+
+O Spark atribui a próxima task pendente a um núcleo livre: isso é **list scheduling** (Graham, 1969).
+
+**Proposição.** Para qualquer ordem das tasks:
+
+$$T \;\leq\; \frac{W}{c} + \left(1 - \frac{1}{c}\right) t_{\max}$$
+
+*Demonstração.* Seja $j$ a task que termina por último, e $s$ seu início. Até $s$ todos os núcleos estiveram ocupados, ou $j$ teria começado antes. Então $c \cdot s \leq W - t_j$, e:
+
+$$T = s + t_j \leq \frac{W - t_j}{c} + t_j = \frac{W}{c} + \left(1 - \frac{1}{c}\right) t_j \leq \frac{W}{c} + \left(1 - \frac{1}{c}\right) t_{\max} \quad \square$$
+
+**Junto com o limite inferior:** se $t_{\max} \ll W/c$, então $T \approx W/c$, e o escalonamento é quase ideal. Tudo que torna as tasks pequenas e parelhas aproxima desse caso.
+
+*O modelo ignora a localidade e os nós heterogêneos: é uma referência, não uma previsão exata.*
+
+---
+
+## Por que as tasks falham, e o que o Spark faz {.smaller}
+
+Se cada nó falha de forma independente com probabilidade $p$ durante um job, com $N$ nós:
+
+$$P(\text{pelo menos uma falha}) = 1 - (1 - p)^N$$
+
+Com $p = 0{,}1\%$ e $N = 1000$ (valores ilustrativos): $1 - 0{,}999^{1000} \approx$ **63%**. Em escala, a falha é o caso normal, e reiniciar todo o job não é viável.
+
+| Falha | Recuperação |
+|-------|-------------|
+| Uma task falha | É repetida, até `spark.task.maxFailures` = 4 tentativas |
+| Executor perdido, pais narrow | Só suas partições são recalculadas, pela linhagem |
+| Saída map de um shuffle perdida | O stage pai é **reenviado** para as partições que faltam (`FetchFailedException`) |
+| Linhagem longa com dependências wide | Recuperar pode ser caro: `checkpoint` corta a linhagem |
+
+As saídas map são gravadas em disco justamente para **não recalcular os pais** se uma task reduce falhar (Zaharia et al., 2012, §5.1).
+
+# 4. Anatomia e custo do shuffle
+
+## O particionador decide tudo {.smaller}
+
+`hashpartitioning(k, R)` envia cada linha para a partição:
+
+$$f(k) = \text{pmod}\big(\text{Murmur3}(k),\ R\big)$$
+
+**Correção.** $f$ é determinístico, então linhas com chave igual chegam à mesma partição: isso torna possíveis `groupBy` e `join`.
+
+**Balanço.** Um hash distribui *chaves*, não *linhas*. Se $f_k$ é a fração de linhas com chave $k$, de $n$ linhas:
+
+$$\text{partição máxima} \;\geq\; n \cdot \max_k f_k \qquad \text{para qualquer } R$$
+
+Uma chave com 40% das linhas gera uma partição com pelo menos 40% dos dados. **Nenhum valor de $R$ resolve isso**, e junto com o limite $T \geq t_{\max}$ é a definição formal do problema de skew (Aula 6).
+
+---
+
+## Chaves em partições: bolas e urnas {.smaller}
+
+Com $d$ chaves distintas, $R$ partições e um hash ideal, cada chave cai ao acaso de forma uniforme. A fração esperada de partições **vazias** é:
+
+$$\left(1 - \frac{1}{R}\right)^{d} \approx e^{-d/R}$$
+
+| Caso | $d$ | $R$ | Partições vazias |
+|------|-----|-----|------------------|
+| `region` | 5 | 200 | pelo menos 195 (no máximo 5 podem ter dados) |
+| Cardinalidade média | 200 | 200 | $\approx e^{-1}$: cerca de **37%**, mesmo com $d = R$ |
+| `customer_id` | 200.000 | 200 | $\approx e^{-1000}$: nenhuma |
+
+**Leitura:** com $d \approx R$, mais de um terço das tasks não faz nada, e outras partições recebem várias chaves. O balanço só aparece com $d \gg R$. Por isso um valor fixo de 200 não pode servir para toda consulta, e por isso o AQE funde partições depois de ver os tamanhos reais.
+
+---
+
+## Anatomia de um shuffle {.smaller}
+
+A documentação do Spark chama os lados de *map* e *reduce*, por causa do MapReduce:
+
+```
+ LADO MAP (M tasks)                          LADO REDUCE (R tasks)
+ ┌──────────────────────────────┐            ┌─────────────────────────┐
+ │ calcula f(k) para cada linha │            │ pergunta onde estão     │
+ │ armazena em memória          │            │ busca um bloco de cada  │
+ │ ordena por partição destino  │───rede────▶│   uma das M saídas      │
+ │ despeja em disco se estourar │            │ funde, agrega ou une    │
+ │ grava 1 arquivo + 1 índice   │            │ também pode despejar    │
+ └──────────────────────────────┘            └─────────────────────────┘
+```
+
+**Por que custa:** soma serialização (CPU), escrita em disco, rede, leitura e desserialização, e cria uma **barreira**: os reducers precisam das saídas das $M$ tasks map. Há $M \times R$ blocos lógicos, mas só $2M$ arquivos graças ao arquivo único ordenado com seu índice.
+
+`M = 1000, R = 200` são 200.000 blocos a localizar e buscar, então blocos minúsculos custam mesmo com poucos dados.
+
+---
+
+## Quanto cruza a rede? {.smaller}
+
+Com um hash uniforme sobre $N$ nós, um registro fica local com probabilidade $1/N$. Um shuffle de volume $D$ move pela rede:
+
+$$D_{\text{rede}} = D\left(1 - \frac{1}{N}\right)$$
+
+Adicionar nós não reduz a fração: **tende a 100%**. Com largura de banda $b$ por nó e uma troca perfeitamente parelha, um limite inferior do seu tempo é:
+
+$$T_{\text{rede}} \;\geq\; \frac{D\,(1 - 1/N)}{N\,b}$$
+
+**Exemplo.** $D = 1$ TB, $N = 10$, rede de 10 Gb/s, ou seja $b = 1{,}25$ GB/s:
+
+$$T_{\text{rede}} \geq \frac{900\ \text{GB}}{12{,}5\ \text{GB/s}} = 72\ \text{s}$$
+
+É um limite inferior que exclui disco, serialização e desbalanço. Serve para saber o que **nenhum ajuste** pode superar sem reduzir $D$. Por isso a primeira otimização é sempre a mesma: **mover menos dados**.
+
+---
+
+## Agregação parcial: quando ajuda, e quanto {.smaller}
+
+O plano do Lab 4 tem `partial_sum` antes do `Exchange` e `sum` depois. Só funciona se a função é **decomponível**: $\text{sum}(A \cup B) = \text{sum}(\text{sum}(A), \text{sum}(B))$.
+
+Após o passo parcial, cada uma das $M$ tasks map emite no máximo uma linha por chave; com $n$ linhas e $d$ chaves:
+
+$$\text{linhas no shuffle} \;\leq\; \min(n,\ M \cdot d)$$
+
+**`groupBy("region")`**, $n$ = 5M, $d$ = 5, $M$ = 24: no máximo **120 linhas** em vez de 5.000.000.
+
+**`groupBy("customer_id")`**, $d$ = 200.000: o limite dá 4,8M, que diz pouco. Uma estimativa melhor: cada task tem $m = n/M \approx 208.333$ linhas, com chaves distintas esperadas:
+
+$$d\left(1 - \left(1 - \tfrac{1}{d}\right)^{m}\right) \approx 200.000\,(1 - e^{-1{,}04}) \approx 129.400$$
+
+Total $\approx$ 3,1M linhas: **só 38% a menos**. A agregação parcial ajuda muito com $M \cdot d \ll n$, e quase nada quando $d$ se aproxima de $n/M$.
+
+# 5. Quantas partições
+
+## Poucas ou demais: o compromisso {.smaller}
+
+Dados $D$ em $P$ partições parelhas, $c$ núcleos, velocidade $r$ por núcleo, e um custo fixo $o$ por task (agendamento, serialização, abrir arquivos):
+
+$$t = \frac{D}{P\,r} + o \qquad\qquad T \approx \max\left(\frac{D}{c\,r} + \frac{P\,o}{c},\ \ \frac{D}{P\,r} + o\right)$$
+
+| Regime | Termo dominante | Sintoma |
+|--------|-----------------|---------|
+| $P < c$ | $D / (P\,r)$ | Núcleos ociosos; tasks grandes; despejos em disco |
+| $P \gg D / (r\,o)$ | $P\,o / c$ | Milhares de tasks de milissegundos, arquivos minúsculos |
+
+Assim, $P$ tem um piso definido pelos **núcleos** e um teto definido pelo **volume de dados**. As orientações da documentação combinam com este modelo:
+
+- **2 a 3 tasks por núcleo** (guia de ajuste do Spark): as tasks de sobra absorvem diferenças entre elas e baixam $t_{\max}$.
+- **100 a 200 MB por partição de shuffle:** regra prática comum, não uma constante do Spark.
+
+---
+
+## Partições na leitura: a fórmula real {.smaller}
+
+O Spark não lê "uma partição por arquivo". Em fontes de arquivos (`FilePartition.scala`):
+
+$$\text{maxSplitBytes} = \min\Big(\texttt{maxPartitionBytes},\ \max\big(\texttt{openCost},\ \tfrac{\sum_i (\text{size}_i + \texttt{openCost})}{\text{parallelism}}\big)\Big)$$
+
+com padrões de 128 MB e 4 MB. Arquivos maiores são divididos, e os pequenos são **empacotados**, cobrando `openCost` por cada um.
+
+**Exercício.** Paralelismo 8. Quantas partições?
+
+1. Um Parquet de 10 GB
+2. 1.000 Parquet de 1 MB
+3. Um CSV de 10 GB comprimido com gzip
+
+::: {.fragment}
+1. Split = min(128 MB, 1,25 GB) = 128 MB. Então 10.240 / 128 = **80**.
+2. Total 5.000 MB, split = 128 MB. Cada arquivo soma 5 MB, e cabem 26 por partição: **39**. Sem `openCost` seriam 8.
+3. **1**: gzip não pode ser dividido. Uma task de 10 GB, qualquer que seja o cluster, e domina $t_{\max}$.
 :::
 
 ---
 
-## Lendo um plano com `explain()`
-
-Lê-se **de baixo para cima**. Todo shuffle aparece como `Exchange`.
-
-- `PushedFilters`: o filtro chega até a leitura (*predicate pushdown*)
-- `ReadSchema`: só as colunas usadas são lidas (*column pruning*)
-- `HashAggregate (partial)` antes de `Exchange`: só os totais parciais atravessam o shuffle
-- `Exchange hashpartitioning(region, 200)`: o shuffle, com 200 partições de saída
-
----
-
-## Partições {.smaller}
-
-Uma task processa uma partição. Poucas deixam núcleos ociosos; demais geram overhead e arquivos pequenos.
-
-| Momento | Quem decide | Configuração |
-|---------|-------------|---------------|
-| Leitura de arquivos | Tamanho dos arquivos | `spark.sql.files.maxPartitionBytes` (128 MB) |
-| Após um shuffle | Configuração fixa (sem AQE) | `spark.sql.shuffle.partitions` (200) |
-| Manual | Você | `repartition(n)` / `coalesce(n)` |
+## `repartition` e `coalesce`, a partir da definição {.smaller}
 
 | | `repartition(n)` | `coalesce(n)` |
 |-|------------------|---------------|
-| Shuffle | Sim | Não |
-| Pode aumentar partições | Sim | Não, só reduz |
-| Uso típico | Antes de joins pesados, por chave | Reduzir arquivos antes de escrever |
+| Dependência | Wide | **Narrow** |
+| Stage novo | Sim | **Não** |
+| Balanço | Parelho (`RoundRobinPartitioning`) | O que resultar da fusão |
+| Pode aumentar $n$ | Sim | Não |
+
+**A armadilha vem da definição.** Uma dependência narrow fica no **mesmo stage**, e esse stage tem tantas tasks quanto partições do seu último RDD. Assim, em:
+
+```python
+df.filter(...).withColumn(...).coalesce(1).write.parquet(path)
+```
+
+todo o stage, incluindo `filter` e `withColumn`, roda em **1 task**, não só a escrita final: $T \geq W$, com um núcleo fazendo todo o trabalho.
+
+`repartition(1)` adiciona um shuffle, mas o stage anterior mantém seu paralelismo. Qual convém depende de como $W$ se compara ao custo do shuffle.
+
+# 6. Algoritmos de join
+
+## O invariante de um join distribuído {.smaller}
+
+Um equi-join precisa de uma condição: **linhas com a mesma chave devem ser processadas na mesma task.** Há três formas de conseguir isso:
+
+| Forma | Algoritmo | O que se move |
+|-------|-----------|---------------|
+| Particionar ambos os lados com a mesma $f$ | Sort-merge, shuffle hash | Ambas as tabelas |
+| Copiar um lado para todos | Broadcast hash | A tabela pequena |
+| Já estão particionados | Bucketing, ou um shuffle anterior | Nada |
+
+Notação: $n_R \geq n_S$ linhas, $|R| \geq |S|$ bytes, $N$ executors, $P$ partições.
+
+| Algoritmo | Rede | CPU | Memória |
+|-----------|------|-----|---------|
+| **Broadcast hash** | $N \cdot |S|$ | $O(n_S + n_R)$ | $|S|$ em **cada** executor |
+| **Shuffle hash** | $(|R| + |S|)(1 - 1/N)$ | $O(n_S + n_R)$ | $|S|/P$ por task, deve caber |
+| **Sort-merge** | $(|R| + |S|)(1 - 1/N)$ | $O(n \log (n/P))$ | Pode despejar: o mais robusto |
 
 ---
 
-## Estratégias de join
+## Broadcast ou shuffle: onde está o limite? {.smaller}
 
-```
-  SORT-MERGE JOIN (default)                BROADCAST HASH JOIN
-  orders ──shuffle──┐                      products (small)
-                    ├── sort + merge         │ copy  │ copy  │ copy
-  customers ─shuffle┘                      [orders P1] [orders P2] [orders P3]
-```
+Só pela rede, broadcast ganha se $N|S| < (|R| + |S|)(1 - 1/N)$, ou seja:
 
-| Estratégia | Quando | Custo |
-|----------|--------|-------|
-| **Broadcast Hash** | Um lado é pequeno (padrão: < 10 MB) | Sem shuffle do lado grande; o pequeno na memória de cada executor |
-| **Sort-Merge** | Duas tabelas grandes | Shuffle + ordenação dos dois lados |
-| **Shuffle Hash** | Lado médio, sem ordenação | Shuffle dos dois lados, hash do menor |
+$$|S| \;<\; |R| \cdot \frac{1 - 1/N}{N - 1 + 1/N} \;\approx\; \frac{|R|}{N}$$
+
+Com $|R| = 1$ TB e $N = 10$: broadcast economizaria rede até $|S| \approx$ 99 GB. Mas o limiar padrão é **10 MB**. Por quê?
+
+**Porque a rede não é o que limita:**
+
+- O lado de construção é **coletado primeiro no driver** (`executeCollectIterator`).
+- Deve caber na memória de **cada** executor, como tabela hash.
+- Limites rígidos: **8 GiB**, e até 512 milhões de linhas (341 milhões se a chave não for um só inteiro).
+- `spark.sql.broadcastTimeout` = 300 s: passado isso, o job falha.
+- A decisão usa uma **estimativa**, que pode estar muito errada (veja o slide de `Filter`).
+
+Um sort-merge errado é lento. Um broadcast errado **derruba o job**. Um risco assimétrico justifica um limiar conservador.
+
+---
+
+## Como o planejador escolhe {.smaller}
+
+`JoinSelection` segue uma ordem fixa. Ganha o primeiro aplicável:
+
+| Caso | Ordem |
+|------|-------|
+| **Com hint** | `BROADCAST` > `MERGE` > `SHUFFLE_HASH` > `SHUFFLE_REPLICATE_NL` |
+| **Equi-join** | Broadcast hash ▶ Shuffle hash ▶ Sort-merge ▶ Cartesiano ▶ Broadcast nested loop |
+| **Join sem igualdade** | Broadcast nested loop ▶ Cartesiano ▶ Broadcast nested loop |
+
+Shuffle hash só tem prioridade se `spark.sql.join.preferSortMergeJoin` for `false` (padrão `true`), então o habitual é **broadcast se couber, senão sort-merge**.
+
+**Um hint é uma preferência e não uma ordem:** uma estratégia que não suporta o tipo de join é ignorada.
+
+**Um join sem igualdade não tem chave para hash**, então o invariante não se consegue particionando. Comparam-se todos os pares: $10^6 \times 10^4 = 10^{10}$ comparações, não importa quantas linhas coincidam. Uma condição `a.x < b.y` pode mudar a classe de complexidade de toda a consulta.
+
+---
+
+## Exercício: por que aqui não dá para fazer broadcast? {.smaller}
+
+`small` tem 1 MB, `big` tem 1 TB, com o limiar padrão:
 
 ```python
-orders.join(F.broadcast(products), "product_id")
+small.join(big, "k", "left")
 ```
+
+::: {.fragment}
+**Não dá para fazer broadcast.** Cada executor teria uma cópia de `small`, enquanto `big` está distribuída entre eles. Um `LEFT JOIN` deve emitir as linhas de `small` **sem correspondência em nenhuma** partição de `big`. Mas nenhuma task vê todo o `big`, então nenhuma pode decidir que uma linha não tem correspondência.
+
+Por isso o lado preservado não pode ser o de construção:
+
+| Tipo de join | Pode fazer broadcast de |
+|--------------|-------------------------|
+| Inner | Qualquer lado |
+| `LEFT`, `LEFT SEMI`, `LEFT ANTI` | Só o **direito** |
+| `RIGHT` | Só o **esquerdo** |
+| `FULL OUTER` | Nenhum (sem broadcast hash join) |
+
+Aqui o Spark recorre a um sort-merge com um shuffle de 1 TB. A restrição é lógica e nenhum hint a remove.
+:::
+
+---
+
+## A saída pode ser maior que a entrada {.smaller}
+
+Se a chave $k$ aparece $a_k$ vezes em $R$ e $b_k$ vezes em $S$:
+
+$$|R \bowtie S| = \sum_k a_k \, b_k$$
+
+| Caso | Saída |
+|------|-------|
+| Fatos × dimensão, chave única em $S$ ($b_k = 1$) | $\leq n_R$ |
+| Duplicatas em ambos os lados, $a_k = b_k = 1000$ em uma chave | $10^6$ linhas a partir de 2.000 |
+| Uma só chave em todas as linhas | $n_R \cdot n_S$: um produto cartesiano |
+
+**O custo de um join tem um termo que nenhum algoritmo evita: sua saída.** O "tempo linear" do merge só vale com poucas duplicatas, e uma task com uma chave quente pode produzir muito mais linhas do que leu.
+
+**Verifique antes de unir:** a chave é única em um lado? Uma duplicata silenciosa multiplica linhas, e também todo `sum` calculado depois, sem nenhum erro.
+
+---
+
+## De onde vem cada `Exchange` {.smaller}
+
+Os operadores físicos **declaram o que precisam** dos filhos:
+
+| Operador | Requer |
+|----------|--------|
+| `SortMergeJoin` | Ambos os filhos agrupados pela chave, e ordenados |
+| `HashAggregate` final | Agrupado pelas chaves do grupo |
+| `Sort` global | Distribuição ordenada (partição por faixa) |
+
+A regra `EnsureRequirements` compara cada requisito com o que o filho já fornece e **adiciona um `Exchange` ou `Sort` só se não for atendido**. Por isso os planos mostram `ENSURE_REQUIREMENTS`.
+
+**Então um shuffle pode ser evitado.** `hash(k)` já agrupa por `k`, então:
+
+```python
+a.join(b, "k").groupBy("k").count()   # 2 Exchanges: reutiliza o do join
+a.join(b, "k").groupBy("x").count()   # 3 Exchanges: x exige outro
+```
+
+Para prever um plano, siga a propriedade de **particionamento** de baixo para cima.
+
+---
+
+## Exercício: preveja o plano {.smaller}
+
+AQE e broadcast automático desligados, `a` e `b` com 10 partições de leitura cada, $R = 200$. Para cada consulta: nós `Exchange`, stages e tasks.
+
+```python
+q1 = a.groupBy("k").count()
+q2 = a.join(b, "k").groupBy("k").count()
+q3 = a.join(b, "k").groupBy("x").count()
+q4 = a.join(F.broadcast(b), "k").groupBy("x").count()
+```
+
+::: {.fragment}
+| Consulta | `Exchange` (shuffle) | Stages | Tasks |
+|----------|----------------------|--------|-------|
+| `q1` | 1 | 2 | $10 + 200 = 210$ |
+| `q2` | 2 | 3 | $10 + 10 + 200 = 220$ |
+| `q3` | 3 | 4 | $10 + 10 + 200 + 200 = 420$ |
+| `q4` | 1 | 2 | $10 + 200 = 210$, mais um job para coletar `b` |
+:::
+
+::: {.fragment}
+Compare `q3` e `q4`, que retornam o mesmo: **dois shuffles e 210 tasks a menos**, em troca de manter `b` em memória.
+:::
+
+# 7. Problema integrador
+
+## Orçamento de uma consulta {.smaller}
+
+20 nós de 16 núcleos e 10 Gb/s. `orders`: 2 TB em Parquet; após pruning e filtro, 200 GB. `customers`: 100 GB em Parquet, lidos por inteiro.
+
+```python
+(orders.filter(...)
+       .join(customers, "customer_id")
+       .groupBy("segment").agg(F.sum("revenue"))   # 3 segmentos
+       .orderBy(F.desc("sum(revenue)")))
+```
+
+Sem executá-la, e com AQE desligado, responda:
+
+1. Qual algoritmo de join? Poderia ser broadcast?
+2. Quantos `Exchange` e stages?
+3. Quantas tasks de leitura?
+4. Qual o limite inferior do tempo de rede do join?
+5. $R = 200$ é adequado? Qual valor você usaria?
+6. Quantos dados movem os dois últimos shuffles?
+
+---
+
+## Orçamento de uma consulta: solução {.smaller}
+
+1. **Sort-merge.** 100 GB supera muito os 10 MB e o limite rígido de 8 GiB.
+2. **4 `Exchange`** (2 do join, 1 de `segment`, 1 da ordenação por faixa), então **5 stages**.
+3. Por arquivos, não por colunas: $2.000.000 / 128 =$ **15.625** + $\lceil 100.000 / 128 \rceil =$ **782**.
+4. $D = 300$ GB, e cruzam 95%: 285 GB. Capacidade $20 \times 1{,}25 = 25$ GB/s, então $T \geq$ **11,4 s**.
+5. Não: $300\ \text{GB} / 200 = 1{,}5$ GB por partição. Para cerca de 150 MB, $R \approx$ **2.000**, cerca de 6 tasks por núcleo.
+6. Quase nada. `sum` é decomponível com $d = 3$: no máximo $2.000 \times 3 = 6.000$ linhas, e depois **3 linhas** para ordenar.
+
+**Total de tasks:** $15.625 + 782 + 2.000 + 2.000 + (\leq 3) \approx$ **20.400**.
+
+**Onde está o custo:** a leitura e o join. As alavancas ficam claras: reduzir os 2 TB percorridos (partições, `PushedFilters`), reduzir `customers` (selecionar só as colunas necessárias) e agregar antes do join quando possível. Mudar `orderBy` ou `segment` não economizaria nada.
+
+---
+
+## Referências {.smaller}
+
+- Zaharia, M., Chowdhury, M., Das, T., et al. (2012). *Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory Cluster Computing*. NSDI '12.
+- Armbrust, M., Xin, R. S., Lian, C., et al. (2015). *Spark SQL: Relational Data Processing in Spark*. SIGMOD '15.
+- Graham, R. L. (1969). *Bounds on Multiprocessing Timing Anomalies*. SIAM Journal on Applied Mathematics, 17(2), 416–429.
+- Apache Spark 4.0.1: [Performance Tuning](https://spark.apache.org/docs/4.0.1/sql-performance-tuning.html), [Tuning Guide](https://spark.apache.org/docs/4.0.1/tuning.html), [RDD Programming Guide: Shuffle](https://spark.apache.org/docs/4.0.1/rdd-programming-guide.html#shuffle-operations), [Configuration](https://spark.apache.org/docs/4.0.1/configuration.html).
+- Apache Spark 4.0.1, source code: `FilePartition.scala`, `SparkStrategies.scala` (`JoinSelection`), `BroadcastExchangeExec.scala`, `SizeInBytesOnlyStatsPlanVisitor.scala`, `partitioning.scala`.

@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >En esta clase, aprenderemos:
 >
->* Data warehouse, data lake y lakehouse
->* Capas Bronze, Silver y Gold
->* Reglas de calidad y cuarentena
->* Parquet particionado y pruning
+>* Warehouse, lake y lakehouse: cuándo se impone la estructura
+>* Medallion como conjunto de invariantes
+>* Idempotencia: pipelines que sobreviven a los reintentos
+>* La calidad de datos como medición, y la cuarentena
+>* Dentro de un archivo Parquet: codificación y salto de datos
+>* Particionado: cardinalidad y número de archivos
 
 
 ### Slides

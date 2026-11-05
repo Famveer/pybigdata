@@ -188,6 +188,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,450 +207,572 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="o-que-você-vai-aprender" class="slide level2">
-<h2>O que você vai aprender</h2>
+<section id="o-que-você-poderá-fazer" class="slide level2 smaller">
+<h2>O que você poderá fazer</h2>
 <ul>
-<li>O que torna Polars e DuckDB rápidos</li>
-<li>A mesma consulta em cinco ferramentas: tempo, memória e sintaxe</li>
-<li>Pandas API on Spark para migrar código Pandas</li>
-<li>Apache Arrow para trocar dados entre ferramentas</li>
-<li>Um critério claro para decidir</li>
+<li>Ajustar um modelo simples de custo a medições reais, e localizar o cruzamento entre ferramentas</li>
+<li>Explicar, a partir do hardware, por que motores colunares e vetorizados são muito mais rápidos</li>
+<li>Explicar o que o Arrow muda, e quando as conversões não custam nada</li>
+<li>Separar a pergunta do tempo da pergunta da memória</li>
+<li>Escolher uma ferramenta com um critério fundamentado, e defender a escolha</li>
 </ul>
-</section>
-<section id="as-ferramentas" class="slide level2 smaller">
-<h2>As ferramentas</h2>
 <table class="caption-top">
-<colgroup>
-<col style="width: 1%">
-<col style="width: 15%">
-<col style="width: 15%">
-<col style="width: 15%">
-<col style="width: 39%">
-<col style="width: 13%">
-</colgroup>
 <thead>
 <tr class="header">
-<th></th>
+<th>Bloco</th>
+<th>Tema</th>
+<th>Min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>O que as medições dizem</td>
+<td>25</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>Por que são rápidos: o hardware</td>
+<td>30</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Memória e out-of-core</td>
+<td>15</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Apache Arrow</td>
+<td>15</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Pandas API on Spark</td>
+<td>10</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Como decidir</td>
+<td>15</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Problema integrador</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section>
+<section id="o-que-as-medições-dizem" class="title-slide slide level1 center">
+<h1>1. O que as medições dizem</h1>
+
+</section>
+<section id="a-mesma-consulta-a-mesma-máquina" class="slide level2 smaller">
+<h2>A mesma consulta, a mesma máquina</h2>
+<p>Lab 12, com 24 núcleos: faturamento por segmento e categoria, com um filtro e dois joins. Melhor tempo por ferramenta, sobre Parquet:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Linhas</th>
 <th>Pandas</th>
 <th>Polars</th>
 <th>DuckDB</th>
-<th>Pandas API on Spark</th>
 <th>Spark</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Interface</td>
-<td>Python</td>
-<td>Python (expressões)</td>
-<td><strong>SQL</strong></td>
-<td>Sintaxe do Pandas</td>
-<td>DataFrame + SQL</td>
+<td>1 M</td>
+<td>0,11 s</td>
+<td>0,02 s</td>
+<td>0,03 s</td>
+<td>0,33 s</td>
 </tr>
 <tr class="even">
-<td>Motor</td>
-<td>NumPy/C</td>
-<td>Rust</td>
-<td>C++</td>
-<td>Spark</td>
-<td>Spark (JVM)</td>
+<td>5 M</td>
+<td>0,46 s</td>
+<td>0,04 s</td>
+<td>0,04 s</td>
+<td>0,34 s</td>
 </tr>
 <tr class="odd">
-<td>Execução</td>
-<td>Eager</td>
-<td>Eager <strong>ou lazy</strong></td>
-<td>Lazy</td>
-<td>Lazy</td>
-<td>Lazy</td>
-</tr>
-<tr class="even">
-<td>Núcleos</td>
-<td><strong>1</strong> (quase sempre)</td>
-<td>Todos</td>
-<td>Todos</td>
-<td>Todos / cluster</td>
-<td>Todos / cluster</td>
-</tr>
-<tr class="odd">
-<td>Dados maiores que a RAM</td>
-<td>Não</td>
-<td>Sim (streaming)</td>
-<td>Sim (spill)</td>
-<td>Sim</td>
-<td>Sim</td>
-</tr>
-<tr class="even">
-<td>Várias máquinas</td>
-<td>Não</td>
-<td>Não</td>
-<td>Não</td>
-<td><strong>Sim</strong></td>
-<td><strong>Sim</strong></td>
+<td>20 M</td>
+<td><strong>2,14 s</strong></td>
+<td><strong>0,11 s</strong></td>
+<td><strong>0,08 s</strong></td>
+<td><strong>0,49 s</strong></td>
 </tr>
 </tbody>
 </table>
-</section>
-<section id="por-que-polars-e-duckdb-são-rápidos" class="slide level2">
-<h2>Por que Polars e DuckDB são rápidos</h2>
+<p><strong>Ajuste o modelo mais simples:</strong> um custo fixo <span class="math inline">\(a\)</span> mais um custo por linha <span class="math inline">\(b\)</span>, usando os extremos:</p>
+<p><span class="math display">\[T(n) = a + b \cdot n\]</span></p>
 <table class="caption-top">
-<colgroup>
-<col style="width: 60%">
-<col style="width: 40%">
-</colgroup>
 <thead>
 <tr class="header">
-<th>Técnica</th>
-<th>Ideia</th>
+<th>Ferramenta</th>
+<th>Custo fixo <span class="math inline">\(a\)</span></th>
+<th>Custo por linha <span class="math inline">\(b\)</span></th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Armazenamento colunar</strong> (Arrow)</td>
-<td>Valores da mesma coluna contíguos na memória</td>
+<td>Pandas</td>
+<td>≈ 0</td>
+<td><strong>107 ns</strong></td>
+</tr>
+<tr class="even">
+<td>Spark</td>
+<td><strong>0,32 s</strong></td>
+<td>8,4 ns</td>
+</tr>
+<tr class="odd">
+<td>Polars</td>
+<td>15 ms</td>
+<td>4,7 ns</td>
+</tr>
+<tr class="even">
+<td>DuckDB</td>
+<td>27 ms</td>
+<td><strong>2,6 ns</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Quatro linhas de uma tabela acabam de explicar todo o debate: <strong>o Spark tem um <span class="math inline">\(a\)</span> enorme, e o Pandas um <span class="math inline">\(b\)</span> enorme.</strong></p>
+</section>
+<section id="onde-as-retas-se-cruzam" class="slide level2 smaller">
+<h2>Onde as retas se cruzam</h2>
+<p>Duas ferramentas empatam quando <span class="math inline">\(a_1 + b_1 n = a_2 + b_2 n\)</span>:</p>
+<p><span class="math display">\[n^* = \frac{a_2 - a_1}{b_1 - b_2}\]</span></p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 42%">
+<col style="width: 25%">
+<col style="width: 32%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Comparação</th>
+<th><span class="math inline">\(n^*\)</span></th>
+<th>Leitura</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Spark vs Pandas</td>
+<td><span class="math inline">\(\dfrac{0{,}32}{(107 - 8{,}4) \times 10^{-9}} \approx\)</span> <strong>3,2 M de linhas</strong></td>
+<td>Abaixo ganha o Pandas, acima o Spark</td>
+</tr>
+<tr class="even">
+<td>Spark vs Polars</td>
+<td><strong>Nunca</strong></td>
+<td>O Spark tem mais <span class="math inline">\(a\)</span> <strong>e</strong> mais <span class="math inline">\(b\)</span></td>
+</tr>
+</tbody>
+</table>
+<p><strong>O modelo previu a realidade.</strong> Situa o cruzamento entre 1 M e 5 M, e é exatamente o que a tabela mostra: o Pandas ganha com 1 M (0,11 vs 0,33 s), e perde com 5 M (0,46 vs 0,34 s).</p>
+<p><strong>Os limites honestos desta análise:</strong></p>
+<ul>
+<li>Uma máquina, cache quente, “o melhor de 2”: não é um benchmark.</li>
+<li>Ajustado com dois pontos: a linearidade é uma suposição.</li>
+<li>Ignora a memória: o Pandas pode quebrar muito antes de ficar lento.</li>
+</ul>
+<p><strong>A conclusão resiste.</strong> Em uma máquina, o <span class="math inline">\(b\)</span> do Spark não é melhor que o do Polars ou do DuckDB. <strong>Sua vantagem precisa vir do que eles não podem fazer: usar mais máquinas.</strong> O Spark não é para ser rápido em uma máquina.</p>
+</section></section>
+<section>
+<section id="por-que-são-rápidos-o-hardware" class="title-slide slide level1 center">
+<h1>2. Por que são rápidos: o hardware</h1>
+
+</section>
+<section id="ns-vs-26-ns-de-onde-vêm-40" class="slide level2 smaller">
+<h2>107 ns vs 2,6 ns: de onde vêm 40×?</h2>
+<p>Todos executam aqui um hash join. A diferença vem de <strong>como usam o hardware</strong>, com quatro alavancas independentes:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 19%">
+<col style="width: 15%">
+<col style="width: 30%">
+<col style="width: 34%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Alavanca</th>
+<th>Pandas</th>
+<th>Polars, DuckDB</th>
+<th>Ganho aproximado</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Núcleos</strong></td>
+<td>1, na maioria das operações</td>
+<td>Todos</td>
+<td>Até 24× aqui, por Amdahl</td>
 </tr>
 <tr class="even">
 <td><strong>Execução vetorizada</strong></td>
-<td>Lotes de milhares de valores por instrução</td>
+<td>Em parte (NumPy, por coluna)</td>
+<td>Lotes, em todas as etapas</td>
+<td>Dezenas de vezes</td>
 </tr>
 <tr class="odd">
-<td><strong>Paralelismo</strong></td>
-<td>O trabalho é dividido entre todos os núcleos</td>
+<td><strong>Otimização do plano</strong></td>
+<td>Nenhuma: imediato</td>
+<td>Pushdown, pruning, ordem de joins</td>
+<td>Depende da consulta</td>
 </tr>
 <tr class="even">
-<td><strong>Otimização de consulta</strong></td>
-<td>Empurra filtros, lê só as colunas usadas</td>
-</tr>
-<tr class="odd">
-<td><strong>Out-of-core</strong></td>
-<td>Usa disco quando a RAM acaba</td>
+<td><strong>Materialização</strong></td>
+<td>Cada passo cria um resultado completo</td>
+<td>Fluxo entre operadores</td>
+<td>Memória, e falhas de cache</td>
 </tr>
 </tbody>
 </table>
-<p>As mesmas ideias do Spark, <strong>sem o custo de coordenar um cluster</strong>.</p>
-</section>
-<section id="o-custo-fixo-do-spark" class="slide level2">
-<h2>O custo fixo do Spark</h2>
-<pre><code>  Pandas / Polars / DuckDB        Spark
-  ┌──────────────────────┐        ┌───────────────────────────────┐
-  │ processo Python      │        │ Python ─py4j─▶ JVM (driver)   │
-  │ └─ biblioteca nativa │        │   ├─ planejamento (Catalyst)  │
-  │    lê, calcula,      │        │   ├─ jobs, stages, tasks      │
-  │    devolve           │        │   ├─ shuffle (disco)          │
-  └──────────────────────┘        │   └─ resultado ─▶ Python      │
-                                  └───────────────────────────────┘
-  ~ milissegundos                 ~ centenas de ms a segundos</code></pre>
-<p>Irrelevante com 1 TB em 50 máquinas. Com 2 GB em um notebook, domina.</p>
-</section>
-<section id="a-mesma-consulta-pandas-e-polars" class="slide level2">
-<h2>A mesma consulta: Pandas e Polars</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a><span class="co"># Pandas: cada passo roda na hora</span></span>
-<span id="cb2-2"><a href=""></a>o <span class="op">=</span> pd.read_parquet(ORDERS, columns<span class="op">=</span>[<span class="st">"customer_id"</span>, <span class="st">"product_id"</span>,</span>
-<span id="cb2-3"><a href=""></a>                                     <span class="st">"quantity"</span>, <span class="st">"price"</span>, <span class="st">"order_date"</span>])</span>
-<span id="cb2-4"><a href=""></a>o <span class="op">=</span> o[o[<span class="st">"order_date"</span>] <span class="op">&gt;=</span> CUTOFF]</span>
-<span id="cb2-5"><a href=""></a>o <span class="op">=</span> o.assign(revenue<span class="op">=</span>o[<span class="st">"price"</span>] <span class="op">*</span> o[<span class="st">"quantity"</span>])</span>
-<span id="cb2-6"><a href=""></a>df <span class="op">=</span> o.merge(c, on<span class="op">=</span><span class="st">"customer_id"</span>).merge(p, on<span class="op">=</span><span class="st">"product_id"</span>)</span>
-<span id="cb2-7"><a href=""></a>df.groupby([<span class="st">"segment"</span>, <span class="st">"category"</span>], as_index<span class="op">=</span><span class="va">False</span>) <span class="op">\</span></span>
-<span id="cb2-8"><a href=""></a>  .agg(orders<span class="op">=</span>(<span class="st">"revenue"</span>, <span class="st">"size"</span>), revenue<span class="op">=</span>(<span class="st">"revenue"</span>, <span class="st">"sum"</span>))</span>
-<span id="cb2-9"><a href=""></a></span>
-<span id="cb2-10"><a href=""></a><span class="co"># Polars: monta um plano, roda no collect()</span></span>
-<span id="cb2-11"><a href=""></a>(pl.scan_parquet(ORDERS)</span>
-<span id="cb2-12"><a href=""></a>   .<span class="bu">filter</span>(pl.col(<span class="st">"order_date"</span>) <span class="op">&gt;=</span> pl.date(<span class="dv">2024</span>, <span class="dv">7</span>, <span class="dv">1</span>))</span>
-<span id="cb2-13"><a href=""></a>   .with_columns(revenue<span class="op">=</span>pl.col(<span class="st">"price"</span>) <span class="op">*</span> pl.col(<span class="st">"quantity"</span>))</span>
-<span id="cb2-14"><a href=""></a>   .join(c, on<span class="op">=</span><span class="st">"customer_id"</span>).join(p, on<span class="op">=</span><span class="st">"product_id"</span>)</span>
-<span id="cb2-15"><a href=""></a>   .group_by(<span class="st">"segment"</span>, <span class="st">"category"</span>)</span>
-<span id="cb2-16"><a href=""></a>   .agg(orders<span class="op">=</span>pl.<span class="bu">len</span>(), revenue<span class="op">=</span>pl.col(<span class="st">"revenue"</span>).<span class="bu">sum</span>())</span>
-<span id="cb2-17"><a href=""></a>   .collect())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="a-mesma-consulta-duckdb-e-spark" class="slide level2">
-<h2>A mesma consulta: DuckDB e Spark</h2>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="co"># DuckDB: SQL puro sobre os arquivos, sem passo de leitura</span></span>
-<span id="cb3-2"><a href=""></a>duckdb.sql(<span class="ss">f"""</span></span>
-<span id="cb3-3"><a href=""></a><span class="ss">    SELECT c.segment, p.category, COUNT(*) AS orders,</span></span>
-<span id="cb3-4"><a href=""></a><span class="ss">           SUM(o.price * o.quantity) AS revenue</span></span>
-<span id="cb3-5"><a href=""></a><span class="ss">    FROM '</span><span class="sc">{</span>ORDERS<span class="sc">}</span><span class="ss">' o</span></span>
-<span id="cb3-6"><a href=""></a><span class="ss">    JOIN '</span><span class="sc">{</span>CUSTOMERS<span class="sc">}</span><span class="ss">' c USING (customer_id)</span></span>
-<span id="cb3-7"><a href=""></a><span class="ss">    JOIN '</span><span class="sc">{</span>PRODUCTS<span class="sc">}</span><span class="ss">'  p USING (product_id)</span></span>
-<span id="cb3-8"><a href=""></a><span class="ss">    WHERE o.order_date &gt;= DATE '</span><span class="sc">{</span>CUTOFF<span class="sc">}</span><span class="ss">'</span></span>
-<span id="cb3-9"><a href=""></a><span class="ss">    GROUP BY ALL</span></span>
-<span id="cb3-10"><a href=""></a><span class="ss">"""</span>).df()</span>
-<span id="cb3-11"><a href=""></a></span>
-<span id="cb3-12"><a href=""></a><span class="co"># Spark</span></span>
-<span id="cb3-13"><a href=""></a>(spark.read.parquet(ORDERS)</span>
-<span id="cb3-14"><a href=""></a>   .<span class="bu">filter</span>(F.col(<span class="st">"order_date"</span>) <span class="op">&gt;=</span> CUTOFF)</span>
-<span id="cb3-15"><a href=""></a>   .withColumn(<span class="st">"revenue"</span>, F.col(<span class="st">"price"</span>) <span class="op">*</span> F.col(<span class="st">"quantity"</span>))</span>
-<span id="cb3-16"><a href=""></a>   .join(c, <span class="st">"customer_id"</span>).join(p, <span class="st">"product_id"</span>)</span>
-<span id="cb3-17"><a href=""></a>   .groupBy(<span class="st">"segment"</span>, <span class="st">"category"</span>)</span>
-<span id="cb3-18"><a href=""></a>   .agg(F.count(<span class="st">"*"</span>).alias(<span class="st">"orders"</span>), F.<span class="bu">sum</span>(<span class="st">"revenue"</span>).alias(<span class="st">"revenue"</span>)))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="como-ler-os-resultados" class="slide level2">
-<h2>Como ler os resultados</h2>
-<p>Os números variam com a máquina, mas a ordem costuma se repetir:</p>
-<ul>
-<li><strong>Polars e DuckDB</strong> costumam ser os mais rápidos</li>
-<li><strong>Pandas</strong> faz os joins em um núcleo e materializa cada passo</li>
-<li><strong>Spark</strong> paga seu custo fixo: planejamento, tasks, transferência para Python</li>
-<li><strong>Pandas API on Spark</strong> soma a tradução da semântica do Pandas: feita para escalar, não para ser rápida em uma máquina</li>
-</ul>
-<p><strong>Memória:</strong> o Pandas costuma quebrar por falta de RAM bem antes de ficar lento demais. Regra antiga: reserve de 5 a 10 vezes o tamanho dos dados.</p>
-</section>
-<section id="quando-o-volume-cresce" class="slide level2">
-<h2>Quando o volume cresce</h2>
-<p>A mesma consulta com 1, 5 e 20 milhões de linhas:</p>
-<ul>
-<li>O custo fixo do Spark pesa mais com pouco volume; a diferença relativa cai ao crescer</li>
-<li>O Pandas cresce mais rápido que os outros e em algum ponto deixa de caber na memória</li>
-<li>Polars e DuckDB crescem devagar: todos os núcleos, sem materializar passos intermediários</li>
-</ul>
-<p><strong>A curva que um notebook não consegue mostrar:</strong> Spark em um cluster. Com 10 máquinas, o mesmo código processa 10 vezes mais dados no mesmo tempo.</p>
-</section>
-<section id="pandas-api-on-spark" class="slide level2 smaller">
-<h2>Pandas API on Spark</h2>
-<p>Caso de uso: <strong>migração</strong>. Código Pandas que funciona e cujos dados não cabem mais em uma máquina.</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a><span class="im">import</span> pyspark.pandas <span class="im">as</span> ps          <span class="co"># em vez de: import pandas as pd</span></span>
-<span id="cb4-2"><a href=""></a>df <span class="op">=</span> ps.read_parquet(path)</span>
-<span id="cb4-3"><a href=""></a>df.groupby(<span class="st">"x"</span>)[<span class="st">"y"</span>].mean()          <span class="co"># mesmo código</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Latências aproximadas</strong> (ordem de grandeza):</p>
 <table class="caption-top">
-<colgroup>
-<col style="width: 17%">
-<col style="width: 22%">
-<col style="width: 60%">
-</colgroup>
 <thead>
 <tr class="header">
-<th>Tema</th>
-<th>Pandas</th>
-<th>Pandas API on Spark</th>
+<th>Operação</th>
+<th>Tempo</th>
+<th>Em relação a um ciclo de núcleo</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Índice</td>
-<td>Sempre existe</td>
-<td>Precisa ser <strong>gerado</strong>; o tipo afeta a performance</td>
+<td>Ciclo de CPU</td>
+<td>0,3 ns</td>
+<td>1</td>
 </tr>
 <tr class="even">
-<td>Ordem das linhas</td>
-<td>Garantida</td>
-<td>Não garantida após operações distribuídas</td>
+<td><strong>Memória principal</strong></td>
+<td><strong>100 ns</strong></td>
+<td><strong>300</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Uma falha de memória custa centenas de operações.</strong> Um motor moderno é, antes de tudo, <strong>um projeto para não falhar o cache</strong>.</p>
+</section>
+<section id="de-linha-a-linha-a-vetores" class="slide level2 smaller">
+<h2>De linha a linha a vetores</h2>
+<p><strong>Volcano, o modelo clássico:</strong> cada operador pede ao filho <strong>uma linha por vez</strong>. Limpo, componível e terrivelmente lento: uma chamada virtual por operador e por linha, e nem o preditor de desvios nem o cache da CPU podem ajudar.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a><span class="cf">for</span> row <span class="kw">in</span> child:                  <span class="co"># Volcano: interpret per row</span></span>
+<span id="cb1-2"><a href=""></a>    <span class="cf">if</span> row.price <span class="op">&gt;</span> <span class="dv">100</span>: <span class="cf">yield</span> row</span>
+<span id="cb1-3"><a href=""></a></span>
+<span id="cb1-4"><a href=""></a>selected <span class="op">=</span> price[price <span class="op">&gt;</span> <span class="dv">100</span>]      <span class="co"># Vectorized: tight loop per batch</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>A execução vetorizada</strong> (Boncz et al., 2005) mantém a mesma árvore de operadores, mas passa <strong>lotes de cerca de mil valores de uma coluna</strong>. O resultado:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 47%">
+<col style="width: 52%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Efeito</th>
+<th>Por quê</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Interpretação paga uma vez</strong> por lote</td>
+<td>O custo de despacho se divide entre muitos valores</td>
+</tr>
+<tr class="even">
+<td><strong>Cache</strong></td>
+<td>Uma coluna é contígua, então o prefetch funciona, e o lote cabe no cache</td>
 </tr>
 <tr class="odd">
-<td><code>iterrows</code>, <code>.to_numpy()</code></td>
-<td>Normais</td>
-<td>Trazem <strong>tudo</strong> para o driver</td>
+<td><strong>SIMD</strong></td>
+<td>Uma instrução processa vários valores, e só funciona sobre dados contíguos</td>
+</tr>
+</tbody>
+</table>
+<p>O artigo reporta <strong>uma a duas ordens de grandeza</strong>. Parte do 40× que vimos vem daqui, e parte de usar 24 núcleos.</p>
+<p><strong>O Spark usa outra solução para o mesmo problema:</strong> whole-stage codegen, que compila o plano a um só laço (Aula 5). Ambas superam o Volcano. O que o Spark paga além disso é a JVM e a coordenação, que formam seu <span class="math inline">\(a\)</span>.</p>
+</section></section>
+<section>
+<section id="memória-e-out-of-core" class="title-slide slide level1 center">
+<h1>3. Memória e out-of-core</h1>
+
+</section>
+<section id="o-tempo-é-só-metade-da-história" class="slide level2 smaller">
+<h2>O tempo é só metade da história</h2>
+<p>Lab 12: consulta sobre 5 milhões de linhas, <code>orders.parquet</code> ocupa 63 MB em disco. Pico de memória de um processo à parte, menos os 139 MB do processo vazio:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Ferramenta</th>
+<th>Pico (líquido)</th>
+<th>Bytes por linha</th>
+<th>× tamanho do arquivo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Pandas</strong></td>
+<td><strong>734 MB</strong></td>
+<td><strong>147</strong></td>
+<td><strong>11,7×</strong></td>
 </tr>
 <tr class="even">
-<td>Modo ANSI do Spark 4</td>
-<td>—</td>
-<td>Precisa estar desligado</td>
+<td>Polars</td>
+<td>178 MB</td>
+<td>36</td>
+<td>2,8×</td>
+</tr>
+<tr class="odd">
+<td>DuckDB</td>
+<td><strong>83 MB</strong></td>
+<td><strong>17</strong></td>
+<td>1,3×</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Por que o Pandas precisa de tanto:</strong> descomprime colunas inteiras, cada <code>merge</code> cria uma cópia completa, e as strings são objetos Python. Isso explica a velha regra prática: <strong>conte com 5 a 10 vezes o tamanho dos dados em RAM</strong>.</p>
+<p><strong>Em uma máquina de 64 GB,</strong> com esta medida, o Pandas para perto de 435 milhões de linhas, cerca de 5,5 GB de Parquet.</p>
+<p><strong>O limite que importa:</strong> Polars e DuckDB, quando a memória acaba, podem <strong>usar disco (out-of-core)</strong>: tabelas hash e ordenações são particionadas e despejadas, como faz o shuffle do Spark. O Lab 12 rodou 5 milhões de grupos com um limite de 300 MB no DuckDB. O Pandas não tem esse caminho: simplesmente morre.</p>
+<p>Assim, para uma máquina, <strong>“cabe na RAM?” é a pergunta errada</strong>. Melhor: cabe no seu disco?</p>
+</section></section>
+<section>
+<section id="apache-arrow" class="title-slide slide level1 center">
+<h1>4. Apache Arrow</h1>
+
+</section>
+<section id="um-formato-comum-torna-a-conversão-grátis" class="slide level2 smaller">
+<h2>Um formato comum torna a conversão grátis</h2>
+<p>Antes do Arrow, cada par de ferramentas precisava de sua conversão: <span class="math inline">\(n(n-1)\)</span> conversores, cada um copiando e serializando. <strong>O Arrow define uma disposição colunar padrão em memória</strong>, então <span class="math inline">\(n\)</span> ferramentas falam um formato, e compartilhar um buffer <strong>não requer cópia</strong> (o formato é realocável, sem ponteiros a reescrever).</p>
+<p>Lab 12, 1 milhão de linhas:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Conversão</th>
+<th>Tempo</th>
+<th>O que acontece</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Pandas → DuckDB</td>
+<td><strong>0,002 s</strong></td>
+<td>Lê os mesmos buffers</td>
+</tr>
+<tr class="even">
+<td>Arrow → Polars</td>
+<td><strong>0,003 s</strong></td>
+<td>Sem cópia</td>
+</tr>
+<tr class="odd">
+<td>Arrow → Pandas</td>
+<td>0,017 s</td>
+<td>Algumas colunas devem ser convertidas</td>
+</tr>
+<tr class="even">
+<td>Spark → Pandas</td>
+<td>0,89 s</td>
+<td><strong>Cruza da JVM para Python</strong></td>
+</tr>
+<tr class="odd">
+<td>Pandas → Spark</td>
+<td><strong>1,70 s</strong></td>
+<td>Cruza, no outro sentido</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Uma diferença de três ordens de grandeza entre “mesma memória” e “cruzar a JVM”.</strong></p>
+<p>A opção de Arrow na própria JVM ajuda muito, mas <strong>vem desligada por padrão</strong> no PySpark 4.0. Medido, 300.000 linhas:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th><code>arrow.pyspark.enabled</code></th>
+<th>Pandas → Spark</th>
+<th>Spark → Pandas</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>false</code> (padrão)</td>
+<td>5,09 s</td>
+<td>1,35 s</td>
+</tr>
+<tr class="even">
+<td><code>true</code></td>
+<td><strong>0,52 s</strong> (10×)</td>
+<td><strong>0,31 s</strong> (4×)</td>
+</tr>
+</tbody>
+</table>
+</section></section>
+<section>
+<section id="pandas-api-on-spark" class="title-slide slide level1 center">
+<h1>5. Pandas API on Spark</h1>
+
+</section>
+<section id="mesma-sintaxe-outra-semântica-a-manter" class="slide level2 smaller">
+<h2>Mesma sintaxe, outra semântica a manter</h2>
+<p><code>pyspark.pandas</code> mantém a API do <code>pd</code>. Seu caso de uso é <strong>migrar</strong> código existente, não a velocidade: a tabela dá 0,53 s, atrás dos 0,48 s do Spark. Mas o Pandas promete coisas caras em um cluster:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 41%">
+<col style="width: 41%">
+<col style="width: 16%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>O Pandas promete</th>
+<th>No Spark precisa</th>
+<th>Custo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Um índice de linhas</td>
+<td>Gerar um</td>
+<td>Uma de três estratégias, abaixo</td>
+</tr>
+<tr class="even">
+<td>Ordem estável de linhas</td>
+<td>Uma ordem, se for o caso</td>
+<td>Um sort, ou nenhuma garantia</td>
+</tr>
+<tr class="odd">
+<td>Erros imediatos</td>
+<td>Avaliação preguiçosa</td>
+<td>Erros aparecem depois</td>
+</tr>
+<tr class="even">
+<td>Dividir por zero dá <code>inf</code></td>
+<td><strong>ANSI desligado</strong></td>
+<td>Senão, recusa iniciar</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="o-índice-padrão" class="slide level2">
-<h2>O índice padrão</h2>
-<p><code>compute.default_index_type</code>:</p>
+<section id="o-índice-o-custo-de-uma-promessa" class="slide level2 smaller">
+<h2>O índice: o custo de uma promessa</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 22%">
-<col style="width: 55%">
-<col style="width: 22%">
+<col style="width: 69%">
+<col style="width: 13%">
+<col style="width: 16%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Tipo</th>
-<th>Como gera</th>
+<th><code>compute.default_index_type</code></th>
+<th>Como</th>
 <th>Custo</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td><code>sequence</code> (padrão)</td>
-<td>0, 1, 2… <strong>em uma única partição</strong></td>
-<td>Gargalo: uma task vê todos os dados</td>
+<td>0, 1, 2… <strong>por uma só partição</strong></td>
+<td>Gargalo: de volta a Amdahl com <span class="math inline">\(s \to 1\)</span></td>
 </tr>
 <tr class="even">
 <td><code>distributed-sequence</code></td>
 <td>0, 1, 2… calculado por partição</td>
-<td>Médio: um job extra</td>
+<td>Um job extra</td>
 </tr>
 <tr class="odd">
 <td><code>distributed</code></td>
-<td>IDs crescentes, <strong>não consecutivos</strong></td>
-<td>Baixo: use quando o índice não importa</td>
+<td>Crescente, <strong>não consecutivo</strong></td>
+<td>Baixo</td>
 </tr>
 </tbody>
 </table>
-</section>
-<section id="polars-eager-ou-lazy" class="slide level2">
-<h2>Polars: eager ou lazy</h2>
-<p><code>pl.read_parquet</code> executa cada passo na hora. <code>pl.scan_parquet</code> monta um plano que roda no <code>.collect()</code>.</p>
-<table class="caption-top">
-<colgroup>
-<col style="width: 52%">
-<col style="width: 47%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>PySpark</th>
-<th>Polars</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>F.col("x")</code></td>
-<td><code>pl.col("x")</code></td>
-</tr>
-<tr class="even">
-<td><code>df.withColumn("y", expr)</code></td>
-<td><code>df.with_columns(y=expr)</code></td>
-</tr>
-<tr class="odd">
-<td><code>df.groupBy("k").agg(...)</code></td>
-<td><code>df.group_by("k").agg(...)</code></td>
-</tr>
-<tr class="even">
-<td><code>F.when(c, a).otherwise(b)</code></td>
-<td><code>pl.when(c).then(a).otherwise(b)</code></td>
-</tr>
-<tr class="odd">
-<td><code>F.sum("x").over(Window.partitionBy("k"))</code></td>
-<td><code>pl.col("x").sum().over("k")</code></td>
-</tr>
-</tbody>
-</table>
-<p><code>lazy.explain()</code> mostra predicate e column pruning. <code>collect(engine="streaming")</code> processa dados maiores que a memória.</p>
-</section>
-<section id="duckdb-analítica-dentro-do-seu-processo" class="slide level2">
-<h2>DuckDB: analítica dentro do seu processo</h2>
-<p>Sem servidor, como o SQLite, mas otimizado para consultas analíticas.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="co"># 1) SQL sobre arquivos (Parquet, CSV, JSON, curingas, S3)</span></span>
-<span id="cb5-2"><a href=""></a>duckdb.sql(<span class="ss">f"SELECT region, AVG(price) FROM '</span><span class="sc">{</span>ORDERS<span class="sc">}</span><span class="ss">' GROUP BY region"</span>)</span>
-<span id="cb5-3"><a href=""></a></span>
-<span id="cb5-4"><a href=""></a><span class="co"># 2) SQL sobre um DataFrame na memória: a variável vira tabela</span></span>
-<span id="cb5-5"><a href=""></a>regions_pd <span class="op">=</span> pd.DataFrame({<span class="st">"region"</span>: REGIONS, <span class="st">"manager"</span>: managers})</span>
-<span id="cb5-6"><a href=""></a>duckdb.sql(<span class="ss">f"SELECT * FROM '</span><span class="sc">{</span>ORDERS<span class="sc">}</span><span class="ss">' JOIN regions_pd USING (region)"</span>).pl()</span>
-<span id="cb5-7"><a href=""></a></span>
-<span id="cb5-8"><a href=""></a><span class="co"># 3) Out-of-core: usa disco em vez de quebrar</span></span>
-<span id="cb5-9"><a href=""></a>con <span class="op">=</span> duckdb.<span class="ex">connect</span>()</span>
-<span id="cb5-10"><a href=""></a>con.sql(<span class="st">"SET memory_limit = '300MB'"</span>)</span>
-<span id="cb5-11"><a href=""></a>con.sql(<span class="ss">f"SET temp_directory = '</span><span class="sc">{</span>BASE<span class="sc">}</span><span class="ss">/duckdb_tmp'"</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="apache-arrow-a-língua-comum" class="slide level2">
-<h2>Apache Arrow: a língua comum</h2>
-<pre><code>                  ┌───────────────┐
-  Pandas ◀──────▶ │               │ ◀──────▶ Polars
-                  │ Apache Arrow  │
-  DuckDB ◀──────▶ │ (colunar, na  │ ◀──────▶ Spark
-                  │  memória)     │
- Parquet ◀──────▶ │               │ ◀──────▶ ML
-                  └───────────────┘</code></pre>
-<p>No PySpark 4.0, o Arrow vem <strong>desligado por padrão</strong> em <code>toPandas()</code> e <code>createDataFrame(pandas_df)</code>. Ligue-o:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>.config(<span class="st">"spark.sql.execution.arrow.pyspark.enabled"</span>, <span class="st">"true"</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="como-decidir" class="slide level2">
-<h2>Como decidir</h2>
-<table class="caption-top">
-<thead>
-<tr class="header">
-<th>Situação</th>
-<th>Ferramenta</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Dezenas de GB a TB, ou dados que vão crescer muito</td>
-<td>Spark</td>
-</tr>
-<tr class="even">
-<td>Streaming, Delta Lake, MLlib, já existe um cluster</td>
-<td>Spark</td>
-</tr>
-<tr class="odd">
-<td>Código Pandas que não cabe mais na memória</td>
-<td>Pandas API on Spark</td>
-</tr>
-<tr class="even">
-<td>Até dezenas de GB em uma máquina, time de SQL</td>
-<td>DuckDB</td>
-</tr>
-<tr class="odd">
-<td>Até dezenas de GB em uma máquina, pipeline em Python</td>
-<td>Polars</td>
-</tr>
-<tr class="even">
-<td>Exploração rápida, poucos MB</td>
-<td>Pandas</td>
-</tr>
-</tbody>
-</table>
-<p>Spark não é só velocidade: traz <strong>tolerância a falhas, escala horizontal e um ecossistema</strong>.</p>
-</section>
-<section id="resumo" class="slide level2 smaller">
-<h2>Resumo</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 1%">
-<col style="width: 15%">
-<col style="width: 15%">
-<col style="width: 15%">
-<col style="width: 39%">
-<col style="width: 13%">
-</colgroup>
-<thead>
-<tr class="header">
-<th></th>
-<th>Pandas</th>
-<th>Polars</th>
-<th>DuckDB</th>
-<th>Pandas API on Spark</th>
-<th>Spark</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Melhor para</td>
-<td>Exploração, poucos dados</td>
-<td>Pipelines Python, 1 máquina</td>
-<td>SQL analítico, 1 máquina</td>
-<td>Escalar código Pandas</td>
-<td>Dados distribuídos, ecossistema</td>
-</tr>
-<tr class="even">
-<td>Ler Parquet</td>
-<td><code>pd.read_parquet</code></td>
-<td><code>pl.scan_parquet</code></td>
-<td><code>FROM 'arquivo.parquet'</code></td>
-<td><code>ps.read_parquet</code></td>
-<td><code>spark.read.parquet</code></td>
-</tr>
-<tr class="odd">
-<td>Agregar</td>
-<td><code>groupby().agg()</code></td>
-<td><code>group_by().agg()</code></td>
-<td><code>GROUP BY</code></td>
-<td><code>groupby().agg()</code></td>
-<td><code>groupBy().agg()</code></td>
-</tr>
-<tr class="even">
-<td>Ver o plano</td>
-<td>—</td>
-<td><code>.explain()</code></td>
-<td><code>EXPLAIN</code></td>
-<td><code>.spark.explain()</code></td>
-<td><code>.explain()</code></td>
-</tr>
-<tr class="odd">
-<td>Para Pandas</td>
-<td>—</td>
-<td><code>.to_pandas()</code></td>
-<td><code>.df()</code></td>
-<td><code>.to_pandas()</code></td>
-<td><code>.toPandas()</code></td>
-</tr>
-</tbody>
-</table>
+<p><strong>Verifique o que o código realmente requer.</strong> Se a lógica nunca usa índices consecutivos, <code>distributed</code> remove um custo que o programa não precisava, e esta é a lição geral do bloco: <strong>a semântica que você não precisa é um custo que pode evitar.</strong></p>
+</section></section>
+<section>
+<section id="como-decidir" class="title-slide slide level1 center">
+<h1>6. Como decidir</h1>
 
 </section>
+<section id="um-critério-em-quatro-perguntas" class="slide level2 smaller">
+<h2>Um critério em quatro perguntas</h2>
+<p>Pergunte nesta ordem, e pare na primeira resposta decisiva:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 14%">
+<col style="width: 47%">
+<col style="width: 38%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Pergunta</th>
+<th>Se sim</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Preciso de <strong>streaming, transações Delta, ou um cluster compartilhado</strong>?</td>
+<td><strong>Spark</strong>: não por velocidade, mas por funções</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td><strong>Supera o disco da maior máquina acessível</strong>?</td>
+<td><strong>Spark</strong>, porque nada mais escala horizontalmente</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Uma falha deve <strong>se recuperar no meio do job</strong>? Jobs longos?</td>
+<td><strong>Spark</strong>: os demais reiniciam do zero</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Senão, uma máquina: equipe e código?</td>
+<td>SQL: <strong>DuckDB</strong>. Python: <strong>Polars</strong>. Pequeno, interativo: <strong>Pandas</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Não exagere o argumento no sentido contrário:</strong></p>
+<ul>
+<li><strong>“Cabe em uma máquina” depende da máquina.</strong> Uma VM grande na nuvem, com centenas de GB, processa muito, e às vezes custa menos que um cluster.</li>
+<li><strong>A tolerância a falhas é uma função.</strong> Um job DuckDB de 6 horas reinicia do zero ao falhar. Um job Spark repete uma task.</li>
+<li><strong>Combinam-se</strong>, graças ao Arrow: Spark para o ETL pesado, DuckDB para explorar sua saída, Polars para as features.</li>
+</ul>
+<p><strong>Quando não usar Spark?</strong> Quando você pagaria seu <span class="math inline">\(a\)</span>, e não usaria nada do que ele compra.</p>
+</section></section>
+<section>
+<section id="problema-integrador" class="title-slide slide level1 center">
+<h1>7. Problema integrador</h1>
+
+</section>
+<section id="qual-ferramenta-e-por-quê" class="slide level2 smaller">
+<h2>Qual ferramenta, e por quê?</h2>
+<p>Use o critério, e os números desta aula. Justifique em uma frase.</p>
+<ol type="1">
+<li>Um CSV de 300 MB por e-mail, e três gráficos para esta tarde.</li>
+<li>Todo dia, 2 TB de logs no S3, unidos a tabelas Delta, gravando Silver.</li>
+<li>Uma equipe de BI consulta 15 GB de Parquet em SQL, de um notebook, sem cluster.</li>
+<li>Uma previsão em Pandas funcionava com 1 ano; agora precisa de 10 anos, 80 GB.</li>
+<li>Uma API deve responder agregações sobre um arquivo de 500 MB em menos de 100 ms.</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li><strong>Pandas.</strong> <span class="math inline">\(n\)</span> está muito abaixo do cruzamento, e <span class="math inline">\(a \approx 0\)</span>: montar outra coisa não compensa.</li>
+<li><strong>Spark.</strong> As perguntas 1 e 2 respondem: Delta e fontes distribuídas.</li>
+<li><strong>DuckDB.</strong> SQL sem servidor; 15 GB é pouco, e pode despejar em disco.</li>
+<li><strong>Pandas API on Spark</strong> para avançar rápido com pouca reescrita, ou Polars em uma máquina grande: a 11,7× o arquivo, o Pandas precisa de RAM demais. A médio prazo, reescrever.</li>
+<li><strong>DuckDB ou Polars,</strong> no processo do serviço. Só o <span class="math inline">\(a\)</span> do Spark, 320 ms, supera os 100 ms disponíveis, <strong>qualquer que seja o tamanho dos dados</strong>: quem decide é o custo fixo, sem necessidade de medir.</li>
+</ol>
+</div>
+</section>
+<section id="referências" class="slide level2 smaller">
+<h2>Referências</h2>
+<ul>
+<li>McSherry, F., Isard, M., Murray, D. G. (2015). <em>Scalability! But at what COST?</em> HotOS XV.</li>
+<li>Boncz, P., Zukowski, M., Nes, N. (2005). <em>MonetDB/X100: Hyper-Pipelining Query Execution</em>. CIDR.</li>
+<li>Leis, V., Boncz, P., Kemper, A., Neumann, T. (2014). <em>Morsel-Driven Parallelism: A NUMA-Aware Query Evaluation Framework for the Many-Core Age</em>. SIGMOD.</li>
+<li>Raasveldt, M., Mühleisen, H. (2019). <em>DuckDB: an Embeddable Analytical Database</em>. SIGMOD.</li>
+<li>Graefe, G. (1994). <em>Volcano: An Extensible and Parallel Query Evaluation System</em>. IEEE TKDE, 6(1).</li>
+<li><a href="https://arrow.apache.org/docs/format/Columnar.html">Apache Arrow: Columnar Format</a>.</li>
+<li>McKinney, W. (2017). <a href="https://wesmckinney.com/blog/apache-arrow-pandas-internals/">Apache Arrow and the “10 Things I Hate About pandas”</a>.</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/api/python/user_guide/pandas_on_spark/index.html">Pandas API on Spark</a>.</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >In this lecture, we will learn:
 >
->* Python essentials
+>* Python's data model: references, mutability, functions and generators
 >* Why Pandas: origin and motivation
->* Pandas Series and DataFrames
->* Filtering, cleaning, GroupBy and joins
+>* Why vectorization is faster: memory layout and real numbers
+>* The DataFrame: typed columns, memory, and NaN
+>* View or copy: the classic bug, and Copy-on-Write
+>* Cost of operations: split-apply-combine, merge, one core
 
 
 ### Slides

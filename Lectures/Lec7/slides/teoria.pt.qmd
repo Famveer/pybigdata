@@ -13,272 +13,272 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## O que você vai aprender
+## O que você poderá fazer {.smaller}
 
-- Os três pilares do Hadoop: HDFS, MapReduce e YARN
-- MapReduce com scripts Python, comparado com Spark
-- Como o Spark usa a API FileSystem do Hadoop (e por que `s3a://` funciona)
-- Um HDFS de um nó com Spark e Pandas
-- Hadoop hoje e o caminho para a nuvem
+- Derivar as decisões de projeto do HDFS de suas premissas, incluindo o tamanho do bloco
+- Estimar a memória do NameNode e a probabilidade de perder dados
+- Enunciar o modelo MapReduce e explicar sua tolerância a falhas e seus limites
+- Dimensionar executors em um cluster YARN
+- Explicar por que o S3 não é um sistema de arquivos, e o que quebra por isso
+
+| Bloco | Tema | Min |
+|-------|------|-----|
+| 1 | Premissas de projeto | 10 |
+| 2 | HDFS: os números por trás do projeto | 35 |
+| 3 | MapReduce: modelo, falhas, limites | 30 |
+| 4 | YARN: dividir um cluster | 15 |
+| 5 | API FileSystem e armazenamento de objetos | 15 |
+| 6 | Problema integrador | 15 |
+
+# 1. Premissas de projeto
+
+## Um sistema é explicado por suas premissas {.smaller}
+
+O Hadoop implementa dois artigos do Google: GFS (2003) e MapReduce (2004). O GFS começa declarando o que supõe, e cada decisão decorre disso:
+
+| Premissa (GFS, §2.1) | Decisão | Consequência ainda visível |
+|----------------------|---------|----------------------------|
+| Componentes falham o tempo todo | Replicação, recuperação automática | Tasks são repetidas |
+| Arquivos são enormes | Blocos grandes | O problema dos arquivos pequenos |
+| Leituras grandes e sequenciais | Sem cache de dados no cliente | Ruim para acesso aleatório |
+| Adiciona-se, não se modifica | **Write-once** | Sem `UPDATE`: daí Delta e Iceberg |
+| Throughput importa mais que latência | Projeto em lote | Dezenas de segundos por job |
+
+**O método desta aula:** pegue cada mecanismo e pergunte qual premissa o justifica. Ao mudar as premissas, como fez a nuvem ao separar armazenamento e computação, o projeto também precisa mudar. Por isso parte do Hadoop envelheceu, e parte não.
+
+# 2. HDFS: os números por trás do projeto
+
+## Arquitetura: separar metadados de dados {.smaller}
+
+```
+              1. onde estão os blocos de sales.csv?
+   Cliente ────────────────────────────────────────▶ NameNode
+     │   ◀───────── A: nós 1, 2, 4 ────────────────  namespace + mapa de blocos, EM MEMÓRIA
+     │ 2. lê diretamente                                 ▲ heartbeats, relatórios de blocos
+     ▼                                                   │
+   DataNode 1 [A][C]   DataNode 2 [A][B]   DataNode 3 [B][C]   DataNode 4 [A][C]
+```
+
+**A decisão chave: os dados nunca passam pelo NameNode.** Assim, um só processo pode coordenar milhares de nós, porque sua carga depende do número de **operações de metadados**, e não dos bytes lidos.
+
+| Mecanismo | Propósito |
+|-----------|-----------|
+| `EditLog` + `FsImage` | Metadados duráveis: o mapa em memória é reconstruído do disco |
+| Heartbeat | Sem sinal por mais de 10 min: o nó está morto, e seus blocos são re-replicados |
+| Checksums | Clientes verificam ao ler; se não confere, usam outra réplica |
+
+O preço: a memória do NameNode limita o **número de arquivos**, e sua falha para todo o sistema de arquivos, salvo com alta disponibilidade configurada.
 
 ---
 
-## De onde veio o Hadoop
+## Por que 128 MB? Duas razões independentes {.smaller}
 
-| Ano | Marco |
-|-----|-------|
-| 2003–04 | Google publica os artigos do **GFS** e do **MapReduce** |
-| 2006 | Doug Cutting e Mike Cafarella criam o **Hadoop**, open source |
-| 2012 | Hadoop 2 separa o gerenciamento de recursos no **YARN** |
-| 2014 | **Spark** vira projeto principal da Apache: o mesmo modelo, em memória |
-| Hoje | Na nuvem, object storage e Kubernetes; on-premise, Hadoop segue em produção |
+**1. Disco.** Ler um bloco custa um seek e depois uma transferência. Para os seeks ficarem abaixo de 1% do tempo, com tempo de seek $t_s$ e velocidade $r$:
 
-A ideia central: **centenas de máquinas comuns em vez de um servidor gigante**, aceitando que algumas vão falhar o tempo todo.
+$$\frac{t_s}{B / r} \leq 0{,}01 \quad\Longrightarrow\quad B \geq 100\, t_s\, r$$
 
----
+Com $t_s = 10$ ms e $r = 200$ MB/s: $B \geq$ **200 MB**. A mesma ordem dos 128 MB padrão (64 MB no GFS original, com discos mais lentos).
 
-## Os três pilares
+**2. Metadados.** Cada arquivo e bloco ocupa cerca de **150 bytes** do heap do NameNode (regra prática, não uma constante). Para 1 PB, contando um arquivo e um bloco por objeto:
 
-| Pilar | Papel | Equivalente moderno mais comum |
-|-------|------|------------------------------|
-| **HDFS** | Sistema de arquivos distribuído | S3, GCS, ADLS |
-| **YARN** | Gerenciador de recursos do cluster | Kubernetes, gerenciadores de Databricks/EMR |
-| **MapReduce** | Modelo e motor de processamento | Spark, Flink |
+| Tamanho do arquivo | Arquivos | Objetos | Heap do NameNode |
+|--------------------|----------|---------|------------------|
+| 128 MB | 7,8 milhões | 15,6 milhões | **2,3 GB** |
+| 1 MB | 1 bilhão | 2 bilhões | **300 GB** |
 
-Em volta deles, um ecossistema: **Hive** (seu Metastore ainda é um catálogo comum), **HBase**, **Sqoop** (aposentado), **Oozie** (substituído por Airflow e similares) e **Parquet/ORC**, mais usados do que nunca.
+Mesmos dados, 128× a memória: é o **problema dos arquivos pequenos**, e também atrasa as leituras, porque cada arquivo custa uma ida e volta ao NameNode. É a razão para compactar (`coalesce` antes de gravar, `OPTIMIZE` no Delta).
 
 ---
 
-## HDFS: blocos e replicação
+## Qual a probabilidade de perder dados? {.smaller}
 
-```
-  vendas.csv (300 MB) -> bloco A (128) | bloco B (128) | bloco C (44)
+Réplicas em 3 nós ao acaso de $N$. Se $k$ nós falham **ao mesmo tempo**, um bloco dado é perdido se suas 3 réplicas estão entre eles:
 
-             NameNode ("vendas.csv = A, B, C; A está em 1, 2, 4...")
-                │
-     ┌──────────┼──────────┬──────────┬──────────┐
-  DataNode 1  DataNode 2  DataNode 3  DataNode 4  DataNode 5
-  [A] [C]     [A] [B]     [B] [C]     [A] [C]     [B]
-```
+$$P(\text{bloco perdido}) = \binom{k}{3} \Big/ \binom{N}{3}$$
 
-- Blocos de **128 MB** por padrão, **3 cópias** em máquinas diferentes
-- Se um DataNode morre, o NameNode manda recriar as cópias que faltam
-- O cliente pergunta ao NameNode onde estão os blocos e **lê direto dos DataNodes**
+Com $N = 1000$ nós e $B = 10^7$ blocos, a perda esperada é $B \cdot P$:
 
----
+| Falhas simultâneas | $P$ por bloco | Blocos perdidos (esperado) |
+|--------------------|---------------|----------------------------|
+| $k = 2$ | 0 | 0 |
+| $k = 3$ | $6 \times 10^{-9}$ | 0,06 |
+| $k = 10$ (1%, ex. queda de energia) | $7{,}2 \times 10^{-7}$ | **7,2** |
 
-## HDFS: limites que ainda importam
+**Duas lições:**
 
-| Limite | Consequência |
-|-------|-------------|
-| Arquivos **write-once** (só append) | Sem UPDATE; daí Delta e Iceberg |
-| O NameNode guarda tudo na memória (~150 bytes por arquivo ou bloco) | O **problema dos arquivos pequenos** |
-| Armazenamento e processamento nas mesmas máquinas | Mais disco significa comprar mais CPU |
-
-**Localidade de dados: mover o código até os dados.** Mover 1 TB pela rede é lento; mover um programa de 10 KB é instantâneo. O Spark herdou isso: veja **Locality Level** na Spark UI (`NODE_LOCAL`, `RACK_LOCAL`, `ANY`).
+- Falhas independentes são quase inofensivas, porque re-replicar fecha a janela rápido. Falhas **correlacionadas** são as que perdem dados (Cidon et al., 2013).
+- Com muitos blocos, quase sempre algum bloco tem todas as réplicas entre os nós caídos, por mais improvável que seja para cada um.
 
 ---
 
-## A API FileSystem do Hadoop
+## Posicionamento e suas alternativas {.smaller}
 
-O Spark nunca fala diretamente com o disco, o HDFS ou o S3. O **esquema da URL** escolhe a implementação.
+**O posicionamento por rack** visa o caso correlacionado (projeto do HDFS): uma réplica no nó que grava, e duas em **outro** rack.
 
-```
-     spark.read.parquet("<esquema>://caminho")
-                    │
-         API FileSystem do Hadoop
-                    │
-    ┌───────┬───────┼──────────┬──────────┐
-  file://  hdfs://  s3a://     gs://      abfs://
-  local    HDFS     Amazon S3  Google     Azure
-```
+| Replicação | Sobrevive | Armazenamento | Escritas | Leituras |
+|------------|-----------|---------------|----------|----------|
+| 3 réplicas, ao acaso | 2 nós | 3× | Cadeia a 3 | Qualquer de 3 |
+| 3 réplicas, 2 racks | 2 nós **ou 1 rack** | 3× | Menos tráfego entre racks | Qualquer de 3 |
+| Código de apagamento RS(6,3) | **Quaisquer 3 de 9 peças** | **1,5×** | CPU para codificar | Reconstruir se perder uma |
 
-`hdfs://` funciona de cara: o PySpark traz o cliente do Hadoop. `s3a://`, `gs://` e `abfs://` precisam do conector. Toda configuração do Hadoop passa pelo prefixo `spark.hadoop.*`.
+**O código de apagamento** divide em 6 peças de dados e adiciona 3 de paridade. Tolera *mais* falhas que a replicação com metade do armazenamento. Por que a replicação ainda é usada?
 
----
+- **Localidade:** um bloco replicado é lido inteiro em 3 nós; um codificado está distribuído.
+- **Recuperação:** reconstruir uma peça perdida lê outras 6 pela rede.
 
-## Blocos e partições do Spark
-
-| API | Como divide a entrada |
-|-----|------------------------|
-| `sc.textFile` (RDD) | `InputFormat` do Hadoop: **uma partição por bloco** |
-| `spark.read` (DataFrame) | Critério próprio (`spark.sql.files.maxPartitionBytes`); os blocos decidem **onde** cada task roda |
-
-```python
-print(sc.textFile(CORPUS).getNumPartitions())
-print(spark.read.text(CORPUS).rdd.getNumPartitions())
-```
+**Regra de uso:** réplicas para dados quentes, código de apagamento para dados frios. Os armazenamentos de objetos na nuvem fazem o mesmo compromisso internamente.
 
 ---
 
-## MapReduce: o modelo
+## Localidade de dados: uma probabilidade, não uma garantia {.smaller}
+
+"Mover o código até os dados" precisa de um espaço livre em um nó que tenha o bloco. Se uma fração $u$ dos espaços está ocupada, e os $r$ nós com réplica são independentes:
+
+$$P(\text{há um espaço local livre}) = 1 - u^{\,r}$$
+
+| Carga do cluster $u$ | $r = 1$ | $r = 3$ |
+|----------------------|---------|---------|
+| 50% | 50% | **88%** |
+| 90% | 10% | **27%** |
+
+**Então a replicação também compra localidade**, não só segurança, e a localidade cai justamente quando o cluster está mais ocupado.
+
+A resposta do Spark é o **delay scheduling** (Zaharia et al., 2010): sem espaço local livre, espera um pouco antes de ceder, de process-local a node-local, rack-local e any. No Spark, `spark.locality.wait` vale **3 s** por padrão.
+
+**Um compromisso sem valor universal:** uma espera longa mantém as tasks locais mas retém espaços ociosos. E em uma nuvem com S3 não há localidade a preservar: o nível é sempre `ANY`.
+
+# 3. MapReduce: modelo, falhas, limites
+
+## O modelo, em duas assinaturas {.smaller}
+
+Dean e Ghemawat (2004) definem todo o modelo de programação com:
+
+$$\text{map}\ (k_1, v_1) \to \text{list}(k_2, v_2) \qquad\quad \text{reduce}\ (k_2, \text{list}(v_2)) \to \text{list}(v_2)$$
+
+O framework faz todo o resto: particionar, agendar, agrupar por $k_2$ e repetir.
 
 ```
-  MAP                     SHUFFLE & SORT           REDUCE
-  "spark hdfs" -> (spark,1)(hdfs,1)    hdfs  -> [1,1] -> (hdfs, 2)
-  "hdfs yarn"  -> (hdfs,1)(yarn,1) ──▶ spark -> [1,1] -> (spark, 2)
-  "spark"      -> (spark,1)            yarn  -> [1]   -> (yarn, 1)
+ split 1 ─▶ map ─┐ partition    ┌─ sort, merge ─▶ reduce ─▶ out 1
+ split 2 ─▶ map ─┼─ hash(k2)%R ─┤
+ split 3 ─▶ map ─┘ local disk   └─ sort, merge ─▶ reduce ─▶ out 2
+   M map tasks                     R reduce tasks        on GFS/HDFS
 ```
 
-| Etapa | Quem escreve | Paralelismo |
-|-----|--------------|-------------|
-| Map | Você | Uma task por bloco de entrada |
-| Shuffle & Sort | O framework | `hash(chave) % R` escolhe o reducer |
-| Reduce | Você | R tasks, com chaves **ordenadas** |
+**Por que um modelo tão estreito?** Porque restringir o programa permite ao sistema **paralelizar e se recuperar automaticamente**. Se map e reduce são funções determinísticas da entrada, reexecutá-las dá a mesma saída: reexecutar *é* a tolerância a falhas, e o resultado distribuído equivale a um sequencial (§3.3).
 
-O mesmo que um `groupBy` do Spark: map é o stage antes do `Exchange`, reduce o stage depois.
+**É a mesma ideia da linhagem do Spark,** e a mesma razão pela qual uma UDF deve ser determinística.
 
 ---
 
-## Hadoop Streaming: MapReduce em Python
+## Falhas e tarefas lentas {.smaller}
 
-Qualquer programa que leia stdin e escreva stdout. Dá para testar um job inteiro no terminal:
+| Evento | O que acontece | Por quê |
+|--------|----------------|---------|
+| Morre um worker **map**, task **terminada** | **É reexecutada** | Sua saída estava no disco local dessa máquina |
+| Morre um worker **reduce**, task terminada | **Não** é reexecutada | Sua saída já está no GFS, replicada |
+| Qualquer task em andamento | Reexecutada em outro | Ainda não há nada confirmado |
+| Morre o master | O job falha (no artigo) | Suposto raro: só uma máquina |
 
-```bash
-cat input | python mapper.py | sort | python reducer.py
-```
+**Tarefas lentas (*stragglers*).** Uma máquina pode ser muito mais lenta que as outras, por um disco ruim ou um nó ocupado, e pelo limite $T \geq t_{\max}$, essa task define o fim do job.
 
-```python
-# mapper.py
-for line in sys.stdin:
-    for word in re.findall(r"[a-z]+", line.lower()):
-        print(f"{word}\t1")
+**Backup tasks:** quando o job quase termina, o framework lança cópias das tasks restantes, e ganha a que terminar primeiro. A ordenação do artigo leva **44% mais tempo sem elas** (§3.6).
 
-# reducer.py: a entrada está ordenada, cada chave chega junta
-current, count = None, 0
-for line in sys.stdin:
-    word, n = line.rstrip("\n").split("\t")
-    if word != current:
-        if current is not None:
-            print(f"{current}\t{count}")
-        current, count = word, 0
-    count += int(n)
-if current is not None:
-    print(f"{current}\t{count}")
-```
+Isso só é seguro porque as tasks são determinísticas. A versão do Spark é `spark.speculation`, desligada por padrão.
+
+**Estado no master:** $O(M + R)$ decisões de agendamento e $O(M \cdot R)$ de estado: o mesmo $M \times R$ do número de blocos do shuffle.
 
 ---
 
-## O mesmo word count no Spark
+## Por que o MapReduce perdeu: o custo de uma cadeia {.smaller}
 
-```python
-# RDD: a API original, imita map/reduce
-(sc.textFile(CORPUS)
-   .flatMap(lambda line: re.findall(r"[a-z]+", line.lower()))
-   .map(lambda w: (w, 1))
-   .reduceByKey(lambda a, b: a + b))
+Cada job lê e **grava no HDFS** com replicação. Para $j$ passos sobre dados de tamanho $D$, com $r = 3$:
 
-# DataFrame
-(spark.read.text(CORPUS)
-   .select(F.explode(F.split(F.lower("value"), " ")).alias("word"))
-   .groupBy("word").count())
-```
+$$\text{bytes gravados} = j \cdot r \cdot D \qquad\quad \text{bytes pela rede} \geq j \cdot (r - 1) \cdot D$$
 
----
-
-## Por que o Spark substituiu o MapReduce
-
-```
-  MapReduce: HDFS ─▶ [job 1] ─▶ HDFS ─▶ [job 2] ─▶ HDFS ─▶ ...
-  Spark:     HDFS ─▶ [stage 1] ─shuffle─▶ [stage 2] ─▶ HDFS
-```
+**Exemplo:** $D$ = 100 GB, $j = 10$ iterações de um algoritmo de ML: **3 TB gravados**, 2 TB deles pela rede, só para guardar resultados intermediários que ninguém reutilizará.
 
 | | MapReduce | Spark |
 |-|-----------|-------|
-| Entre etapas | Escreve no HDFS (disco + replicação) | Memória / disco local |
-| Algoritmos iterativos | Um job por iteração | Dados em cache entre iterações |
-| API | Só map e reduce | DataFrames, SQL, streaming, ML |
-| Otimizador | Nenhum | Catalyst + AQE |
+| Resultados intermediários | HDFS: duráveis, 3× | Memória ou disco local, 1× |
+| Uma falha | Reinicia da última gravação no HDFS | Recalcula pela linhagem |
+| Plano | Cada job isolado | Todo o DAG, otimizado |
+
+**O compromisso é real, e o Spark não o eliminou.** O MapReduce paga um custo fixo por durabilidade em cada passo. O Spark aposta que as falhas são raras o bastante para que recalcular saia mais barato do que gravar sempre. Em jobs muito longos com falhas frequentes, essa aposta pode perder, e para isso existe `checkpoint`.
+
+# 4. YARN: dividir um cluster
+
+## Dois níveis de decisão {.smaller}
+
+O Hadoop 1 misturava o gerenciamento de recursos e o agendamento de jobs em um só processo. O YARN os separa: o **ResourceManager** aloca contêineres às aplicações, e cada **ApplicationMaster** decide como usar os seus. Isso permite que Spark, Flink e MapReduce compartilhem um cluster.
+
+| YARN | No Spark | Pergunta de dimensionamento |
+|------|----------|-----------------------------|
+| Contêiner | Executor | Núcleos e memória de cada um |
+| ApplicationMaster | Driver em modo `cluster` | Onde o driver roda |
+| Fila | `--queue` | Que fração cada equipe pode usar |
+
+**Exercício.** 20 nós, cada um com 16 núcleos e 64 GB. Com `--executor-cores 4 --executor-memory 8g`, quantos executors cabem, e qual recurso os limita? Memória extra: `max(10%, 384 MiB)`.
+
+::: {.fragment}
+Contêiner: $8 + 0{,}8 =$ 8,8 GB. Por nó: núcleos $16/4 =$ **4**; memória $64/8{,}8 =$ 7. **Os núcleos são o limite**: 4 executors por nó, 35 GB usados, e 29 GB desperdiçados.
+
+Total $20 \times 4 = 80$ executors, 320 espaços de task. Com 14 GB cada, ficaria equilibrado: $15{,}4 \times 4 \approx$ 62 GB.
+
+**Por que não um só executor enorme?** Heaps muito grandes alongam as pausas de GC, e cada executor é uma unidade de falha: perder um perde mais cache e mais saída de shuffle.
+:::
+
+# 5. API FileSystem e armazenamento de objetos
+
+## Uma interface, garantias diferentes {.smaller}
+
+O Spark nunca fala diretamente com um disco. Chama a interface `FileSystem` do Hadoop, e o esquema da URL escolhe a implementação: `file://`, `hdfs://`, `s3a://`, `gs://`, `abfs://`.
+
+**A interface é a mesma, mas a semântica não.** Um armazenamento de objetos é um mapa chave-valor que só parece uma árvore:
+
+| Operação | HDFS | S3 e similares |
+|----------|------|----------------|
+| `rename(dir)` | **Atômico**, $O(1)$: muda metadados | **Cópia + exclusão**, $O(\text{bytes})$, não atômico |
+| `list(dir)` | Uma chamada ao NameNode | Requisições paginadas por prefixo |
+| Localidade | Sim | Não: toda leitura passa pela rede |
+| Append | Sim | Não |
+| Modelo de custo | Máquinas | Por requisição e por GB |
+
+**Por que importa:** o commit de saída clássico do Hadoop grava em uma pasta temporária e depois a **renomeia** para publicar de forma atômica. No S3, esse rename é lento, e uma queda no meio deixa um resultado parcial. Por isso existem os committers S3A, e é a motivação principal de formatos de tabela como Delta, onde um commit é uma escrita atômica no log (Aula 9).
+
+# 6. Problema integrador
+
+## Dimensionar um cluster HDFS {.smaller}
+
+500 TB de dados, $r = 3$, nós com 48 TB de disco (12 discos de 200 MB/s). Arquivo médio: 1 GB.
+
+1. Quantos nós para armazenar? 2. Quanto heap no NameNode? 3. Quanto se os arquivos fossem de 1 MB? 4. Quanto leva uma varredura completa? 5. Quanto RS(6,3) economizaria?
+
+::: {.fragment}
+1. Bruto: $500 \times 3 =$ 1.500 TB, então $1500 / 48 =$ **32 nós**, sem folga. Com 25% livre: 40 nós.
+2. $500.000$ arquivos + $500\ \text{TB} / 128\ \text{MB} \approx 3{,}9$ M blocos $=$ 4,4 M objetos $\times$ 150 B $\approx$ **660 MB**.
+3. 500 M arquivos + 500 M blocos $=$ $10^9 \times 150$ B $=$ **150 GB**: mesmos dados, 227× o heap.
+4. 32 nós $\times$ 12 $\times$ 200 MB/s $=$ 76,8 GB/s; $500\ \text{TB} / 76{,}8\ \text{GB/s} \approx$ **1,8 h**. CPU e rede são à parte.
+5. $500 \times 1{,}5 =$ 750 TB: metade dos discos. Em troca: menos localidade e recuperação mais cara. Use para dados frios.
+
+**O heap de (2) é trivial, e o de (3) é um problema sério.** O volume dos dados não mudou: mudou sua **organização**.
+:::
 
 ---
 
-## YARN: quem roda onde
+## Referências {.smaller}
 
-| YARN | Spark |
-|------|-------|
-| ResourceManager | O "master" do cluster |
-| ApplicationMaster | No modo `cluster`, o driver roda dentro dele |
-| Container | Cada **executor** é um container |
-| Filas | Limitam quanto cada time pode usar |
-
-Do lado do Spark, a principal mudança é o `--master` (`local[*]`, `yarn`, `k8s://...`, `spark://...`):
-
-```bash
-spark-submit --master yarn --deploy-mode cluster \
-  --num-executors 10 --executor-cores 4 --executor-memory 8g \
-  --queue analytics pipeline_silver.py
-```
-
----
-
-## Mão na massa: HDFS de um nó
-
-NameNode e DataNode em uma máquina: o mesmo software de um cluster de 1.000 nós.
-
-```bash
-hdfs namenode -format -force -nonInteractive
-hdfs --daemon start namenode
-hdfs --daemon start datanode
-
-hdfs dfs -mkdir -p /aula9/raw
-hdfs dfs -put -f corpus.txt /aula9/raw/corpus.txt
-hdfs dfs -D dfs.blocksize=4194304 -put -f corpus.txt /aula9/raw/corpus_4mb.txt
-hdfs dfs -ls -h /aula9/raw
-hdfs fsck /aula9/raw/corpus_4mb.txt -files -blocks -locations
-```
-
-Os blocos são arquivos `blk_<id>` comuns no disco do DataNode. O NameNode nunca vê o conteúdo.
-
----
-
-## Spark e Pandas no HDFS
-
-```python
-# Spark: o HDFS é só mais um esquema de URL
-HDFS = "hdfs://localhost:9000"
-words = (spark.read.text(f"{HDFS}/aula9/raw/corpus.txt")
-         .select(F.explode(F.split("value", " ")).alias("word"))
-         .groupBy("word").count())
-words.write.mode("overwrite").parquet(f"{HDFS}/aula9/gold/wordcount")
-
-# Pandas via PyArrow (libhdfs)
-hdfs = pafs.HadoopFileSystem("localhost", 9000)
-wc = pq.read_table("/aula9/gold/wordcount", filesystem=hdfs).to_pandas()
-
-# Sem libhdfs: WebHDFS, a API REST
-requests.get("http://localhost:9870/webhdfs/v1/aula9/raw?op=LISTSTATUS").json()
-```
-
-O marcador `_SUCCESS` indica que a saída está completa. O Spark também o escreve, herança do Hadoop.
-
----
-
-## Hadoop hoje {.smaller}
-
-A maior mudança: **separar armazenamento e processamento**. Object storage barato o tempo todo; clusters que sobem e descem por job.
-
-| Componente | Situação |
-|-----------|--------|
-| **HDFS** | Ainda forte on-premise; na nuvem, substituído por object storage |
-| **MapReduce** | Praticamente só em sistemas legados |
-| **YARN** | Ainda muito usado (inclusive no AWS EMR); Kubernetes cresce rápido |
-| **API FileSystem** | **Onipresente**: é como Spark, Hive, Trino e Flink acessam S3/GCS/ADLS |
-| **Parquet/ORC** | O padrão de armazenamento analítico |
-
----
-
-## Resumo {.smaller}
-
-| Conceito | Hadoop | No Spark |
-|---------|--------|----------|
-| Arquivos distribuídos | HDFS: blocos de 128 MB, 3 réplicas | `hdfs://` via API FileSystem |
-| Processamento | MapReduce: map, shuffle e sort, reduce | Stages separados por shuffles |
-| Recursos | YARN: ResourceManager, containers | `--master yarn`, executors = containers |
-| Código até os dados | Localidade de blocos | `Locality Level` na Spark UI |
-| Saída concluída | Marcador `_SUCCESS` | O mesmo marcador |
-| Configurações | `core-site.xml`, `hdfs-site.xml` | `spark.hadoop.*` |
-| Nuvem | Conectores S3A, GCS, ABFS | `s3a://`, `gs://`, `abfs://` |
+- Ghemawat, S., Gobioff, H., Leung, S.-T. (2003). *The Google File System*. SOSP.
+- Dean, J., Ghemawat, S. (2004). *MapReduce: Simplified Data Processing on Large Clusters*. OSDI.
+- Vavilapalli, V. K., et al. (2013). *Apache Hadoop YARN: Yet Another Resource Negotiator*. SoCC.
+- Zaharia, M., et al. (2010). *Delay Scheduling: A Simple Technique for Achieving Locality and Fairness in Cluster Scheduling*. EuroSys.
+- Cidon, A., et al. (2013). *Copysets: Reducing the Frequency of Data Loss in Cloud Storage*. USENIX ATC.
+- Apache Hadoop 3.4.1: [HDFS Architecture](https://hadoop.apache.org/docs/r3.4.1/hadoop-project-dist/hadoop-hdfs/HdfsDesign.html), [Erasure Coding](https://hadoop.apache.org/docs/r3.4.1/hadoop-project-dist/hadoop-hdfs/HDFSErasureCoding.html), [S3A Committers](https://hadoop.apache.org/docs/r3.4.1/hadoop-aws/tools/hadoop-aws/committers.html).
+- Cloudera: [The Small Files Problem](https://www.cloudera.com/blog/technical/the-small-files-problem.html) (150-byte rule of thumb).
+- Apache Spark 4.0.1: [Configuration](https://spark.apache.org/docs/4.0.1/configuration.html), [Running on YARN](https://spark.apache.org/docs/4.0.1/running-on-yarn.html).

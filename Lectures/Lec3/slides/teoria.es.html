@@ -188,6 +188,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,16 +207,61 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="lo-que-aprenderás" class="slide level2">
-<h2>Lo que aprenderás</h2>
+<section id="lo-que-podrás-hacer" class="slide level2 smaller">
+<h2>Lo que podrás hacer</h2>
 <ul>
-<li>Por qué Hadoop y por qué Spark: origen y motivación</li>
-<li>Cómo funciona Spark: driver, executors y particiones</li>
-<li>Crear una <code>SparkSession</code> en modo local</li>
-<li>Crear y leer DataFrames, con schemas explícitos</li>
-<li>Explorar, seleccionar, filtrar y transformar: Pandas vs Spark</li>
-<li>UDFs y por qué evitarlas cuando sea posible</li>
+<li>Explicar por qué existen Hadoop y Spark, y estimar cuándo conviene escalar horizontalmente</li>
+<li>Acotar la ganancia de añadir máquinas, con las leyes de Amdahl y Gustafson</li>
+<li>Decir <strong>dónde corre cada línea de un programa PySpark</strong>, y qué se sigue de ello</li>
+<li>Identificar las diferencias semánticas entre un DataFrame de Spark y uno de Pandas</li>
+<li>Predecir el costo de la inferencia de schema y del formato de archivo</li>
 </ul>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Bloque</th>
+<th>Tema</th>
+<th>Min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Origen: por qué Hadoop, por qué Spark</td>
+<td>20</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>¿Cuánto da escalar?</td>
+<td>25</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Arquitectura: dónde corre el código</td>
+<td>25</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>El modelo de DataFrame</td>
+<td>25</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Schemas y formatos</td>
+<td>15</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Problema integrador</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section>
+<section id="origen-por-qué-hadoop-por-qué-spark" class="title-slide slide level1 center">
+<h1>1. Origen: por qué Hadoop, por qué Spark</h1>
+
 </section>
 <section id="el-problema-una-máquina-no-basta" class="slide level2">
 <h2>El problema: una máquina no basta</h2>
@@ -247,6 +293,44 @@ Felipe A. Moreno-Vera
 </tbody>
 </table>
 <p>Escalar horizontalmente es la única forma de superar ese límite, pero escribir un programa que sobreviva a fallos de máquinas es muy difícil.</p>
+</section>
+<section id="el-cuello-de-botella-era-el-disco" class="slide level2 smaller">
+<h2>El cuello de botella era el disco</h2>
+<p>Velocidad secuencial aproximada, y tiempo para leer 1 TB:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Dispositivo</th>
+<th>Velocidad (orden de magnitud)</th>
+<th>Leer 1 TB</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>RAM</td>
+<td>10 GB/s</td>
+<td>100 s</td>
+</tr>
+<tr class="even">
+<td>SSD NVMe</td>
+<td>2,5 GB/s</td>
+<td>400 s</td>
+</tr>
+<tr class="odd">
+<td>Red de 10 Gb/s</td>
+<td>1,25 GB/s</td>
+<td>800 s</td>
+</tr>
+<tr class="even">
+<td>Disco duro</td>
+<td>200 MB/s</td>
+<td><strong>5.000 s ≈ 83 min</strong></td>
+</tr>
+</tbody>
+</table>
+<p>La capacidad de los discos creció mucho más rápido que su velocidad, así que <strong>leer un disco entero era cada vez más lento</strong>. Ahora reparte ese mismo terabyte en 100 discos leídos en paralelo:</p>
+<p><span class="math display">\[\frac{1\ \text{TB}}{100 \times 200\ \text{MB/s}} = 50\ \text{s}\]</span></p>
+<p>Este es el argumento central de escalar horizontalmente: <strong>discos en paralelo, no discos más rápidos</strong>. La tabla da otra lección: una red de 10 Gb/s es más rápida que un disco pero más lenta que la RAM, así que mover datos es caro, y de ahí sale “mover el código hacia los datos”.</p>
 </section>
 <section id="por-qué-hadoop" class="slide level2">
 <h2>¿Por qué Hadoop?</h2>
@@ -319,241 +403,416 @@ Felipe A. Moreno-Vera
 </tbody>
 </table>
 <p><strong>2009:</strong> Matei Zaharia inicia Spark en UC Berkeley. <strong>2014:</strong> pasa a ser proyecto principal de Apache. Spark no reemplazó todo Hadoop: sigue leyendo de HDFS y corriendo sobre YARN.</p>
+</section></section>
+<section>
+<section id="cuánto-da-escalar" class="title-slide slide level1 center">
+<h1>2. ¿Cuánto da escalar?</h1>
+
 </section>
-<section id="cómo-funciona-spark" class="slide level2">
-<h2>Cómo funciona Spark</h2>
-<pre><code>┌──────────────────────────────────────────────────────────────┐
-│                       SPARK CLUSTER                          │
-│   ┌───────────┐     ┌────────────┐     ┌────────────┐        │
-│   │  Driver   │────▶│  Executor  │     │  Executor  │        │
-│   │ (code &amp;   │     │ (Worker 1) │     │ (Worker 2) │        │
-│   │  plans)   │     │ Partition1 │     │ Partition2 │        │
-│   └───────────┘     └────────────┘     └────────────┘        │
-│         local[*] mode → everything runs on ONE machine       │
-└──────────────────────────────────────────────────────────────┘</code></pre>
-<p>Los datos se dividen en <strong>particiones</strong> procesadas en paralelo. En <strong>modo local</strong>, todo ocurre en tu máquina.</p>
+<section id="medir-el-escalado-speedup-y-ley-de-amdahl" class="slide level2 smaller">
+<h2>Medir el escalado: speedup y ley de Amdahl</h2>
+<p>Con <span class="math inline">\(T_p\)</span> el tiempo con <span class="math inline">\(p\)</span> procesadores:</p>
+<p><span class="math display">\[S(p) = \frac{T_1}{T_p} \qquad\qquad E(p) = \frac{S(p)}{p}\]</span></p>
+<p>Si una fracción <span class="math inline">\(s\)</span> del trabajo es <strong>serial</strong> (Amdahl, 1967):</p>
+<p><span class="math display">\[S(p) = \frac{1}{s + \dfrac{1 - s}{p}} \;\leq\; \frac{1}{s}\]</span></p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th><span class="math inline">\(s\)</span></th>
+<th><span class="math inline">\(p = 10\)</span></th>
+<th><span class="math inline">\(p = 100\)</span></th>
+<th><span class="math inline">\(p = 1000\)</span></th>
+<th><span class="math inline">\(p \to \infty\)</span></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1%</td>
+<td>9,2</td>
+<td>50</td>
+<td>91</td>
+<td>100</td>
+</tr>
+<tr class="even">
+<td>5%</td>
+<td>6,9</td>
+<td>17</td>
+<td>19,6</td>
+<td><strong>20</strong></td>
+</tr>
+<tr class="odd">
+<td>10%</td>
+<td>5,3</td>
+<td>9,2</td>
+<td>9,9</td>
+<td><strong>10</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Con <span class="math inline">\(s = 5\%\)</span>, la eficiencia en <span class="math inline">\(p = 100\)</span> es del <strong>17%</strong>: 83 de esas máquinas se desperdician en la práctica. En Spark, <span class="math inline">\(s\)</span> incluye el trabajo del driver, <code>collect()</code>, las operaciones en una sola partición y la task más grande de cada stage.</p>
 </section>
-<section id="pandas-vs-spark" class="slide level2">
-<h2>Pandas vs Spark</h2>
+<section id="entonces-por-qué-funciona-el-big-data-ley-de-gustafson" class="slide level2 smaller">
+<h2>Entonces, ¿por qué funciona el big data? Ley de Gustafson</h2>
+<p>Amdahl fija el tamaño del problema. En la práctica <strong>más máquinas se usan para más datos</strong>, y la parte serial no suele crecer en proporción. Midiendo <span class="math inline">\(s\)</span> en la ejecución paralela (Gustafson, 1988):</p>
+<p><span class="math display">\[S_{\text{escalado}}(p) = s + (1 - s)\,p\]</span></p>
+<p>Con <span class="math inline">\(s = 5\%\)</span>, <span class="math inline">\(p = 100\)</span>: <span class="math inline">\(S_{\text{escalado}} = 95\)</span>, frente a 17 en la ley de Amdahl. <strong>No se contradicen: responden preguntas distintas.</strong></p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Pregunta</th>
+<th>Métrica</th>
+<th>Ley</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Mismos datos, ¿cuánto más rápido?</td>
+<td>Escalado fuerte</td>
+<td>Amdahl</td>
+</tr>
+<tr class="even">
+<td>Más datos, ¿mismo tiempo?</td>
+<td>Escalado débil</td>
+<td>Gustafson</td>
+</tr>
+</tbody>
+</table>
+<p>La mayoría del uso de big data es escalado débil: el job de ayer debe seguir terminando a tiempo con el volumen mayor de hoy. Cuando leas una afirmación de escalabilidad, pregunta primero cuál de las dos mide.</p>
+</section>
+<section id="escalable-no-es-lo-mismo-que-rápido-cost" class="slide level2 smaller">
+<h2>Escalable no es lo mismo que rápido: COST</h2>
+<p>Un sistema puede escalar muy bien simplemente porque es <strong>lento en un núcleo</strong>: el costo extra paralelizable parece un buen speedup.</p>
+<p><strong>COST</strong> (<em>Configuration that Outperforms a Single Thread</em>): el hardware que necesita una plataforma antes de superar a una implementación competente de un solo hilo (McSherry et al., 2015).</p>
+<p>Tiempos reportados para 20 iteraciones de PageRank sobre el mismo grafo:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Sistema</th>
+<th>Núcleos</th>
+<th>Tiempo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>GraphX</td>
+<td>128</td>
+<td>419 s</td>
+</tr>
+<tr class="even">
+<td>Giraph</td>
+<td>128</td>
+<td>596 s</td>
+</tr>
+<tr class="odd">
+<td><strong>Un solo hilo</strong> (SSD)</td>
+<td><strong>1</strong></td>
+<td><strong>300 s</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Consecuencia para este curso:</strong> no uses el speedup de un clúster como única prueba de que es la herramienta correcta. Spark paga un costo fijo en planificación, JVM y coordinación, y <strong>primero debe recuperarlo</strong>. En una máquina, con datos que caben en RAM, Pandas puede empatar o ganar (ver el Lab 4). La Clase 12 retoma esta pregunta con números.</p>
+</section></section>
+<section>
+<section id="arquitectura-dónde-corre-el-código" class="title-slide slide level1 center">
+<h1>3. Arquitectura: dónde corre el código</h1>
+
+</section>
+<section id="tres-tipos-de-procesos" class="slide level2 smaller">
+<h2>Tres tipos de procesos</h2>
+<pre><code>   DRIVER (tu programa)           CLUSTER MANAGER         EXECUTORS (en workers)
+   ┌───────────────────┐  pide    ┌──────────────┐ inicia ┌─────────────────────┐
+   │ Python ─py4j─▶ JVM│ ───────▶ │ YARN, K8s o  │ ─────▶ │ JVM: tasks + cache  │
+   │ planifica, agenda │          │ standalone   │        │ Python: solo UDFs   │
+   └───────────────────┘          └──────────────┘        └─────────────────────┘
+             └───────────── envía tasks, recibe resultados ───────▲</code></pre>
 <table class="caption-top">
 <colgroup>
-<col style="width: 6%">
-<col style="width: 50%">
+<col style="width: 32%">
+<col style="width: 32%">
+<col style="width: 35%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Proceso</th>
+<th>Función</th>
+<th>Si falla</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Driver</strong></td>
+<td>Corre tu <code>main</code>, construye los planes, agenda tasks</td>
+<td><strong>La aplicación muere</strong></td>
+</tr>
+<tr class="even">
+<td><strong>Executor</strong></td>
+<td>Corre tasks y guarda datos en cache</td>
+<td>Sus tasks se reintentan en otro</td>
+</tr>
+<tr class="odd">
+<td><strong>Cluster manager</strong></td>
+<td>Asigna recursos</td>
+<td>Depende del gestor</td>
+</tr>
+</tbody>
+</table>
+<p><strong>PySpark no ejecuta tu código de DataFrames en Python.</strong> <code>df.filter(...)</code> solo construye un plan a través de <code>py4j</code>: los datos se procesan en la JVM. Por eso PySpark nativo rinde como Scala, y por eso una UDF de Python es tan distinta: solo entonces los datos salen de la JVM. En modo <code>local[*]</code>, todo vive en una máquina, en una JVM, con hilos como espacios de executor.</p>
+</section>
+<section id="ejercicio-qué-imprime-esto" class="slide level2 smaller">
+<h2>Ejercicio: ¿qué imprime esto?</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>counter <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb2-2"><a href=""></a><span class="kw">def</span> add(row):</span>
+<span id="cb2-3"><a href=""></a>    <span class="kw">global</span> counter</span>
+<span id="cb2-4"><a href=""></a>    counter <span class="op">+=</span> row.value</span>
+<span id="cb2-5"><a href=""></a></span>
+<span id="cb2-6"><a href=""></a>df.foreach(add)</span>
+<span id="cb2-7"><a href=""></a><span class="bu">print</span>(counter)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="fragment">
+<p><strong><code>0</code> en un clúster, y la documentación llama indefinido a este comportamiento.</strong> Antes de ejecutar, Spark serializa la <em>clausura</em> de la función y envía una <strong>copia</strong> a cada executor. Cada uno actualiza su copia, y el <code>counter</code> del driver nunca se toca. En modo local puede parecer que funciona en algunas APIs, y por eso este error sobrevive a las pruebas.</p>
+<p>El mismo modelo explica otras sorpresas comunes:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 31%">
 <col style="width: 43%">
 </colgroup>
 <thead>
 <tr class="header">
-<th></th>
-<th>Pandas</th>
-<th>Spark</th>
+<th>Código</th>
+<th>Corre en</th>
+<th>Consecuencia</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Se ejecuta en</strong></td>
-<td>1 máquina, 1 proceso</td>
-<td>Clúster de máquinas (o local)</td>
+<td><code>print(x)</code> dentro de una UDF</td>
+<td>Executor</td>
+<td>Va al log del executor, no a tu notebook</td>
 </tr>
 <tr class="even">
-<td><strong>Datos</strong></td>
-<td>En RAM</td>
-<td>Distribuidos en particiones</td>
+<td><code>df.collect()</code></td>
+<td>Tasks, luego <strong>driver</strong></td>
+<td>Todos los datos en una máquina (<code>spark.driver.maxResultSize</code>, 1 GB)</td>
 </tr>
 <tr class="odd">
-<td><strong>Ejecución</strong></td>
-<td>Inmediata (eager)</td>
-<td>Perezosa: solo corre con una acción</td>
-</tr>
-<tr class="even">
-<td><strong>Escala</strong></td>
-<td>Hasta unos pocos GB</td>
-<td>Terabytes / petabytes</td>
-</tr>
-<tr class="odd">
-<td><strong>Punto de entrada</strong></td>
-<td><code>import pandas as pd</code></td>
-<td><code>SparkSession</code></td>
+<td>Una conexión a BD en una clausura</td>
+<td>Falla al serializar</td>
+<td>Ábrela dentro de <code>foreachPartition</code></td>
 </tr>
 </tbody>
 </table>
-</section>
-<section id="sparksession-y-schemas" class="slide level2">
-<h2>SparkSession y schemas</h2>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>spark <span class="op">=</span> (</span>
-<span id="cb2-2"><a href=""></a>    SparkSession.builder</span>
-<span id="cb2-3"><a href=""></a>    .appName(<span class="st">"Spark vs Pandas"</span>)</span>
-<span id="cb2-4"><a href=""></a>    .master(<span class="st">"local[*]"</span>)                          <span class="co"># all CPU cores</span></span>
-<span id="cb2-5"><a href=""></a>    .config(<span class="st">"spark.sql.shuffle.partitions"</span>, <span class="st">"4"</span>)</span>
-<span id="cb2-6"><a href=""></a>    .getOrCreate()</span>
-<span id="cb2-7"><a href=""></a>)</span>
-<span id="cb2-8"><a href=""></a></span>
-<span id="cb2-9"><a href=""></a>schema <span class="op">=</span> StructType([</span>
-<span id="cb2-10"><a href=""></a>    StructField(<span class="st">"order_id"</span>, IntegerType(), nullable<span class="op">=</span><span class="va">False</span>),</span>
-<span id="cb2-11"><a href=""></a>    StructField(<span class="st">"product"</span>,  StringType(),  nullable<span class="op">=</span><span class="va">False</span>),</span>
-<span id="cb2-12"><a href=""></a>    StructField(<span class="st">"rating"</span>,   DoubleType(),  nullable<span class="op">=</span><span class="va">True</span>),</span>
-<span id="cb2-13"><a href=""></a>])</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Un schema explícito se recomienda en producción: evita el costo de inferencia y deja clara la intención.</p>
-</section>
-<section id="leer-y-convertir" class="slide level2">
-<h2>Leer y convertir</h2>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>sdf <span class="op">=</span> spark.read.csv(<span class="st">"sales.csv"</span>, header<span class="op">=</span><span class="va">True</span>, inferSchema<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb3-2"><a href=""></a>sdf <span class="op">=</span> spark.read.parquet(<span class="st">"sales.parquet"</span>)     <span class="co"># preferred columnar format</span></span>
-<span id="cb3-3"><a href=""></a>sdf <span class="op">=</span> spark.read.json(<span class="st">"sales.json"</span>)</span>
-<span id="cb3-4"><a href=""></a></span>
-<span id="cb3-5"><a href=""></a>pdf <span class="op">=</span> sdf.toPandas()                          <span class="co"># Spark → Pandas</span></span>
-<span id="cb3-6"><a href=""></a>sdf <span class="op">=</span> spark.createDataFrame(pdf)              <span class="co"># Pandas → Spark</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-warning callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
+<p>Para contar entre executors, usa una agregación (<code>df.agg</code>) o un acumulador.</p>
 </div>
-<p><strong>Advertencia</strong></p>
-</div>
-<div class="callout-content">
-<p><code>toPandas()</code> lleva <strong>todos los datos</strong> al driver. Úsalo solo con DataFrames pequeños.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="exploración" class="slide level2">
-<h2>Exploración</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 42%">
-<col style="width: 30%">
-<col style="width: 26%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Operación</th>
-<th>Pandas</th>
-<th>Spark</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Dimensiones</td>
-<td><code>df.shape</code></td>
-<td><code>df.count(), len(df.columns)</code></td>
-</tr>
-<tr class="even">
-<td>Primeras filas</td>
-<td><code>df.head(n)</code></td>
-<td><code>df.show(n)</code></td>
-</tr>
-<tr class="odd">
-<td>Tipos</td>
-<td><code>df.dtypes</code></td>
-<td><code>df.printSchema()</code></td>
-</tr>
-<tr class="even">
-<td>Estadísticas</td>
-<td><code>df.describe()</code></td>
-<td><code>df.describe()</code></td>
-</tr>
-<tr class="odd">
-<td>Valores únicos</td>
-<td><code>df["c"].unique()</code></td>
-<td><code>df.select("c").distinct()</code></td>
-</tr>
-<tr class="even">
-<td>Conteo de valores</td>
-<td><code>df["c"].value_counts()</code></td>
-<td><code>df.groupBy("c").count()</code></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="selección-y-filtrado" class="slide level2">
-<h2>Selección y filtrado</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 42%">
-<col style="width: 30%">
-<col style="width: 26%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Operación</th>
-<th>Pandas</th>
-<th>Spark</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Seleccionar columnas</td>
-<td><code>df[["a", "b"]]</code></td>
-<td><code>df.select("a", "b")</code></td>
-</tr>
-<tr class="even">
-<td>Filtrar filas</td>
-<td><code>df[df["c"] &gt; x]</code></td>
-<td><code>df.filter(df.c &gt; x)</code></td>
-</tr>
-<tr class="odd">
-<td>Filtro estilo SQL</td>
-<td><code>df.query("c &gt; x")</code></td>
-<td><code>df.filter("c &gt; x")</code></td>
-</tr>
-<tr class="even">
-<td>Operador IN</td>
-<td><code>df[df["c"].isin([...])]</code></td>
-<td><code>df.filter(df.c.isin([...]))</code></td>
-</tr>
-<tr class="odd">
-<td>Filtro de nulos</td>
-<td><code>df[df["c"].isnull()]</code></td>
-<td><code>df.filter(F.col("c").isNull())</code></td>
-</tr>
-<tr class="even">
-<td>Ordenar</td>
-<td><code>df.sort_values("c")</code></td>
-<td><code>df.orderBy("c")</code></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="transformaciones" class="slide level2">
-<h2>Transformaciones</h2>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>sdf2 <span class="op">=</span> (</span>
-<span id="cb4-2"><a href=""></a>    sdf</span>
-<span id="cb4-3"><a href=""></a>    .withColumn(<span class="st">"total"</span>, F.col(<span class="st">"price"</span>) <span class="op">*</span> F.col(<span class="st">"quantity"</span>))</span>
-<span id="cb4-4"><a href=""></a>    .withColumn(<span class="st">"price_range"</span>,</span>
-<span id="cb4-5"><a href=""></a>        F.when(F.col(<span class="st">"price"</span>) <span class="op">&lt;</span> <span class="dv">100</span>, <span class="st">"Budget"</span>)</span>
-<span id="cb4-6"><a href=""></a>         .when(F.col(<span class="st">"price"</span>) <span class="op">&lt;</span> <span class="dv">500</span>, <span class="st">"Mid-range"</span>)</span>
-<span id="cb4-7"><a href=""></a>         .otherwise(<span class="st">"Premium"</span>))</span>
-<span id="cb4-8"><a href=""></a>    .withColumn(<span class="st">"product_upper"</span>, F.upper(F.col(<span class="st">"product"</span>)))</span>
-<span id="cb4-9"><a href=""></a>    .withColumn(<span class="st">"sale_date"</span>, F.to_date(F.col(<span class="st">"sale_date"</span>), <span class="st">"yyyy-MM-dd"</span>))</span>
-<span id="cb4-10"><a href=""></a>    .withColumn(<span class="st">"year"</span>, F.year(F.col(<span class="st">"sale_date"</span>)))</span>
-<span id="cb4-11"><a href=""></a>    .fillna({<span class="st">"rating"</span>: <span class="fl">4.3</span>})</span>
-<span id="cb4-12"><a href=""></a>    .withColumnRenamed(<span class="st">"price"</span>, <span class="st">"price_usd"</span>)</span>
-<span id="cb4-13"><a href=""></a>    .drop(<span class="st">"product_upper"</span>)</span>
-<span id="cb4-14"><a href=""></a>)</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="udfs" class="slide level2">
-<h2>UDFs</h2>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a><span class="kw">def</span> classify_price(price):</span>
-<span id="cb5-2"><a href=""></a>    <span class="cf">if</span> price <span class="kw">is</span> <span class="va">None</span>: <span class="cf">return</span> <span class="st">"Unknown"</span></span>
-<span id="cb5-3"><a href=""></a>    <span class="cf">return</span> <span class="st">"Budget"</span> <span class="cf">if</span> price <span class="op">&lt;</span> <span class="dv">100</span> <span class="cf">else</span> <span class="st">"Premium"</span></span>
-<span id="cb5-4"><a href=""></a></span>
-<span id="cb5-5"><a href=""></a>classify_udf <span class="op">=</span> F.udf(classify_price, StringType())</span>
-<span id="cb5-6"><a href=""></a>sdf2 <span class="op">=</span> sdf2.withColumn(<span class="st">"price_class"</span>, classify_udf(F.col(<span class="st">"price"</span>)))</span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-warning callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Advertencia</strong></p>
-</div>
-<div class="callout-content">
-<p>Las UDFs son el equivalente de <code>.apply()</code>, pero son más lentas que las funciones nativas <code>F.*</code> porque salen de la JVM. Prefiere las funciones nativas cuando existan.</p>
-</div>
-</div>
-</div>
+</section></section>
+<section>
+<section id="el-modelo-de-dataframe" class="title-slide slide level1 center">
+<h1>4. El modelo de DataFrame</h1>
 
 </section>
+<section id="mismo-nombre-otro-objeto" class="slide level2 smaller">
+<h2>Mismo nombre, otro objeto</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 42%">
+<col style="width: 30%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Propiedad</th>
+<th>Pandas</th>
+<th>Spark</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Qué es</td>
+<td>Valores en memoria</td>
+<td><strong>Un plan</strong>: descripción de un cálculo</td>
+</tr>
+<tr class="even">
+<td>Mutable</td>
+<td>Sí (<code>df["x"] = ...</code>)</td>
+<td><strong>No</strong>: cada operación devuelve uno nuevo</td>
+</tr>
+<tr class="odd">
+<td>Índice</td>
+<td>Siempre</td>
+<td><strong>Ninguno</strong></td>
+</tr>
+<tr class="even">
+<td>Orden de filas</td>
+<td>Garantizado</td>
+<td><strong>Ninguno</strong>, salvo que ordenes</td>
+</tr>
+<tr class="odd">
+<td>Valores faltantes</td>
+<td><code>NaN</code>, <code>None</code>, <code>NaT</code></td>
+<td><code>NULL</code>, y <code>NaN</code> es un valor aparte</td>
+</tr>
+<tr class="even">
+<td><code>df["a"] + 1</code></td>
+<td>Una Series con resultados</td>
+<td>Una <code>Column</code>: una <strong>expresión</strong>, sin datos</td>
+</tr>
+<tr class="odd">
+<td>Ejecución</td>
+<td>Inmediata</td>
+<td>En la primera acción</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Por qué estas diferencias son necesarias, y no arbitrarias:</strong></p>
+<ul>
+<li><strong>Inmutable + plan:</strong> los datos perdidos se pueden recalcular desde el linaje, y el optimizador puede reordenar pasos.</li>
+<li><strong>Sin índice ni orden:</strong> mantener un orden global forzaría coordinación entre particiones en cada operación.</li>
+</ul>
+<p><strong>Consecuencia:</strong> <code>df.show(5)</code> puede devolver otras filas en otra ejecución, y “la primera fila” no significa nada sin <code>orderBy</code>. El código que dependa del orden necesita una clave de orden explícita.</p>
+</section>
+<section id="las-columnas-son-expresiones" class="slide level2 smaller">
+<h2>Las columnas son expresiones</h2>
+<p><code>F.col("price") * F.col("quantity")</code> no calcula nada. Construye un árbol, y eso permite a Catalyst inspeccionarlo y reescribirlo:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>total <span class="op">=</span> F.col(<span class="st">"price"</span>) <span class="op">*</span> F.col(<span class="st">"quantity"</span>)     <span class="co"># Multiply(price, quantity)</span></span>
+<span id="cb3-2"><a href=""></a>tier  <span class="op">=</span> F.when(total <span class="op">&gt;</span> <span class="dv">500</span>, <span class="st">"high"</span>).otherwise(<span class="st">"low"</span>)   <span class="co"># CaseWhen(...)</span></span>
+<span id="cb3-3"><a href=""></a></span>
+<span id="cb3-4"><a href=""></a>df.withColumn(<span class="st">"total"</span>, total).withColumn(<span class="st">"tier"</span>, tier) <span class="co"># no data read yet</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Esta es la raíz de la diferencia con una UDF:</strong> un árbol de expresiones se puede optimizar, mientras que una función de Python es opaca (Clase 6).</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 52%">
+<col style="width: 20%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Hábito de Pandas</th>
+<th>Spark</th>
+<th>Por qué</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Un bucle <code>for</code> añadiendo columnas</td>
+<td><code>select</code> con todas</td>
+<td>Cada <code>withColumn</code> añade un nodo al plan: los planes grandes son lentos de analizar</td>
+</tr>
+<tr class="even">
+<td><code>.apply(fn)</code></td>
+<td><code>F.when</code>, <code>F.*</code></td>
+<td>Las expresiones nativas corren en la JVM y se optimizan</td>
+</tr>
+<tr class="odd">
+<td><code>df[df.x &gt; 1]</code> y reutilizar</td>
+<td>Igual, pero en una variable</td>
+<td>Cada acción recalcula todo el plan</td>
+</tr>
+</tbody>
+</table>
+</section></section>
+<section>
+<section id="schemas-y-formatos" class="title-slide slide level1 center">
+<h1>5. Schemas y formatos</h1>
+
+</section>
+<section id="inferir-un-schema-tiene-un-costo-y-un-riesgo" class="slide level2 smaller">
+<h2>Inferir un schema tiene un costo, y un riesgo</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>spark.read.csv(path, header<span class="op">=</span><span class="va">True</span>, inferSchema<span class="op">=</span><span class="va">True</span>)  <span class="co"># una pasada extra</span></span>
+<span id="cb4-2"><a href=""></a>spark.read.csv(path, header<span class="op">=</span><span class="va">True</span>, schema<span class="op">=</span>my_schema)  <span class="co"># sin pasada extra</span></span>
+<span id="cb4-3"><a href=""></a>spark.read.parquet(path)                             <span class="co"># schema en el archivo</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Costo.</strong> Con <code>samplingRatio = 1.0</code> por defecto, inferir recorre <strong>todo el archivo</strong> antes de que empiece tu consulta: en 1 TB de CSV a 200 MB/s, son 83 min en un disco.</p>
+<p><strong>Riesgo.</strong> El schema inferido depende de los datos que había hoy. Un <code>"N/A"</code> en una columna numérica la vuelve string, y el pipeline de mañana se rompe o cambia de tipo en silencio.</p>
+<p><strong>En Spark 4, el modo ANSI viene activo por defecto</strong> (<code>spark.sql.ansi.enabled = true</code>), así que un cast inválido <strong>lanza un error</strong> en vez de devolver <code>NULL</code>:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>F.col(<span class="st">"x"</span>).cast(<span class="st">"int"</span>)       <span class="co"># error con "abc" (ANSI activo)</span></span>
+<span id="cb5-2"><a href=""></a>F.col(<span class="st">"x"</span>).try_cast(<span class="st">"int"</span>)   <span class="co"># NULL con "abc"</span></span></code><button title="Copiar al portapapeles" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>nullable=False</code> en un schema es una declaración, y <strong>no una restricción aplicada</strong> al leer archivos.</p>
+</section>
+<section id="fila-o-columna-el-formato-cambia-los-bytes-leídos" class="slide level2 smaller">
+<h2>Fila o columna: el formato cambia los bytes leídos</h2>
+<pre><code> CSV / JSON (filas)                   Parquet (columnas)
+ ┌───┬─────┬───────┬────┐             ┌────┐ ┌─────┐ ┌───────┐ ┌────┐
+ │ 1 │ ana │ north │ 10 │             │ 1  │ │ ana │ │ north │ │ 10 │
+ │ 2 │ bo  │ south │ 20 │             │ 2  │ │ bo  │ │ south │ │ 20 │
+ └───┴─────┴───────┴────┘             └────┘ └─────┘ └───────┘ └────┘
+   leer 1 columna analiza todas         leer 1 columna solo lee esa</code></pre>
+<p>Con <span class="math inline">\(C\)</span> columnas de ancho similar y una consulta que usa <span class="math inline">\(c\)</span>, la fracción de bytes leídos es cerca de <span class="math inline">\(c / C\)</span>:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 6%">
+<col style="width: 33%">
+<col style="width: 60%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>CSV</th>
+<th>Parquet</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Consulta usa 2 de 20 columnas</td>
+<td>100% de los bytes</td>
+<td>Cerca del <strong>10%</strong></td>
+</tr>
+<tr class="even">
+<td>Compresión</td>
+<td>Débil: valores mezclados en una fila</td>
+<td>Fuerte: valores parecidos juntos, por columna</td>
+</tr>
+<tr class="odd">
+<td>Filtro <code>price &gt; 100</code></td>
+<td>Lee todo</td>
+<td>Salta grupos de filas con estadísticas min/max</td>
+</tr>
+<tr class="even">
+<td>Schema</td>
+<td>Inferido o declarado</td>
+<td>Guardado en el archivo</td>
+</tr>
+<tr class="odd">
+<td>Legible por humanos</td>
+<td>Sí</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<p>Para una consulta analítica, esto puede valer más que añadir máquinas, como muestra el problema que viene.</p>
+</section></section>
+<section>
+<section id="problema-integrador" class="title-slide slide level1 center">
+<h1>6. Problema integrador</h1>
+
+</section>
+<section id="necesitas-un-clúster" class="slide level2 smaller">
+<h2>¿Necesitas un clúster?</h2>
+<p>Informe diario: 6 TB de CSV, 20 columnas de ancho similar, la consulta usa 2. Debe leer todo en menos de 1 hora. Cada nodo tiene un disco de 200 MB/s.</p>
+<ol type="1">
+<li>¿Cuántos nodos solo para la lectura, con CSV?</li>
+<li>Si el 5% del job es serial, ¿cuántos de esos nodos se ganan en la práctica?</li>
+<li>¿Y si los datos estuvieran en Parquet?</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li><span class="math inline">\(\dfrac{6\ \text{TB}}{200\ \text{MB/s} \times 3.600\ \text{s}} = 8{,}3\)</span>, así que <strong>9 nodos</strong>, y <code>inferSchema</code> duplicaría la lectura.</li>
+<li>Amdahl: <span class="math inline">\(S(9) = 1 / (0{,}05 + 0{,}95/9) \approx\)</span> <strong>6,4</strong>: 9 nodos rinden como 6,4, así que hacen falta aún más.</li>
+<li>Cerca del 10% de los bytes: <span class="math inline">\(600\ \text{GB} / 200\ \text{MB/s} =\)</span> 3.000 s = 50 min, <strong>en un nodo</strong>.</li>
+</ol>
+<p><strong>Conclusión:</strong> el formato ahorró más de ocho máquinas. Es una estimación que ignora la compresión (que ayuda aún más a Parquet), la CPU y todo lo posterior a la lectura. Pero muestra el orden en que pensar: <strong>primero reduce el trabajo, luego paraleliza lo que queda.</strong> Escalar un plan derrochador solo hace más rápido el derroche.</p>
+</div>
+</section>
+<section id="referencias" class="slide level2 smaller">
+<h2>Referencias</h2>
+<ul>
+<li>Amdahl, G. M. (1967). <em>Validity of the single processor approach to achieving large scale computing capabilities</em>. AFIPS Spring Joint Computer Conference.</li>
+<li>Gustafson, J. L. (1988). <em>Reevaluating Amdahl’s Law</em>. Communications of the ACM, 31(5).</li>
+<li>McSherry, F., Isard, M., Murray, D. G. (2015). <em>Scalability! But at what COST?</em> HotOS XV.</li>
+<li>Ghemawat, S., Gobioff, H., Leung, S.-T. (2003). <em>The Google File System</em>. SOSP.</li>
+<li>Dean, J., Ghemawat, S. (2004). <em>MapReduce: Simplified Data Processing on Large Clusters</em>. OSDI.</li>
+<li>Zaharia, M., et al.&nbsp;(2012). <em>Resilient Distributed Datasets</em>. NSDI.</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/cluster-overview.html">Cluster Overview</a>, <a href="https://spark.apache.org/docs/4.0.1/rdd-programming-guide.html#understanding-closures">RDD Guide: closures</a>, <a href="https://spark.apache.org/docs/4.0.1/sql-data-sources-csv.html">CSV</a>, <a href="https://spark.apache.org/docs/4.0.1/sql-ref-ansi-compliance.html">ANSI mode</a>.</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

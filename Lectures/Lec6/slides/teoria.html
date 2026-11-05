@@ -28,71 +28,6 @@
       margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
       vertical-align: middle;
     }
-    /* CSS for syntax highlighting */
-    pre > code.sourceCode { white-space: pre; position: relative; }
-    pre > code.sourceCode > span { line-height: 1.25; }
-    pre > code.sourceCode > span:empty { height: 1.2em; }
-    .sourceCode { overflow: visible; }
-    code.sourceCode > span { color: inherit; text-decoration: inherit; }
-    div.sourceCode { margin: 1em 0; }
-    pre.sourceCode { margin: 0; }
-    @media screen {
-    div.sourceCode { overflow: auto; }
-    }
-    @media print {
-    pre > code.sourceCode { white-space: pre-wrap; }
-    pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
-    }
-    pre.numberSource code
-      { counter-reset: source-line 0; }
-    pre.numberSource code > span
-      { position: relative; left: -4em; counter-increment: source-line; }
-    pre.numberSource code > span > a:first-child::before
-      { content: counter(source-line);
-        position: relative; left: -1em; text-align: right; vertical-align: baseline;
-        border: none; display: inline-block;
-        -webkit-touch-callout: none; -webkit-user-select: none;
-        -khtml-user-select: none; -moz-user-select: none;
-        -ms-user-select: none; user-select: none;
-        padding: 0 4px; width: 4em;
-      }
-    pre.numberSource { margin-left: 3em;  padding-left: 4px; }
-    div.sourceCode
-      { color: #e1e4e8; background-color: #24292e; }
-    @media screen {
-    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
-    }
-    code span { color: #e1e4e8; } /* Normal */
-    code span.al { color: #ff5555; font-weight: bold; } /* Alert */
-    code span.an { color: #6a737d; } /* Annotation */
-    code span.at { color: #f97583; } /* Attribute */
-    code span.bn { color: #79b8ff; } /* BaseN */
-    code span.bu { color: #f97583; } /* BuiltIn */
-    code span.cf { color: #f97583; } /* ControlFlow */
-    code span.ch { color: #9ecbff; } /* Char */
-    code span.cn { color: #79b8ff; } /* Constant */
-    code span.co { color: #6a737d; } /* Comment */
-    code span.cv { color: #6a737d; } /* CommentVar */
-    code span.do { color: #6a737d; } /* Documentation */
-    code span.dt { color: #f97583; } /* DataType */
-    code span.dv { color: #79b8ff; } /* DecVal */
-    code span.er { color: #ff5555; text-decoration: underline; } /* Error */
-    code span.ex { color: #f97583; font-weight: bold; } /* Extension */
-    code span.fl { color: #79b8ff; } /* Float */
-    code span.fu { color: #b392f0; } /* Function */
-    code span.im { color: #9ecbff; } /* Import */
-    code span.in { color: #6a737d; } /* Information */
-    code span.kw { color: #f97583; } /* Keyword */
-    code span.op { color: #e1e4e8; } /* Operator */
-    code span.ot { color: #b392f0; } /* Other */
-    code span.pp { color: #f97583; } /* Preprocessor */
-    code span.re { color: #6a737d; } /* RegionMarker */
-    code span.sc { color: #79b8ff; } /* SpecialChar */
-    code span.ss { color: #9ecbff; } /* SpecialString */
-    code span.st { color: #9ecbff; } /* String */
-    code span.va { color: #ffab70; } /* Variable */
-    code span.vs { color: #9ecbff; } /* VerbatimString */
-    code span.wa { color: #ff5555; } /* Warning */
   </style>
   <link rel="stylesheet" href="teoria_files/libs/revealjs/dist/theme/quarto-939dac980516321e8ca7f2ac425f5b62.css">
   <link href="teoria_files/libs/revealjs/plugin/quarto-line-highlight/line-highlight.css" rel="stylesheet">
@@ -188,6 +123,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,242 +142,812 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="what-you-will-learn" class="slide level2">
-<h2>What you will learn</h2>
+<section id="what-you-will-be-able-to-do" class="slide level2 smaller">
+<h2>What you will be able to do</h2>
 <ul>
-<li>Detect and fix <em>data skew</em></li>
-<li>Decide when to use cache</li>
-<li>What Adaptive Query Execution does automatically</li>
-<li>Native functions vs Pandas UDF vs Python UDF</li>
-<li>Where to look in the Spark UI</li>
+<li>Quantify how much skew limits a job, with a number, before looking at the clock</li>
+<li>Compare the fixes by what each one costs, and know when each one <strong>does not apply</strong></li>
+<li>Decide whether to cache from a cost inequality, and not from intuition</li>
+<li>Explain what AQE changes at runtime, and what it cannot change</li>
+<li>Estimate the cost of a UDF, and know what the optimizer loses with it</li>
+<li>Diagnose a slow job from Spark UI metrics</li>
 </ul>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Block</th>
+<th>Topic</th>
+<th>Min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>A model of skew</td>
+<td>20</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>Fixes and their costs</td>
+<td>25</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Cache: when it pays off</td>
+<td>20</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Adaptive Query Execution</td>
+<td>25</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>UDFs</td>
+<td>20</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Diagnosis from the Spark UI</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="data-skew" class="slide level2">
-<h2>Data skew</h2>
-<p>A few keys concentrate most rows. After the shuffle, <strong>one partition is huge</strong> and the whole job waits for its task.</p>
-<pre><code>   T1 ███
-   T2 ███
-   T3 ████████████████████████████████   &lt;- hot key
-   T4 ███</code></pre>
-<p>Typical symptom: max task duration much higher than the median, job stuck at “199/200 tasks”.</p>
+<section>
+<section id="a-model-of-skew" class="title-slide slide level1 center">
+<h1>1. A model of skew</h1>
+
 </section>
-<section id="fixing-skew" class="slide level2 smaller">
-<h2>Fixing skew</h2>
+<section id="skew-limits-speedup-whatever-the-cluster" class="slide level2 smaller">
+<h2>Skew limits speedup, whatever the cluster</h2>
+<p>From Lecture 5: <span class="math inline">\(T \geq t_{\max}\)</span>, and a key with a fraction <span class="math inline">\(f\)</span> of the rows forces a partition with at least <span class="math inline">\(f \cdot n\)</span> rows, for any <span class="math inline">\(R\)</span>.</p>
+<p>If a task’s time is proportional to its rows, then <span class="math inline">\(t_{\max} \geq f \cdot W\)</span>, and the speedup is bounded by:</p>
+<p><span class="math display">\[S = \frac{W}{T} \;\leq\; \frac{W}{f \cdot W} = \frac{1}{f}\]</span></p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th><span class="math inline">\(f\)</span> (hottest key)</th>
+<th>Maximum speedup of that stage</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>40%</td>
+<td><strong>2.5×</strong>, with 10 or 10,000 cores</td>
+</tr>
+<tr class="even">
+<td>10%</td>
+<td>10×</td>
+</tr>
+<tr class="odd">
+<td>1%</td>
+<td>100×</td>
+</tr>
+</tbody>
+</table>
+<p>It has the same form as Amdahl’s law: the hot key behaves like the <strong>serial fraction</strong> of the stage. Adding cores cannot help, and that is what makes skew different from a simple shortage of resources.</p>
+</section>
+<section id="the-model-against-real-data" class="slide level2 smaller">
+<h2>The model against real data</h2>
+<p>Lab 5: <span class="math inline">\(n\)</span> = 5,000,000 rows, 40% with <code>customer_id = 0</code>, the rest uniform, <span class="math inline">\(R = 16\)</span>. The hot partition holds the hot key plus its share of the rest:</p>
+<p><span class="math display">\[\text{max} = f n + \frac{(1-f)\,n}{R} = 2{,}000{,}000 + 187{,}500 = 2{,}187{,}500 \qquad \text{median} = \frac{(1-f)\,n}{R} = 187{,}500\]</span></p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th></th>
+<th>Model</th>
+<th>Measured in Lab 5</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Largest partition</td>
+<td>2,187,500</td>
+<td>2,186,568</td>
+</tr>
+<tr class="even">
+<td>Median partition</td>
+<td>187,500</td>
+<td>187,215</td>
+</tr>
+<tr class="odd">
+<td>Ratio</td>
+<td>11.7×</td>
+<td>11.7×</td>
+</tr>
+</tbody>
+</table>
+<p>The model predicts the ratio from just <span class="math inline">\(f\)</span> and <span class="math inline">\(R\)</span>:</p>
+<p><span class="math display">\[\frac{\text{max}}{\text{median}} = 1 + \frac{f\,R}{1-f}\]</span></p>
+<p><strong>So the ratio grows with <span class="math inline">\(R\)</span>.</strong> Raising <code>shuffle.partitions</code> makes the imbalance look <em>worse</em> and does not shrink the largest partition: it still holds at least <span class="math inline">\(f n\)</span> rows.</p>
+</section>
+<section id="where-hot-keys-come-from" class="slide level2 smaller">
+<h2>Where hot keys come from</h2>
+<p><strong>Natural distributions.</strong> Popularity usually follows something like a Zipf law, where the <span class="math inline">\(k\)</span>-th most frequent key has:</p>
+<p><span class="math display">\[f_k = \frac{1/k}{H_d}, \qquad H_d = \sum_{i=1}^{d} \frac{1}{i} \approx \ln d + 0.577\]</span></p>
+<p>With <span class="math inline">\(d = 10^6\)</span> keys: <span class="math inline">\(H_d \approx 14.4\)</span>, so the top key has <strong>6.9%</strong> of the rows (speedup at most 14×), and the top 100 keys hold <strong>36%</strong>. A million distinct keys do not guarantee balance.</p>
+<p><strong>Artificial values,</strong> often the worst and the easiest to fix:</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 39%">
-<col style="width: 26%">
+<col style="width: 22%">
+<col style="width: 51%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Value</th>
+<th>Typical origin</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>NULL</code> key</td>
+<td>Optional field</td>
+<td>Filter it or handle it apart</td>
+</tr>
+<tr class="even">
+<td><code>0</code>, <code>-1</code>, <code>"unknown"</code></td>
+<td>Placeholder defaults</td>
+<td>Find it and treat it as missing</td>
+</tr>
+<tr class="odd">
+<td>A giant account</td>
+<td>Marketplace, bot, test user</td>
+<td>Separate it</td>
+</tr>
+</tbody>
+</table>
+<p>An inner join already discards <code>NULL</code> keys (the plan shows <code>isnotnull</code>), yet a <code>LEFT JOIN</code> must keep them on the left. All of those rows hash to the <strong>same partition</strong>, with no match to gain from it.</p>
+</section>
+<section id="does-skew-affect-every-operation" class="slide level2 smaller">
+<h2>Does skew affect every operation?</h2>
+<p>No, and the reason is the previous lecture’s partial aggregation.</p>
+<table class="caption-top">
+<colgroup>
 <col style="width: 34%">
+<col style="width: 50%">
+<col style="width: 15%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Technique</th>
-<th>Idea</th>
-<th>When</th>
+<th>Operation</th>
+<th>With a hot key</th>
+<th>Why</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
+<td><code>groupBy().sum()</code></td>
+<td><strong>Almost immune</strong></td>
+<td>The partial step leaves the key at most <span class="math inline">\(M\)</span> rows</td>
+</tr>
+<tr class="even">
+<td><code>join</code></td>
+<td><strong>Suffers</strong></td>
+<td>All its rows meet in one task; output <span class="math inline">\(\sum_k a_k b_k\)</span></td>
+</tr>
+<tr class="odd">
+<td><code>collect_list</code>, <code>percentile</code></td>
+<td><strong>Suffers</strong></td>
+<td>Not decomposable: all values travel</td>
+</tr>
+<tr class="even">
+<td>Window with <code>partitionBy(k)</code></td>
+<td><strong>Suffers</strong></td>
+<td>The whole key must be in one partition, sorted</td>
+</tr>
+</tbody>
+</table>
+<p><strong>A hot key in a <code>groupBy</code> is not necessarily a problem:</strong> first look at which operator is stalled.</p>
+<p>The worst case is a join with hot keys on <strong>both</strong> sides: <span class="math inline">\(a_k = 10^6\)</span> and <span class="math inline">\(b_k = 10^3\)</span> give <span class="math inline">\(10^9\)</span> rows in a single task.</p>
+</section></section>
+<section>
+<section id="fixes-and-their-costs" class="title-slide slide level1 center">
+<h1>2. Fixes and their costs</h1>
+
+</section>
+<section id="salting-why-it-is-correct-and-what-it-costs" class="slide level2 smaller">
+<h2>Salting: why it is correct, and what it costs</h2>
+<p>Add to each row of <span class="math inline">\(R\)</span> a random <span class="math inline">\(s \in \{0,\dots,k-1\}\)</span>, replicate each row of <span class="math inline">\(S\)</span> <span class="math inline">\(k\)</span> times with <span class="math inline">\(s = 0,\dots,k-1\)</span>, and join on <span class="math inline">\((\text{key}, s)\)</span>.</p>
+<p><strong>Correctness.</strong> Each row of <span class="math inline">\(R\)</span> has one <span class="math inline">\(s\)</span>, and each matching row of <span class="math inline">\(S\)</span> has exactly one copy with that <span class="math inline">\(s\)</span>. So every pair appears once, and the output is unchanged. In Lab 5: 5,000,000 rows with or without salt.</p>
+<p><strong>Effect.</strong> The hot key’s rows spread over <span class="math inline">\(k\)</span> subkeys. To bring each chunk below the average load <span class="math inline">\(n/R\)</span>:</p>
+<p><span class="math display">\[\frac{f n}{k} \leq \frac{n}{R} \quad\Longrightarrow\quad k \geq f R\]</span></p>
+<p><strong>Cost.</strong> <span class="math inline">\(S\)</span> grows from <span class="math inline">\(|S|\)</span> to <span class="math inline">\(k|S|\)</span> in the shuffle. With <span class="math inline">\(f = 40\%\)</span>, <span class="math inline">\(R = 200\)</span>: <span class="math inline">\(k \geq 80\)</span>, or <strong>80 copies of all of <span class="math inline">\(S\)</span></strong>.</p>
+<p><strong>Selective salting:</strong> salt only the known hot keys, with <span class="math inline">\(s = 0\)</span> for the rest. The extra cost becomes <span class="math inline">\((k - 1) |S_{\text{hot}}|\)</span>. With one hot customer, that is 79 extra rows instead of 79 extra copies of a table.</p>
+</section>
+<section id="exercise-why-1.4-and-not-1.0" class="slide level2 smaller">
+<h2>Exercise: why 1.4× and not 1.0×?</h2>
+<p>Lab 5 with <span class="math inline">\(k = 16\)</span>, <span class="math inline">\(R = 16\)</span> measured: largest 441,645, median 308,298, ratio 1.4×. Perfect balance would be 312,500 everywhere. <strong>Can you explain those numbers?</strong></p>
+<div class="fragment">
+<p>Each of the 16 salt values carries <span class="math inline">\(2{,}000{,}000 / 16 =\)</span> 125,000 hot rows, and it lands on a partition by hash: <strong>16 balls into 16 bins</strong>, not one each. A partition that receives <span class="math inline">\(j\)</span> salts holds:</p>
+<p><span class="math display">\[j \times 125{,}000 + 187{,}500\]</span></p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th><span class="math inline">\(j\)</span></th>
+<th>Model</th>
+<th>Measured</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>312,500</td>
+<td>308,298 (median)</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>437,500</td>
+<td>441,645 (largest)</td>
+</tr>
+</tbody>
+</table>
+<p>So two salts collided in one partition. Salt spreads the key among <span class="math inline">\(k\)</span> subkeys, but the partitioner places them with collisions: from Lecture 5, about <span class="math inline">\(e^{-1} \approx 37\%\)</span> of the bins stay without any salt.</p>
+<p><strong>To improve it:</strong> <span class="math inline">\(k \gg R\)</span> makes collisions matter less, but it also multiplies <span class="math inline">\(S\)</span> by more copies. There is no free option here.</p>
+</div>
+</section>
+<section id="choosing-a-fix" class="slide level2 smaller">
+<h2>Choosing a fix</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 41%">
+<col style="width: 41%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Fix</th>
+<th>Added cost</th>
+<th>Fails when</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Clean the key</strong> (<code>NULL</code>, placeholders)</td>
+<td>None: reduces <span class="math inline">\(n\)</span></td>
+<td>The key is genuinely frequent</td>
+</tr>
+<tr class="even">
 <td><strong>Broadcast</strong></td>
-<td>Removes the shuffle, so skew stops mattering</td>
-<td>The other side fits in memory</td>
-</tr>
-<tr class="even">
-<td><strong>Salting</strong></td>
-<td>Splits the hot key into N artificial subkeys</td>
-<td>Both sides are large</td>
+<td><span class="math inline">\(N \cdot |S|\)</span> of memory</td>
+<td><span class="math inline">\(S\)</span> is large, or the preserved side is the small one</td>
 </tr>
 <tr class="odd">
-<td><strong>AQE skew join</strong></td>
-<td>Spark finds huge partitions and splits them</td>
-<td>Spark 3+</td>
+<td><strong>Separate the hot key</strong> + <code>union</code></td>
+<td>Code, and a list of keys to maintain</td>
+<td>Hot keys change or are many</td>
 </tr>
 <tr class="even">
-<td><strong>Separate the key</strong></td>
-<td>Process the hot key apart and <code>union</code></td>
-<td>Few known keys</td>
+<td><strong>Selective salting</strong></td>
+<td><span class="math inline">\((k-1)|S_{\text{hot}}|\)</span></td>
+<td>Same: needs to know the keys</td>
+</tr>
+<tr class="odd">
+<td><strong>Full salting</strong></td>
+<td><span class="math inline">\((k-1)|S|\)</span></td>
+<td><span class="math inline">\(S\)</span> is large; <span class="math inline">\(k\)</span> becomes costly</td>
+</tr>
+<tr class="even">
+<td><strong>AQE skew join</strong></td>
+<td>Replicates part of <span class="math inline">\(S\)</span></td>
+<td>Not a join, unsupported side, or few map tasks</td>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb2"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href=""></a>orders_salted <span class="op">=</span> orders_skew.withColumn(<span class="st">"salt"</span>, (F.rand(<span class="dv">8</span>) <span class="op">*</span> SALT).cast(<span class="st">"int"</span>))</span>
-<span id="cb2-2"><a href=""></a>customers_salted <span class="op">=</span> customers.crossJoin(</span>
-<span id="cb2-3"><a href=""></a>    spark.<span class="bu">range</span>(SALT).select(F.col(<span class="st">"id"</span>).cast(<span class="st">"int"</span>).alias(<span class="st">"salt"</span>)))</span>
-<span id="cb2-4"><a href=""></a>orders_salted.join(customers_salted, [<span class="st">"customer_id"</span>, <span class="st">"salt"</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Apply them in that order. <strong>First ask if the rows are needed at all</strong>, since removing them lowers <span class="math inline">\(W\)</span> and <span class="math inline">\(f\)</span> at once.</p>
+<p><strong>Do not use salting in a <code>groupBy</code> by reflex:</strong> decomposable aggregations are already protected by the partial step, and a non-decomposable one (median, <code>countDistinct</code>) <strong>gives wrong results</strong> if you aggregate the salted groups and combine them.</p>
+</section></section>
+<section>
+<section id="cache-when-it-pays-off" class="title-slide slide level1 center">
+<h1>3. Cache: when it pays off</h1>
+
 </section>
-<section id="cache-and-persist" class="slide level2">
-<h2>Cache and persist</h2>
-<p>Each action recomputes the plan from the read. Cache avoids that rework.</p>
+<section id="an-inequality-for-caching" class="slide level2 smaller">
+<h2>An inequality for caching</h2>
+<p>A DataFrame is used by <span class="math inline">\(k\)</span> actions. Let <span class="math inline">\(C\)</span> = cost to compute it, <span class="math inline">\(M\)</span> = extra cost to store it, <span class="math inline">\(L\)</span> = cost to read it back.</p>
+<p><span class="math display">\[\underbrace{k\,C}_{\text{without cache}} \quad\text{vs}\quad \underbrace{C + M + (k-1)\,L}_{\text{with cache}}\]</span></p>
+<p><strong>Cache pays off if and only if:</strong></p>
+<p><span class="math display">\[(k - 1)\,(C - L) &gt; M\]</span></p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 35%">
-<col style="width: 35%">
-<col style="width: 30%">
+<col style="width: 72%">
+<col style="width: 27%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Level</th>
-<th>Where</th>
-<th>Note</th>
+<th>Consequence</th>
+<th>Why</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>MEMORY_AND_DISK</code></td>
-<td>Memory, spilling to disk</td>
-<td>Default of <code>df.cache()</code></td>
+<td><span class="math inline">\(k = 1\)</span> <strong>never</strong> pays off</td>
+<td>The left side is zero</td>
 </tr>
 <tr class="even">
-<td><code>MEMORY_ONLY</code></td>
-<td>Memory only</td>
-<td>What does not fit is recomputed</td>
+<td><span class="math inline">\(C \leq L\)</span> never pays off</td>
+<td>A plain Parquet read: reading again is about as cheap</td>
 </tr>
 <tr class="odd">
-<td><code>DISK_ONLY</code></td>
-<td>Disk only</td>
-<td>Useful when computing is very expensive</td>
+<td>A larger <span class="math inline">\(C\)</span> justifies a smaller <span class="math inline">\(k\)</span></td>
+<td>Multi-way joins, heavy aggregations</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Use it:</strong> the same DataFrame feeds several actions, and it is expensive to compute and small to store.</p>
-<p><strong>Avoid it:</strong> the DataFrame is used once, or it is a simple Parquet read. Cache takes memory that shuffles could use.</p>
+<p>Lab 5 ran both cases, with these totals:</p>
+<table class="caption-top" style="width:100%;">
+<colgroup>
+<col style="width: 28%">
+<col style="width: 42%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Case</th>
+<th>Without</th>
+<th>With</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Small result of an expensive aggregation</td>
+<td>2.44 s</td>
+<td>0.78 + 0.20 = <strong>0.98 s</strong></td>
+</tr>
+<tr class="even">
+<td>Wide table, cheap to recompute</td>
+<td><strong>1.45 s</strong></td>
+<td>1.84 s</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="adaptive-query-execution" class="slide level2">
-<h2>Adaptive Query Execution</h2>
-<p>Without AQE, the plan is decided <strong>before</strong> execution, from estimates. With AQE (default since Spark 3.2), Spark <strong>reoptimizes between stages</strong> using real statistics.</p>
+<section id="the-hidden-cost-memory-and-pruning" class="slide level2 smaller">
+<h2>The hidden cost: memory and pruning</h2>
+<p><strong>Caching a wide DataFrame loses column pruning.</strong> Without cache, each action reads only its columns from Parquet. With cache, everything is computed and stored first. So <span class="math inline">\(L\)</span> is cheap, but <span class="math inline">\(M\)</span> pays for every column. Select the columns you need <strong>before</strong> <code>cache()</code>.</p>
+<p><strong>Cache competes with execution</strong> in the same memory region (Spark tuning guide):</p>
+<p><span class="math display">\[M_{\text{unified}} = (\text{heap} - 300\ \text{MiB}) \times 0.6 \qquad R_{\text{protected}} = M_{\text{unified}} \times 0.5\]</span></p>
+<p>With an 8 GiB heap: <span class="math inline">\(M_{\text{unified}} \approx\)</span> 4.6 GiB, of which about 2.3 GiB are protected from eviction.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 40%">
-<col style="width: 59%">
+<col style="width: 31%">
+<col style="width: 68%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Rule</th>
+<th>Consequence</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Execution may evict storage, down to <span class="math inline">\(R\)</span></td>
+<td>A big shuffle can remove cached blocks</td>
+</tr>
+<tr class="even">
+<td>Storage may <strong>not</strong> evict execution</td>
+<td>Cache only uses what execution leaves free</td>
+</tr>
+<tr class="odd">
+<td>Above <span class="math inline">\(R\)</span>, cached blocks are in danger</td>
+<td>Then LRU applies, and the <span class="math inline">\(C\)</span> you saved is paid again</td>
+</tr>
+</tbody>
+</table>
+<p>So the cache can <strong>slow the job down</strong>: within <span class="math inline">\(R\)</span>, those 2.3 GiB are no longer available to the sorts and hash tables, which then spill to disk.</p>
+</section>
+<section id="cache-checkpoint-or-write" class="slide level2 smaller">
+<h2>Cache, checkpoint or write?</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 1%">
+<col style="width: 36%">
+<col style="width: 23%">
+<col style="width: 38%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th><code>cache()</code> / <code>persist()</code></th>
+<th><code>checkpoint()</code></th>
+<th>Write Parquet, read back</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Where</td>
+<td>Executors’ memory/disk</td>
+<td>Reliable storage</td>
+<td>Reliable storage</td>
+</tr>
+<tr class="even">
+<td><strong>Lineage</strong></td>
+<td><strong>Kept</strong></td>
+<td><strong>Cut</strong></td>
+<td>Cut</td>
+</tr>
+<tr class="odd">
+<td>A lost executor</td>
+<td>Recompute from lineage</td>
+<td>Reread</td>
+<td>Reread</td>
+</tr>
+<tr class="even">
+<td>Survives the application</td>
+<td>No</td>
+<td>No, unless reused explicitly</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr class="odd">
+<td>Typical use</td>
+<td>Several actions in one job</td>
+<td>Very long lineage (iterative)</td>
+<td>Intermediate step of a pipeline</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Cache is not a fault-tolerance mechanism.</strong> A lost cached partition is simply recomputed, and with a long lineage containing wide dependencies, that recomputation can be very expensive. The RDD paper recommends checkpointing exactly in that case (Zaharia et al., 2012, §5.4).</p>
+<p><strong>Storage levels.</strong> <code>df.cache()</code> uses <code>MEMORY_AND_DISK</code>, whereas <code>rdd.cache()</code> uses <code>MEMORY_ONLY</code>: the same word, with different defaults. <code>cache()</code> is also lazy: it only stores data at the first action, and <code>unpersist()</code> releases it.</p>
+</section></section>
+<section>
+<section id="adaptive-query-execution" class="title-slide slide level1 center">
+<h1>4. Adaptive Query Execution</h1>
+
+</section>
+<section id="the-idea-stages-are-measurement-points" class="slide level2 smaller">
+<h2>The idea: stages are measurement points</h2>
+<p>Lecture 5 showed that the static plan has very little information: only file sizes, and a <code>Filter</code> is assumed to remove nothing.</p>
+<p>But a shuffle <strong>materializes</strong> its output on disk, and at that moment Spark knows the exact size of each partition. AQE re-plans the rest of the query with those numbers:</p>
+<pre><code> plan (estimates) ─▶ run stages with no pending parents ─▶ shuffle output on disk
+       ▲                                                         │  real sizes
+       └────────────── re-optimize what has not run ◀────────────┘</code></pre>
+<table class="caption-top">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 33%">
+<col style="width: 29%">
 </colgroup>
 <thead>
 <tr class="header">
 <th>Feature</th>
-<th>What it does</th>
+<th>Before</th>
+<th>After</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Coalesce partitions</td>
-<td>Merges small post-shuffle partitions (200 become a few)</td>
+<td><strong>Coalesce partitions</strong></td>
+<td>200 partitions, mostly tiny</td>
+<td>Few, by merging <strong>contiguous</strong> ones</td>
 </tr>
 <tr class="even">
-<td>Switch join strategy</td>
-<td>Turns sort-merge into broadcast if a side became small after filters</td>
+<td><strong>Switch join</strong></td>
+<td>Sort-merge (size overestimated)</td>
+<td>Broadcast hash join</td>
 </tr>
 <tr class="odd">
-<td>Skew join</td>
-<td>Splits giant partitions into smaller pieces</td>
+<td><strong>Skew join</strong></td>
+<td>One giant task</td>
+<td>Several tasks, replicating the other side</td>
 </tr>
 </tbody>
 </table>
-<div class="callout callout-tip callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Tip</strong></p>
-</div>
-<div class="callout-content">
-<p>In production, keep AQE on. It does not replace good design, but it solves most partition tuning.</p>
-</div>
-</div>
-</div>
+<p><strong>Why “contiguous”:</strong> merging partitions <span class="math inline">\(i\)</span> and <span class="math inline">\(i+1\)</span> of a hash partitioning is always correct, because rows with the same key remain together. It only changes how many tasks read them.</p>
+<p><strong>Its limit is structural:</strong> AQE only knows what has already been shuffled. It cannot change the first stage, and it cannot help a query with no <code>Exchange</code>.</p>
 </section>
-<section id="native-functions-vs-udfs" class="slide level2">
-<h2>Native functions vs UDFs</h2>
-<pre><code>  F.when(...)     JVM ──────────────────────────────▶ JVM            (fast)
-  @udf            JVM ─▶ row-by-row serialization ─▶ Python ─▶ JVM   (slow)
-  @pandas_udf     JVM ─▶ Arrow batches (columnar) ─▶ Pandas ─▶ JVM   (middle)</code></pre>
-<p>Order of preference: <strong>native function &gt; Pandas UDF &gt; Python UDF</strong>. Before writing a UDF, check the function list: one almost always exists.</p>
-</section>
-<section id="spark-ui-where-to-look" class="slide level2">
-<h2>Spark UI: where to look</h2>
+<section id="coalescing-what-target-does-it-really-use" class="slide level2 smaller">
+<h2>Coalescing: what target does it really use?</h2>
+<p><code>spark.sql.adaptive.advisoryPartitionSizeInBytes</code> (64 MB) looks like the target, yet by default it is <strong>not respected</strong> when coalescing:</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 22%">
-<col style="width: 77%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Tab</th>
-<th>What to look for</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><strong>Jobs</strong></td>
-<td>Which actions took the longest</td>
-</tr>
-<tr class="even">
-<td><strong>Stages</strong></td>
-<td>Shuffle Read/Write, task duration <strong>max vs median</strong> (skew)</td>
-</tr>
-<tr class="odd">
-<td><strong>Storage</strong></td>
-<td>Cached DataFrames and their size</td>
-</tr>
-<tr class="even">
-<td><strong>SQL / DataFrame</strong></td>
-<td>Visual plan with rows and time per operator</td>
-</tr>
-<tr class="odd">
-<td><strong>Executors</strong></td>
-<td>Memory, GC time, failed tasks</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="summary-symptom-cause-action" class="slide level2 smaller">
-<h2>Summary: symptom, cause, action</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 25%">
-<col style="width: 40%">
 <col style="width: 34%">
+<col style="width: 34%">
+<col style="width: 30%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Symptom</th>
-<th>Likely cause</th>
-<th>What to do</th>
+<th>Setting</th>
+<th>Default</th>
+<th>Effect</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Many <code>Exchange</code> in the plan</td>
-<td>Too many joins and aggregations</td>
-<td>Broadcast dimensions, aggregate before joining</td>
+<td><code>coalescePartitions.parallelismFirst</code></td>
+<td><code>true</code></td>
+<td>Ignores the 64 MB and computes a target from the cluster’s parallelism, usually smaller</td>
 </tr>
 <tr class="even">
-<td>Job stuck at “199/200 tasks”</td>
-<td>Data skew</td>
-<td>Broadcast, salting, AQE skew join</td>
-</tr>
-<tr class="odd">
-<td>Thousands of millisecond tasks</td>
-<td>Too many partitions</td>
-<td>AQE on, tune <code>shuffle.partitions</code></td>
-</tr>
-<tr class="even">
-<td>Same computation repeated</td>
-<td>Reuse without cache</td>
-<td><code>cache()</code> + <code>unpersist()</code></td>
-</tr>
-<tr class="odd">
-<td>Very slow computed column</td>
-<td>Python UDF</td>
-<td>Native function or Pandas UDF</td>
-</tr>
-<tr class="even">
-<td>Slow reads</td>
-<td>CSV/JSON, no pruning</td>
-<td>Parquet/Delta, filter and select early</td>
+<td><code>coalescePartitions.minPartitionSize</code></td>
+<td>1 MB</td>
+<td>The lower limit that then applies</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Why:</strong> the aim is not to lose parallelism compared with running without AQE. The documentation recommends <code>false</code> on a busy cluster, so as not to produce many small tasks.</p>
+<p><strong>Check in Lab 5:</strong> <code>groupBy("region")</code> has 5 rows after partial aggregation. Without AQE, 200 partitions; with AQE, <strong>1</strong>. It is below every limit, so everything is merged.</p>
+<p><strong>Reading the plan:</strong> before running, <code>explain()</code> shows <code>isFinalPlan=false</code>, the initial estimate. The real decisions appear in the plan as <code>AQEShuffleRead</code> only once the query has run.</p>
+</section>
+<section id="switching-the-join-useful-but-not-free" class="slide level2 smaller">
+<h2>Switching the join: useful, but not free</h2>
+<p>If at runtime one side is below <code>spark.sql.adaptive.autoBroadcastJoinThreshold</code> (default: same as the static one, 10 MB), AQE turns the sort-merge into a broadcast.</p>
+<p><strong>Example from Lecture 5:</strong> a 1 GB table filtered down to 1 MB. The static plan does not see the filter’s effect, so it chooses sort-merge. Once the small side’s shuffle has run, its real size appears.</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th></th>
+<th>Sort-merge</th>
+<th>Broadcast from AQE</th>
+<th>Broadcast from the start</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Shuffle map of large side</td>
+<td>Done</td>
+<td><strong>Already done</strong></td>
+<td>Avoided</td>
+</tr>
+<tr class="even">
+<td>Network for large side</td>
+<td>Yes</td>
+<td>No: read locally</td>
+<td>No</td>
+</tr>
+<tr class="odd">
+<td>Sort of both sides</td>
+<td>Yes</td>
+<td>Avoided</td>
+<td>Avoided</td>
+</tr>
+</tbody>
+</table>
+<p><strong>So the documentation says it is “not as efficient as planning a broadcast hash join in the first place”.</strong> The map stage of the large side has already been paid.</p>
+<p><strong>Practical consequence:</strong> if you know a side is small after filtering, <code>F.broadcast()</code> is still better than waiting for AQE to discover it.</p>
+</section>
+<section id="skew-join-the-exact-rule" class="slide level2 smaller">
+<h2>Skew join: the exact rule</h2>
+<p>A partition is skewed if its size exceeds <strong>both</strong> limits (<code>OptimizeSkewedJoin</code>):</p>
+<p><span class="math display">\[\text{size} &gt; \max\big(\texttt{skewedPartitionThresholdInBytes},\ \ \texttt{skewedPartitionFactor} \times \text{median}\big)\]</span></p>
+<p>with defaults of 256 MB and 5.0. It is split into pieces of about:</p>
+<p><span class="math display">\[\text{target} = \max\big(\texttt{advisoryPartitionSizeInBytes},\ \text{average of non-skewed partitions}\big)\]</span></p>
+<p><strong>Exercise.</strong> Median 100 MB, average of the others 100 MB, default 64 MB advisory. Which are split, and into how many?</p>
+<div class="fragment">
+<p>Threshold: <span class="math inline">\(\max(256, 500) = 500\)</span> MB.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 39%">
+<col style="width: 32%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Partition</th>
+<th>Skewed?</th>
+<th>Pieces</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>400 MB</td>
+<td><strong>No</strong>: 4× the median, but below the threshold</td>
+<td>1</td>
+</tr>
+<tr class="even">
+<td>2 GB</td>
+<td>Yes</td>
+<td><span class="math inline">\(2000 / 100 =\)</span> <strong>20</strong> tasks, with the other side’s partition replicated 20 times</td>
+</tr>
+</tbody>
+</table>
+<p>The rule is deliberately conservative: below 256 MB, a straggler does not justify replicating.</p>
+</div>
+</section>
+<section id="skew-join-how-it-splits-and-when-it-cannot" class="slide level2 smaller">
+<h2>Skew join: how it splits, and when it cannot</h2>
+<p>It splits the partition by <strong>map output ranges</strong>, and the other side is replicated once per range:</p>
+<pre><code> R, partition 7 (hot): Map0 Map1 │ Map2 Map3 │ Map4       S, partition 7
+                       └──task A─┘ └──task B─┘ └task C┘   ──▶ copied to A, B and C</code></pre>
+<p>Reading different map outputs lets one key be split with no salt at all. It also explains its limits:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 58%">
+<col style="width: 41%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Limit</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>At most <span class="math inline">\(M\)</span> pieces</td>
+<td>The granularity is a map output: a key from a single map task <strong>cannot be split</strong></td>
+</tr>
+<tr class="even">
+<td>Skew on both sides</td>
+<td>Cross product of splits: <span class="math inline">\(p \times q\)</span> tasks</td>
+</tr>
+<tr class="odd">
+<td><code>LEFT</code> splits only the left</td>
+<td>The preserved side cannot be replicated: same reason as the broadcast restriction</td>
+</tr>
+<tr class="even">
+<td><code>RIGHT</code> splits only the right</td>
+<td>Same, mirrored</td>
+</tr>
+<tr class="odd">
+<td>Only joins</td>
+<td>In a <code>groupBy</code>, all of a key’s rows must end up together, or the result would be wrong</td>
+</tr>
+<tr class="even">
+<td>May be skipped</td>
+<td>If it would add a shuffle, unless <code>forceOptimizeSkewedJoin</code> is on</td>
+</tr>
+</tbody>
+</table>
+</section></section>
+<section>
+<section id="udfs" class="title-slide slide level1 center">
+<h1>5. UDFs</h1>
 
 </section>
+<section id="what-a-udf-costs" class="slide level2 smaller">
+<h2>What a UDF costs</h2>
+<p><strong>1. Crossing the boundary.</strong> Native functions run inside the generated code of the JVM. A Python UDF sends data to a separate Python worker and back:</p>
+<pre><code> F.when(...)    JVM ───────────────────────────────▶ JVM
+ @udf           JVM ─▶ pickle ─▶ Python, per value ─▶ pickle ─▶ JVM
+ @pandas_udf    JVM ─▶ Arrow batches ─▶ Pandas, per batch ─▶ Arrow ─▶ JVM</code></pre>
+<p>With <span class="math inline">\(n\)</span> rows, batches of <span class="math inline">\(B\)</span> (default 10,000), per-row call cost <span class="math inline">\(g\)</span> and per-batch transfer cost <span class="math inline">\(b\)</span>:</p>
+<p><span class="math display">\[T_{\text{row}} \approx n\,(s + g) \qquad T_{\text{pandas}} \approx \frac{n}{B}\,(b + g_{\text{vec}})\]</span></p>
+<p><strong>2. Opacity, the larger cost.</strong> Catalyst cannot see inside a UDF:</p>
+<ul>
+<li>No predicate pushdown through it, and no constant folding.</li>
+<li>A filter on its result runs <strong>after</strong> computing it for every row.</li>
+<li>It is assumed <strong>deterministic</strong>: it may run more or fewer times than written. Use <code>asNondeterministic()</code> otherwise.</li>
+<li><strong>No short-circuit guarantee</strong>: a guard like <code>F.when(x.isNotNull(), my_udf(x))</code> does not ensure nulls are not passed to it.</li>
+</ul>
+</section>
+<section id="exercise-why-was-the-pandas-udf-the-slowest" class="slide level2 smaller">
+<h2>Exercise: why was the Pandas UDF the slowest?</h2>
+<p>The usual ranking is <strong>native &gt; Pandas UDF &gt; Python UDF</strong>. Lab 5 measured, on 5 million rows and a simple function returning text:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Native <code>F.when</code></td>
+<td>0.36 s</td>
+</tr>
+<tr class="even">
+<td>Python UDF</td>
+<td>0.65 s</td>
+</tr>
+<tr class="odd">
+<td>Pandas UDF</td>
+<td><strong>1.67 s</strong></td>
+</tr>
+</tbody>
+</table>
+<div class="fragment">
+<p>The model says it depends on <span class="math inline">\(g\)</span> versus <span class="math inline">\(g_{\text{vec}}\)</span>. Here the function is three comparisons, so <span class="math inline">\(g\)</span> is tiny, and there is little per-row work for vectorization to save. Meanwhile the Pandas version pays for Arrow conversion, and for building a Series of Python strings per batch.</p>
+<p><strong>The likely cause is this cost structure; the Lab does not isolate it.</strong> Vectorization pays off when the function does real numeric work per row, and it pays less with text output.</p>
+<p><strong>What holds without exception:</strong> native is the fastest, and it is the only option the optimizer understands. Between the two UDFs, <strong>measure with your function</strong>, rather than rely on a ranking. Spark also offers Arrow-optimized Python UDFs (<code>useArrow=True</code>), which run row by row but transfer batches.</p>
+</div>
+</section></section>
+<section>
+<section id="diagnosis-from-the-spark-ui" class="title-slide slide level1 center">
+<h1>6. Diagnosis from the Spark UI</h1>
+
+</section>
+<section id="from-symptom-to-model-term" class="slide level2 smaller">
+<h2>From symptom to model term</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 38%">
+<col style="width: 33%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Metric (Stages tab)</th>
+<th>What it measures</th>
+<th>If it is high</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Duration, max vs median</td>
+<td><span class="math inline">\(t_{\max}\)</span> vs typical</td>
+<td>Skew, or a slow node</td>
+</tr>
+<tr class="even">
+<td>Shuffle Read Size, max vs median</td>
+<td>Distribution of <span class="math inline">\(D\)</span></td>
+<td><strong>Data</strong> skew, if it tracks the duration</td>
+</tr>
+<tr class="odd">
+<td>Shuffle Write Size</td>
+<td>Volume <span class="math inline">\(D\)</span></td>
+<td>Too much data moved: filter, aggregate or broadcast sooner</td>
+</tr>
+<tr class="even">
+<td>Spill (Memory / Disk)</td>
+<td>Execution memory exceeded</td>
+<td>Too few partitions, or a very large one</td>
+</tr>
+<tr class="odd">
+<td>GC Time</td>
+<td>JVM pressure</td>
+<td>Too many objects, or too much cached</td>
+</tr>
+<tr class="even">
+<td>Scheduler Delay</td>
+<td>Overhead <span class="math inline">\(o\)</span></td>
+<td>Too many tiny tasks</td>
+</tr>
+<tr class="odd">
+<td>Locality Level</td>
+<td>Where each task ran</td>
+<td>Reads with <code>ANY</code> suggest locality was lost</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Max and median duration differ, with even data sizes?</strong> The cause is not data skew: look for a slow node, GC or heavy per-row work on certain values. Speculative execution helps only in the first case (<code>spark.speculation</code>, default <code>false</code>).</p>
+</section>
+<section id="integrating-problem-diagnose-this-stage" class="slide level2 smaller">
+<h2>Integrating problem: diagnose this stage</h2>
+<p>A sort-merge join stage, 200 tasks, 100 cores, AQE skew join off:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Median</th>
+<th>Max</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Duration</td>
+<td>20 s</td>
+<td>600 s</td>
+</tr>
+<tr class="even">
+<td>Shuffle Read</td>
+<td>100 MB</td>
+<td>3 GB</td>
+</tr>
+</tbody>
+</table>
+<ol type="1">
+<li>What are <span class="math inline">\(W\)</span> and the bounds on <span class="math inline">\(T\)</span>? 2. What is the most that more cores could gain? 3. What would be gained by eliminating the skew? 4. With AQE on, is it split, and into how many?</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li><span class="math inline">\(W \approx 199 \times 20 + 600 = 4{,}580\)</span> s, <span class="math inline">\(W/c = 45.8\)</span> s. Bounds: <span class="math inline">\(600 \leq T \leq 45.8 + 0.99 \times 600 \approx 640\)</span> s.</li>
+<li><strong>Nothing:</strong> <span class="math inline">\(T \geq t_{\max} = 600\)</span> s with any number of cores.</li>
+<li>With <span class="math inline">\(t_{\max}\)</span> around the median, <span class="math inline">\(T \approx\)</span> 46 s to 66 s: about <strong>10×</strong>, with the same hardware.</li>
+<li><span class="math inline">\(3\ \text{GB} &gt; \max(256\ \text{MB}, 500\ \text{MB})\)</span>: <strong>skewed</strong>. Target <span class="math inline">\(\max(64, 100) = 100\)</span> MB, so about <strong>30 tasks</strong>, provided there are at least that many map outputs carrying the key. That would be <span class="math inline">\(t \approx 20\)</span> s per piece.</li>
+</ol>
+<p>If it were <code>collect_list</code> in place of a join, AQE <strong>could not</strong> split it, so the fix would have to be in the query.</p>
+</div>
+</section>
+<section id="references" class="slide level2 smaller">
+<h2>References</h2>
+<ul>
+<li>Zaharia, M., Chowdhury, M., Das, T., et al.&nbsp;(2012). <em>Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory Cluster Computing</em>. NSDI ’12.</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/sql-performance-tuning.html#adaptive-query-execution">Performance Tuning (AQE)</a>, <a href="https://spark.apache.org/docs/4.0.1/tuning.html#memory-management-overview">Tuning Guide (memory)</a>, <a href="https://spark.apache.org/docs/4.0.1/rdd-programming-guide.html#rdd-persistence">RDD Programming Guide (persistence)</a>, <a href="https://spark.apache.org/docs/4.0.1/api/python/tutorial/sql/arrow_pandas.html">Arrow in PySpark</a>.</li>
+<li>Apache Spark 4.0.1, source code: <code>OptimizeSkewedJoin.scala</code>, <code>SQLConf.scala</code>, <code>pyspark/sql/udf.py</code>, <code>pyspark/sql/classic/dataframe.py</code>.</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

@@ -14,10 +14,12 @@ layout: default
 {: .summary}
 >Nesta aula, vamos aprender:
 >
->* GroupBy e funções de janela
->* Joins e uniões
->* Spark SQL
->* Avaliação preguiçosa, transformações e ações
+>* O modelo relacional por trás de DataFrames e SQL
+>* NULL e lógica de três valores: filtros, joins e agregações
+>* Agregações pelo seu estado: quais escalam, e aproximações
+>* Funções de janela: quadros, rankings e custo
+>* Semântica dos joins e limites do seu tamanho
+>* Avaliação preguiçosa: o que ganha e suas surpresas
 
 
 ### Slides

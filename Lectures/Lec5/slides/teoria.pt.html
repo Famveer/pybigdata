@@ -188,6 +188,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,158 +207,555 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="o-que-você-vai-aprender" class="slide level2">
-<h2>O que você vai aprender</h2>
+<section id="o-que-você-poderá-prever" class="slide level2 smaller">
+<h2>O que você poderá prever</h2>
+<p>Antes de executar uma consulta, você deve conseguir deduzir:</p>
 <ul>
-<li>Job, stage, task e o que é um shuffle</li>
-<li>Ler um plano de execução com <code>explain()</code></li>
-<li>Partições: <code>repartition</code> vs <code>coalesce</code></li>
-<li>Escolher a estratégia de join correta</li>
+<li>quantos <strong>stages e tasks</strong> ela criará, e por quê</li>
+<li>quantos dados <strong>cruzam a rede</strong>, e um limite inferior do seu tempo</li>
+<li>qual <strong>algoritmo de join</strong> o Spark escolherá, e quando não pode escolher outro</li>
+<li>quando um número de <strong>partições</strong> é baixo ou alto demais</li>
 </ul>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Bloco</th>
+<th>Tema</th>
+<th>Min</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Do código ao plano físico</td>
+<td>20</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>Dependências, stages e tasks</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Modelo de tempo e tolerância a falhas</td>
+<td>15</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Anatomia e custo do shuffle</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Quantas partições</td>
+<td>10</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Algoritmos de join</td>
+<td>25</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Problema integrador</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="o-spark-é-sempre-mais-rápido" class="slide level2">
-<h2>O Spark é sempre mais rápido?</h2>
-<p>Em uma única máquina, com dados que cabem na RAM, o Pandas frequentemente empata ou ganha: o Spark paga um custo fixo (planejamento, JVM, coordenação de tasks).</p>
-<p>O Spark compensa quando:</p>
-<ul>
-<li>os dados <strong>não cabem</strong> na memória de uma máquina;</li>
-<li>existe um <strong>cluster</strong>: o mesmo código escala sem mudanças;</li>
-<li>o pipeline lê de fontes distribuídas (data lake, S3, HDFS).</li>
-</ul>
+<section>
+<section id="do-código-ao-plano-físico" class="title-slide slide level1 center">
+<h1>1. Do código ao plano físico</h1>
+
 </section>
-<section id="job-stage-task" class="slide level2">
-<h2>Job, stage &amp; task</h2>
+<section id="a-cadeia-de-compilação" class="slide level2 smaller">
+<h2>A cadeia de compilação</h2>
+<p>Um DataFrame não são dados: é a <strong>descrição de um cálculo</strong>. Uma ação o compila.</p>
+<pre><code> DataFrame / SQL
+      │  Catalyst
+      ▼
+ unresolved logical plan ─▶ logical plan ─▶ optimized logical plan
+                                                     │
+                                                     ▼
+                     selected physical plan ◀─ candidate physical plans
+                                │  code generation
+                                ▼
+                       DAG of RDDs ─▶ stages ─▶ tasks ─▶ executors</code></pre>
+<p><code>explain()</code> mostra o estado da cadeia antes do DAG. Todo o conteúdo desta aula é consequência de decisões tomadas ao longo dela.</p>
+</section>
+<section id="as-quatro-fases-do-catalyst" class="slide level2 smaller">
+<h2>As quatro fases do Catalyst</h2>
 <table class="caption-top">
 <colgroup>
-<col style="width: 31%">
+<col style="width: 20%">
 <col style="width: 37%">
-<col style="width: 31%">
+<col style="width: 41%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Conceito</th>
-<th>O que é</th>
-<th>Quantos</th>
+<th>Fase</th>
+<th>O que faz</th>
+<th>Decide com</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Job</strong></td>
-<td>Trabalho disparado por uma ação</td>
-<td>1 por ação (às vezes mais)</td>
+<td><strong>Análise</strong></td>
+<td>Resolve nomes e tipos de colunas contra o catálogo</td>
+<td>Regras</td>
 </tr>
 <tr class="even">
-<td><strong>Stage</strong></td>
-<td>Operações que rodam sem trocar dados entre partições</td>
-<td>Novo stage a cada shuffle</td>
+<td><strong>Otimização lógica</strong></td>
+<td>Reescreve o plano em outro equivalente</td>
+<td>Regras</td>
 </tr>
 <tr class="odd">
-<td><strong>Task</strong></td>
-<td>Um stage executado sobre <strong>uma</strong> partição</td>
-<td>1 por partição</td>
+<td><strong>Planejamento físico</strong></td>
+<td>Gera algoritmos e seleciona um</td>
+<td><strong>Custo</strong> + regras</td>
+</tr>
+<tr class="even">
+<td><strong>Geração de código</strong></td>
+<td>Compila expressões para bytecode da JVM</td>
+<td>Regras</td>
 </tr>
 </tbody>
 </table>
-<pre><code>                                JOB
-       ┌─────────────────────────┴──────────────────────┐
-    STAGE 1                                          STAGE 2
- read + filter + partial sum                       final sum
- [T1] [T2] [T3] [T4]  ──── SHUFFLE (Exchange) ───▶ [T1] [T2] [T3]</code></pre>
+<p>Só uma fase compara alternativas. No artigo original, o custo era usado <strong>só para escolher o algoritmo de join</strong> (Armbrust et al., 2015, §4.3).</p>
+<p><strong>Consequência:</strong> a maior parte do otimizador não olha seus dados. Aplica transformações válidas para <em>qualquer</em> dado.</p>
 </section>
-<section id="narrow-vs-wide" class="slide level2 smaller">
-<h2>Narrow vs wide</h2>
-<pre><code>   NARROW                          WIDE (shuffle)
-   P1 ──▶ P1'                      P1 ──┬──▶ P1'
-   P2 ──▶ P2'                      P2 ──┼──▶ P2'
-   P3 ──▶ P3'                      P3 ──┴──▶ P3'</code></pre>
+<section id="as-regras-são-equivalências-algébricas" class="slide level2 smaller">
+<h2>As regras são equivalências algébricas</h2>
+<p>Uma regra é correta só se ambos os planos retornam o mesmo para <strong>toda</strong> entrada.</p>
+<p><strong>Predicate pushdown.</strong> Se <span class="math inline">\(p\)</span> só usa atributos de <span class="math inline">\(R\)</span>:</p>
+<p><span class="math display">\[\sigma_p(R \bowtie S) = \sigma_p(R) \bowtie S\]</span></p>
+<p><strong>Column pruning.</strong> Se a consulta só precisa dos atributos <span class="math inline">\(A\)</span>, o resto não é lido:</p>
+<p><span class="math display">\[\pi_A(R \bowtie S) = \pi_A\big(\pi_{A \cup K}(R) \bowtie \pi_{A \cup K}(S)\big)\]</span></p>
+<p>onde <span class="math inline">\(K\)</span> é a chave do join.</p>
+<p>Ambas reduzem <span class="math inline">\(|R|\)</span> <em>antes</em> dos operadores caros, e daí vem o ganho: todo custo posterior nesta aula é proporcional ao volume que chega a ele.</p>
+</section>
+<section id="uma-reescrita-que-parece-válida-e-não-é" class="slide level2 smaller">
+<h2>Uma reescrita que parece válida e não é</h2>
+<p>Com um <code>LEFT JOIN</code> e um filtro no lado direito, em geral:</p>
+<p><span class="math display">\[\sigma_{S.x&gt;0}(R \mathbin{\text{ LEFT JOIN }} S) \;\neq\; R \mathbin{\text{ LEFT JOIN }} \sigma_{S.x&gt;0}(S)\]</span></p>
+<p>Contraexemplo: <span class="math inline">\(R = \{k{=}1\}\)</span> e <span class="math inline">\(S = \{(k{=}1,\ x{=}{-}5)\}\)</span>.</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Expressão</th>
+<th>Resultado</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Filtro <strong>depois</strong> do join</td>
+<td>vazio</td>
+</tr>
+<tr class="even">
+<td>Filtro <strong>antes</strong> do join</td>
+<td><span class="math inline">\((1,\ \text{NULL})\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>Como <code>NULL &gt; 0</code> não é verdadeiro, o filtro elimina as linhas que o <code>LEFT JOIN</code> adiciona para preservar <span class="math inline">\(R\)</span>. O Catalyst sabe disso e reescreve a primeira forma como <strong>inner join</strong>, que admite pushdown.</p>
+<p><strong>Escrever o filtro de um lado ou do outro não é questão de estilo: muda o resultado.</strong></p>
+</section>
+<section id="o-que-a-estimativa-de-custo-realmente-sabe" class="slide level2 smaller">
+<h2>O que a estimativa de custo realmente sabe</h2>
+<p><code>spark.sql.cbo.enabled</code> é <code>false</code> por padrão. Sem CBO, a estimativa tem <strong>uma dimensão: tamanho em bytes</strong>.</p>
+<ul>
+<li>Scan: tamanho dos arquivos em disco.</li>
+<li><code>Project</code>: escala pela razão de larguras de linha.</li>
+<li><code>Filter</code>: <strong>supõe que não elimina nenhuma linha</strong>.</li>
+</ul>
+<p>Assim, uma tabela de 1 GB filtrada para 1 MB continua estimada em cerca de 1 GB, e <strong>não</strong> recebe broadcast ao construir o plano.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 10%">
-<col style="width: 56%">
-<col style="width: 17%">
-<col style="width: 15%">
+<col style="width: 35%">
+<col style="width: 38%">
+<col style="width: 25%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Tipo</th>
-<th>Cada partição de saída depende de</th>
-<th>Exemplos</th>
-<th>Shuffle</th>
+<th>Mecanismo</th>
+<th>Informação</th>
+<th>Quando</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Narrow</strong></td>
-<td>uma partição de entrada</td>
-<td><code>select</code>, <code>filter</code>, <code>withColumn</code>, <code>union</code></td>
-<td>Não</td>
+<td>Estimativa por tamanho</td>
+<td>Tamanho dos arquivos</td>
+<td>Antes de executar (padrão)</td>
 </tr>
 <tr class="even">
-<td><strong>Wide</strong></td>
-<td>várias partições de entrada</td>
-<td><code>groupBy</code>, <code>join</code>, <code>orderBy</code>, <code>distinct</code>, <code>repartition</code></td>
-<td>Sim</td>
+<td>CBO + <code>ANALYZE TABLE</code></td>
+<td>Linhas, estatísticas de colunas</td>
+<td>Antes de executar (opcional)</td>
+</tr>
+<tr class="odd">
+<td>AQE</td>
+<td>Tamanho <strong>real</strong> de cada shuffle</td>
+<td>Entre stages (padrão)</td>
 </tr>
 </tbody>
 </table>
-<div class="callout callout-important callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Importante</strong></p>
-</div>
-<div class="callout-content">
-<p>O <strong>shuffle</strong> é a operação mais cara: os dados são serializados, gravados em disco, transferidos pela rede e lidos de novo.</p>
-</div>
-</div>
-</div>
+<p>O planejamento estático adivinha com pouca informação, e é exatamente essa lacuna que o AQE preenche (Aula 6).</p>
 </section>
-<section id="lendo-um-plano-com-explain" class="slide level2">
-<h2>Lendo um plano com <code>explain()</code></h2>
-<p>Lê-se <strong>de baixo para cima</strong>. Todo shuffle aparece como <code>Exchange</code>.</p>
+<section id="ler-o-plano-operadores-e-n" class="slide level2 smaller">
+<h2>Ler o plano: operadores e <code>*(n)</code></h2>
+<p>Plano real do Lab 4 (abreviado). É lido <strong>de baixo para cima</strong>, como uma árvore de operadores:</p>
+<pre><code>*(4) Sort [n DESC]
++- Exchange rangepartitioning(n DESC, 200)
+   +- *(3) HashAggregate(keys=[category], functions=[count(1)])
+      +- Exchange hashpartitioning(category, 200)
+         +- *(2) HashAggregate(keys=[category], functions=[partial_count(1)])
+            +- *(2) BroadcastHashJoin [product_id], [product_id], Inner, BuildRight
+               :- *(2) FileScan parquet orders  ReadSchema: struct&lt;product_id:int&gt;
+               +- BroadcastExchange
+                  +- *(1) FileScan parquet products</code></pre>
+<p><code>*(n)</code> marca a <strong>geração de código por stage inteiro</strong>: os operadores com o mesmo <code>n</code> são compilados em uma só função Java, sem uma chamada virtual por operador e por linha. <strong><code>n</code> não é um número de stage</strong>: aqui <code>*(1)</code> e <code>*(2)</code> rodam em jobs diferentes, e os stages são definidos pelos <code>Exchange</code>.</p>
+</section></section>
+<section>
+<section id="dependências-stages-e-tasks" class="title-slide slide level1 center">
+<h1>2. Dependências, stages e tasks</h1>
+
+</section>
+<section id="a-abstração-sob-o-plano-rdd" class="slide level2 smaller">
+<h2>A abstração sob o plano: RDD</h2>
+<p>O plano físico executa como um grafo de RDDs. Um RDD é definido por cinco coisas (Zaharia et al., 2012, Tabela 3):</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 43%">
+<col style="width: 56%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operação</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>partitions()</code></td>
+<td>Peças atômicas do dataset</td>
+</tr>
+<tr class="even">
+<td><code>dependencies()</code></td>
+<td>Quais partições pai cada uma precisa</td>
+</tr>
+<tr class="odd">
+<td><code>iterator(p, parents)</code></td>
+<td>Como calcular a partição <code>p</code> a partir dos pais</td>
+</tr>
+<tr class="even">
+<td><code>partitioner()</code></td>
+<td>Se está particionado por hash ou por faixa</td>
+</tr>
+<tr class="odd">
+<td><code>preferredLocations(p)</code></td>
+<td>Nós onde <code>p</code> é acessada mais rápido</td>
+</tr>
+</tbody>
+</table>
+<p>Um RDD <strong>não guarda resultados</strong>, só como obtê-los. Esse grafo é a <strong>linhagem</strong>, e sustenta as duas propriedades centrais do motor: pipelining e recuperação.</p>
+</section>
+<section id="narrow-e-wide-a-definição-precisa" class="slide level2 smaller">
+<h2>Narrow e wide: a definição precisa</h2>
+<p>Considere o grafo bipartido entre partições pai e filhas.</p>
 <ul>
-<li><code>PushedFilters</code>: o filtro chega até a leitura (<em>predicate pushdown</em>)</li>
-<li><code>ReadSchema</code>: só as colunas usadas são lidas (<em>column pruning</em>)</li>
-<li><code>HashAggregate (partial)</code> antes de <code>Exchange</code>: só os totais parciais atravessam o shuffle</li>
-<li><code>Exchange hashpartitioning(region, 200)</code>: o shuffle, com 200 partições de saída</li>
+<li><strong>Narrow:</strong> cada partição <strong>pai</strong> é usada por <strong>no máximo uma</strong> partição filha.</li>
+<li><strong>Wide:</strong> uma partição pai pode ser usada por <strong>várias</strong> filhas.</li>
+</ul>
+<p>A condição é sobre o pai. Uma filha pode ler vários pais e continuar narrow:</p>
+<pre><code>   map / filter         union            coalesce          groupBy (wide)
+   P1 ──▶ C1            P1 ──▶ C1        P1 ──┐            P1 ──┬──▶ C1
+   P2 ──▶ C2            P2 ──▶ C2        P2 ──┴▶ C1        P2 ──┼──▶ C2
+   P3 ──▶ C3            Q1 ──▶ C3        P3 ──┐            P3 ──┴──▶ C3
+                                         P4 ──┴▶ C2      (Pi ──▶ C1, C2, C3)</code></pre>
+<p>Uma dependência ser wide depende da <strong>disposição dos dados</strong>, não do nome da operação: um <code>join</code> de duas entradas já particionadas por hash com o mesmo particionador é narrow (Zaharia et al., 2012, §4).</p>
+</section>
+<section id="por-que-a-distinção-importa" class="slide level2 smaller">
+<h2>Por que a distinção importa</h2>
+<table class="caption-top" style="width:100%;">
+<colgroup>
+<col style="width: 48%">
+<col style="width: 29%">
+<col style="width: 22%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Propriedade</th>
+<th>Narrow</th>
+<th>Wide</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Execução</strong></td>
+<td>Encadeada registro a registro em um nó</td>
+<td>Precisa antes da saída de todos os pais</td>
+</tr>
+<tr class="even">
+<td><strong>Memória</strong></td>
+<td><span class="math inline">\(O(1)\)</span> por registro: compõe iteradores</td>
+<td>Armazena, ordena, pode despejar em disco</td>
+</tr>
+<tr class="odd">
+<td><strong>Falha</strong></td>
+<td>Recalcula só as partições pai perdidas, em paralelo</td>
+<td>Um nó pode perder um pedaço de <em>cada</em> partição ancestral</td>
+</tr>
+</tbody>
+</table>
+<p>Encadear significa que <code>filter</code> seguido de <code>map</code> <strong>não</strong> são duas passadas sobre os dados:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a><span class="cf">for</span> row <span class="kw">in</span> parent:                     <span class="co"># conceitualmente, um só laço</span></span>
+<span id="cb4-2"><a href=""></a>    <span class="cf">if</span> predicate(row):</span>
+<span id="cb4-3"><a href=""></a>        <span class="cf">yield</span> transform(row)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>O número de transformações narrow quase não tem custo estrutural. <strong>O número de dependências wide determina a forma do job.</strong></p>
+</section>
+<section id="do-grafo-aos-stages" class="slide level2 smaller">
+<h2>Do grafo aos stages</h2>
+<p><strong>Algoritmo.</strong> A partir da ação, percorra a linhagem para trás e corte em cada dependência wide. Cada componente conexa resultante é um <strong>stage</strong> (Zaharia et al., 2012, §5.1).</p>
+<p><strong>Proposição.</strong> Se o plano é uma árvore com <span class="math inline">\(k\)</span> nós <code>Exchange</code> de shuffle, o job tem <span class="math inline">\(k + 1\)</span> stages.</p>
+<p><em>Demonstração.</em> Remover <span class="math inline">\(k\)</span> arestas de uma árvore deixa exatamente <span class="math inline">\(k + 1\)</span> componentes conexas. <span class="math inline">\(\square\)</span></p>
+<p>Além disso, em um stage com <span class="math inline">\(P\)</span> partições de saída há <span class="math inline">\(P\)</span> tasks, então:</p>
+<p><span class="math display">\[\text{tasks} = \sum_{i=1}^{k+1} P_i\]</span></p>
+<p><strong>Ressalvas:</strong> <code>BroadcastExchange</code> não corta o stage (roda como job à parte); <code>rangepartitioning</code> lança um job extra de amostragem, e por isso uma ação pode produzir mais de um job; e um exchange reutilizado transforma o plano em um DAG em vez de uma árvore.</p>
+</section>
+<section id="exercício-contar-antes-de-executar" class="slide level2 smaller">
+<h2>Exercício: contar antes de executar</h2>
+<p><code>orders</code> tem 24 partições de leitura, <code>spark.sql.shuffle.partitions = 200</code>, AQE desligado. Quantos stages e tasks?</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href=""></a>orders.<span class="bu">filter</span>(F.col(<span class="st">"price"</span>) <span class="op">&gt;</span> <span class="dv">100</span>) <span class="op">\</span></span>
+<span id="cb5-2"><a href=""></a>      .withColumn(<span class="st">"revenue"</span>, F.col(<span class="st">"price"</span>) <span class="op">*</span> F.col(<span class="st">"quantity"</span>)) <span class="op">\</span></span>
+<span id="cb5-3"><a href=""></a>      .groupBy(<span class="st">"region"</span>).agg(F.<span class="bu">sum</span>(<span class="st">"revenue"</span>)) <span class="op">\</span></span>
+<span id="cb5-4"><a href=""></a>      .write.<span class="bu">format</span>(<span class="st">"noop"</span>).mode(<span class="st">"overwrite"</span>).save()</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="fragment">
+<p>Um <code>Exchange</code>, então <span class="math inline">\(k = 1\)</span> e <strong>2 stages</strong>. <code>filter</code>, <code>withColumn</code> e a agregação parcial são encadeados no primeiro.</p>
+<p>Tasks: <span class="math inline">\(24 + 200 =\)</span> <strong>224</strong>. Mas <code>region</code> tem só 5 valores distintos, então <strong>pelo menos 195 dessas 200 tasks não recebem nada</strong>. O modelo já encontrou um problema sem executar nada.</p>
+</div>
+<div class="fragment">
+<p>Confira no Lab 4 com <code>explain()</code> e a aba Stages da Spark UI.</p>
+</div>
+</section></section>
+<section>
+<section id="modelo-de-tempo-e-tolerância-a-falhas" class="title-slide slide level1 center">
+<h1>3. Modelo de tempo e tolerância a falhas</h1>
+
+</section>
+<section id="quanto-tempo-leva-um-stage" class="slide level2 smaller">
+<h2>Quanto tempo leva um stage?</h2>
+<p>Um stage é um conjunto de tasks independentes com durações <span class="math inline">\(t_1, \dots, t_P\)</span> em <span class="math inline">\(c\)</span> núcleos idênticos. Seja:</p>
+<p><span class="math display">\[W = \sum_i t_i \qquad t_{\max} = \max_i t_i\]</span></p>
+<p><strong>Limite inferior.</strong> O trabalho não pode ser dividido melhor que por igual, e uma task não é divisível:</p>
+<p><span class="math display">\[T \;\geq\; \max\left(\frac{W}{c},\ t_{\max}\right)\]</span></p>
+<p><strong>Como ler o limite:</strong></p>
+<ul>
+<li>Se <span class="math inline">\(t_{\max} &gt; W/c\)</span>, <strong>adicionar núcleos não ajuda</strong>: a maior task define o tempo.</li>
+<li>Com <span class="math inline">\(P &lt; c\)</span>, usam-se no máximo <span class="math inline">\(P\)</span> núcleos, qualquer que seja o tamanho do cluster.</li>
+</ul>
+<p>Um stage termina quando termina sua task <strong>mais lenta</strong>, e o lado reduce de um shuffle espera todas as saídas map do pai. Por isso stages em sequência se somam:</p>
+<p><span class="math display">\[T_{\text{job}} = \sum_{\text{stages no caminho mais longo}} T_{\text{stage}}\]</span></p>
+</section>
+<section id="um-limite-superior-list-scheduling" class="slide level2 smaller">
+<h2>Um limite superior: list scheduling</h2>
+<p>O Spark atribui a próxima task pendente a um núcleo livre: isso é <strong>list scheduling</strong> (Graham, 1969).</p>
+<p><strong>Proposição.</strong> Para qualquer ordem das tasks:</p>
+<p><span class="math display">\[T \;\leq\; \frac{W}{c} + \left(1 - \frac{1}{c}\right) t_{\max}\]</span></p>
+<p><em>Demonstração.</em> Seja <span class="math inline">\(j\)</span> a task que termina por último, e <span class="math inline">\(s\)</span> seu início. Até <span class="math inline">\(s\)</span> todos os núcleos estiveram ocupados, ou <span class="math inline">\(j\)</span> teria começado antes. Então <span class="math inline">\(c \cdot s \leq W - t_j\)</span>, e:</p>
+<p><span class="math display">\[T = s + t_j \leq \frac{W - t_j}{c} + t_j = \frac{W}{c} + \left(1 - \frac{1}{c}\right) t_j \leq \frac{W}{c} + \left(1 - \frac{1}{c}\right) t_{\max} \quad \square\]</span></p>
+<p><strong>Junto com o limite inferior:</strong> se <span class="math inline">\(t_{\max} \ll W/c\)</span>, então <span class="math inline">\(T \approx W/c\)</span>, e o escalonamento é quase ideal. Tudo que torna as tasks pequenas e parelhas aproxima desse caso.</p>
+<p><em>O modelo ignora a localidade e os nós heterogêneos: é uma referência, não uma previsão exata.</em></p>
+</section>
+<section id="por-que-as-tasks-falham-e-o-que-o-spark-faz" class="slide level2 smaller">
+<h2>Por que as tasks falham, e o que o Spark faz</h2>
+<p>Se cada nó falha de forma independente com probabilidade <span class="math inline">\(p\)</span> durante um job, com <span class="math inline">\(N\)</span> nós:</p>
+<p><span class="math display">\[P(\text{pelo menos uma falha}) = 1 - (1 - p)^N\]</span></p>
+<p>Com <span class="math inline">\(p = 0{,}1\%\)</span> e <span class="math inline">\(N = 1000\)</span> (valores ilustrativos): <span class="math inline">\(1 - 0{,}999^{1000} \approx\)</span> <strong>63%</strong>. Em escala, a falha é o caso normal, e reiniciar todo o job não é viável.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 35%">
+<col style="width: 65%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Falha</th>
+<th>Recuperação</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Uma task falha</td>
+<td>É repetida, até <code>spark.task.maxFailures</code> = 4 tentativas</td>
+</tr>
+<tr class="even">
+<td>Executor perdido, pais narrow</td>
+<td>Só suas partições são recalculadas, pela linhagem</td>
+</tr>
+<tr class="odd">
+<td>Saída map de um shuffle perdida</td>
+<td>O stage pai é <strong>reenviado</strong> para as partições que faltam (<code>FetchFailedException</code>)</td>
+</tr>
+<tr class="even">
+<td>Linhagem longa com dependências wide</td>
+<td>Recuperar pode ser caro: <code>checkpoint</code> corta a linhagem</td>
+</tr>
+</tbody>
+</table>
+<p>As saídas map são gravadas em disco justamente para <strong>não recalcular os pais</strong> se uma task reduce falhar (Zaharia et al., 2012, §5.1).</p>
+</section></section>
+<section>
+<section id="anatomia-e-custo-do-shuffle" class="title-slide slide level1 center">
+<h1>4. Anatomia e custo do shuffle</h1>
+
+</section>
+<section id="o-particionador-decide-tudo" class="slide level2 smaller">
+<h2>O particionador decide tudo</h2>
+<p><code>hashpartitioning(k, R)</code> envia cada linha para a partição:</p>
+<p><span class="math display">\[f(k) = \text{pmod}\big(\text{Murmur3}(k),\ R\big)\]</span></p>
+<p><strong>Correção.</strong> <span class="math inline">\(f\)</span> é determinístico, então linhas com chave igual chegam à mesma partição: isso torna possíveis <code>groupBy</code> e <code>join</code>.</p>
+<p><strong>Balanço.</strong> Um hash distribui <em>chaves</em>, não <em>linhas</em>. Se <span class="math inline">\(f_k\)</span> é a fração de linhas com chave <span class="math inline">\(k\)</span>, de <span class="math inline">\(n\)</span> linhas:</p>
+<p><span class="math display">\[\text{partição máxima} \;\geq\; n \cdot \max_k f_k \qquad \text{para qualquer } R\]</span></p>
+<p>Uma chave com 40% das linhas gera uma partição com pelo menos 40% dos dados. <strong>Nenhum valor de <span class="math inline">\(R\)</span> resolve isso</strong>, e junto com o limite <span class="math inline">\(T \geq t_{\max}\)</span> é a definição formal do problema de skew (Aula 6).</p>
+</section>
+<section id="chaves-em-partições-bolas-e-urnas" class="slide level2 smaller">
+<h2>Chaves em partições: bolas e urnas</h2>
+<p>Com <span class="math inline">\(d\)</span> chaves distintas, <span class="math inline">\(R\)</span> partições e um hash ideal, cada chave cai ao acaso de forma uniforme. A fração esperada de partições <strong>vazias</strong> é:</p>
+<p><span class="math display">\[\left(1 - \frac{1}{R}\right)^{d} \approx e^{-d/R}\]</span></p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 52%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Caso</th>
+<th><span class="math inline">\(d\)</span></th>
+<th><span class="math inline">\(R\)</span></th>
+<th>Partições vazias</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>region</code></td>
+<td>5</td>
+<td>200</td>
+<td>pelo menos 195 (no máximo 5 podem ter dados)</td>
+</tr>
+<tr class="even">
+<td>Cardinalidade média</td>
+<td>200</td>
+<td>200</td>
+<td><span class="math inline">\(\approx e^{-1}\)</span>: cerca de <strong>37%</strong>, mesmo com <span class="math inline">\(d = R\)</span></td>
+</tr>
+<tr class="odd">
+<td><code>customer_id</code></td>
+<td>200.000</td>
+<td>200</td>
+<td><span class="math inline">\(\approx e^{-1000}\)</span>: nenhuma</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Leitura:</strong> com <span class="math inline">\(d \approx R\)</span>, mais de um terço das tasks não faz nada, e outras partições recebem várias chaves. O balanço só aparece com <span class="math inline">\(d \gg R\)</span>. Por isso um valor fixo de 200 não pode servir para toda consulta, e por isso o AQE funde partições depois de ver os tamanhos reais.</p>
+</section>
+<section id="anatomia-de-um-shuffle" class="slide level2 smaller">
+<h2>Anatomia de um shuffle</h2>
+<p>A documentação do Spark chama os lados de <em>map</em> e <em>reduce</em>, por causa do MapReduce:</p>
+<pre><code> LADO MAP (M tasks)                          LADO REDUCE (R tasks)
+ ┌──────────────────────────────┐            ┌─────────────────────────┐
+ │ calcula f(k) para cada linha │            │ pergunta onde estão     │
+ │ armazena em memória          │            │ busca um bloco de cada  │
+ │ ordena por partição destino  │───rede────▶│   uma das M saídas      │
+ │ despeja em disco se estourar │            │ funde, agrega ou une    │
+ │ grava 1 arquivo + 1 índice   │            │ também pode despejar    │
+ └──────────────────────────────┘            └─────────────────────────┘</code></pre>
+<p><strong>Por que custa:</strong> soma serialização (CPU), escrita em disco, rede, leitura e desserialização, e cria uma <strong>barreira</strong>: os reducers precisam das saídas das <span class="math inline">\(M\)</span> tasks map. Há <span class="math inline">\(M \times R\)</span> blocos lógicos, mas só <span class="math inline">\(2M\)</span> arquivos graças ao arquivo único ordenado com seu índice.</p>
+<p><code>M = 1000, R = 200</code> são 200.000 blocos a localizar e buscar, então blocos minúsculos custam mesmo com poucos dados.</p>
+</section>
+<section id="quanto-cruza-a-rede" class="slide level2 smaller">
+<h2>Quanto cruza a rede?</h2>
+<p>Com um hash uniforme sobre <span class="math inline">\(N\)</span> nós, um registro fica local com probabilidade <span class="math inline">\(1/N\)</span>. Um shuffle de volume <span class="math inline">\(D\)</span> move pela rede:</p>
+<p><span class="math display">\[D_{\text{rede}} = D\left(1 - \frac{1}{N}\right)\]</span></p>
+<p>Adicionar nós não reduz a fração: <strong>tende a 100%</strong>. Com largura de banda <span class="math inline">\(b\)</span> por nó e uma troca perfeitamente parelha, um limite inferior do seu tempo é:</p>
+<p><span class="math display">\[T_{\text{rede}} \;\geq\; \frac{D\,(1 - 1/N)}{N\,b}\]</span></p>
+<p><strong>Exemplo.</strong> <span class="math inline">\(D = 1\)</span> TB, <span class="math inline">\(N = 10\)</span>, rede de 10 Gb/s, ou seja <span class="math inline">\(b = 1{,}25\)</span> GB/s:</p>
+<p><span class="math display">\[T_{\text{rede}} \geq \frac{900\ \text{GB}}{12{,}5\ \text{GB/s}} = 72\ \text{s}\]</span></p>
+<p>É um limite inferior que exclui disco, serialização e desbalanço. Serve para saber o que <strong>nenhum ajuste</strong> pode superar sem reduzir <span class="math inline">\(D\)</span>. Por isso a primeira otimização é sempre a mesma: <strong>mover menos dados</strong>.</p>
+</section>
+<section id="agregação-parcial-quando-ajuda-e-quanto" class="slide level2 smaller">
+<h2>Agregação parcial: quando ajuda, e quanto</h2>
+<p>O plano do Lab 4 tem <code>partial_sum</code> antes do <code>Exchange</code> e <code>sum</code> depois. Só funciona se a função é <strong>decomponível</strong>: <span class="math inline">\(\text{sum}(A \cup B) = \text{sum}(\text{sum}(A), \text{sum}(B))\)</span>.</p>
+<p>Após o passo parcial, cada uma das <span class="math inline">\(M\)</span> tasks map emite no máximo uma linha por chave; com <span class="math inline">\(n\)</span> linhas e <span class="math inline">\(d\)</span> chaves:</p>
+<p><span class="math display">\[\text{linhas no shuffle} \;\leq\; \min(n,\ M \cdot d)\]</span></p>
+<p><strong><code>groupBy("region")</code></strong>, <span class="math inline">\(n\)</span> = 5M, <span class="math inline">\(d\)</span> = 5, <span class="math inline">\(M\)</span> = 24: no máximo <strong>120 linhas</strong> em vez de 5.000.000.</p>
+<p><strong><code>groupBy("customer_id")</code></strong>, <span class="math inline">\(d\)</span> = 200.000: o limite dá 4,8M, que diz pouco. Uma estimativa melhor: cada task tem <span class="math inline">\(m = n/M \approx 208.333\)</span> linhas, com chaves distintas esperadas:</p>
+<p><span class="math display">\[d\left(1 - \left(1 - \tfrac{1}{d}\right)^{m}\right) \approx 200.000\,(1 - e^{-1{,}04}) \approx 129.400\]</span></p>
+<p>Total <span class="math inline">\(\approx\)</span> 3,1M linhas: <strong>só 38% a menos</strong>. A agregação parcial ajuda muito com <span class="math inline">\(M \cdot d \ll n\)</span>, e quase nada quando <span class="math inline">\(d\)</span> se aproxima de <span class="math inline">\(n/M\)</span>.</p>
+</section></section>
+<section>
+<section id="quantas-partições" class="title-slide slide level1 center">
+<h1>5. Quantas partições</h1>
+
+</section>
+<section id="poucas-ou-demais-o-compromisso" class="slide level2 smaller">
+<h2>Poucas ou demais: o compromisso</h2>
+<p>Dados <span class="math inline">\(D\)</span> em <span class="math inline">\(P\)</span> partições parelhas, <span class="math inline">\(c\)</span> núcleos, velocidade <span class="math inline">\(r\)</span> por núcleo, e um custo fixo <span class="math inline">\(o\)</span> por task (agendamento, serialização, abrir arquivos):</p>
+<p><span class="math display">\[t = \frac{D}{P\,r} + o \qquad\qquad T \approx \max\left(\frac{D}{c\,r} + \frac{P\,o}{c},\ \ \frac{D}{P\,r} + o\right)\]</span></p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 23%">
+<col style="width: 50%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Regime</th>
+<th>Termo dominante</th>
+<th>Sintoma</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(P &lt; c\)</span></td>
+<td><span class="math inline">\(D / (P\,r)\)</span></td>
+<td>Núcleos ociosos; tasks grandes; despejos em disco</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(P \gg D / (r\,o)\)</span></td>
+<td><span class="math inline">\(P\,o / c\)</span></td>
+<td>Milhares de tasks de milissegundos, arquivos minúsculos</td>
+</tr>
+</tbody>
+</table>
+<p>Assim, <span class="math inline">\(P\)</span> tem um piso definido pelos <strong>núcleos</strong> e um teto definido pelo <strong>volume de dados</strong>. As orientações da documentação combinam com este modelo:</p>
+<ul>
+<li><strong>2 a 3 tasks por núcleo</strong> (guia de ajuste do Spark): as tasks de sobra absorvem diferenças entre elas e baixam <span class="math inline">\(t_{\max}\)</span>.</li>
+<li><strong>100 a 200 MB por partição de shuffle:</strong> regra prática comum, não uma constante do Spark.</li>
 </ul>
 </section>
-<section id="partições" class="slide level2 smaller">
-<h2>Partições</h2>
-<p>Uma task processa uma partição. Poucas deixam núcleos ociosos; demais geram overhead e arquivos pequenos.</p>
-<table class="caption-top">
-<colgroup>
-<col style="width: 24%">
-<col style="width: 35%">
-<col style="width: 40%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Momento</th>
-<th>Quem decide</th>
-<th>Configuração</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Leitura de arquivos</td>
-<td>Tamanho dos arquivos</td>
-<td><code>spark.sql.files.maxPartitionBytes</code> (128 MB)</td>
-</tr>
-<tr class="even">
-<td>Após um shuffle</td>
-<td>Configuração fixa (sem AQE)</td>
-<td><code>spark.sql.shuffle.partitions</code> (200)</td>
-</tr>
-<tr class="odd">
-<td>Manual</td>
-<td>Você</td>
-<td><code>repartition(n)</code> / <code>coalesce(n)</code></td>
-</tr>
-</tbody>
-</table>
+<section id="partições-na-leitura-a-fórmula-real" class="slide level2 smaller">
+<h2>Partições na leitura: a fórmula real</h2>
+<p>O Spark não lê “uma partição por arquivo”. Em fontes de arquivos (<code>FilePartition.scala</code>):</p>
+<p><span class="math display">\[\text{maxSplitBytes} = \min\Big(\texttt{maxPartitionBytes},\ \max\big(\texttt{openCost},\ \tfrac{\sum_i (\text{size}_i + \texttt{openCost})}{\text{parallelism}}\big)\Big)\]</span></p>
+<p>com padrões de 128 MB e 4 MB. Arquivos maiores são divididos, e os pequenos são <strong>empacotados</strong>, cobrando <code>openCost</code> por cada um.</p>
+<p><strong>Exercício.</strong> Paralelismo 8. Quantas partições?</p>
+<ol type="1">
+<li>Um Parquet de 10 GB</li>
+<li>1.000 Parquet de 1 MB</li>
+<li>Um CSV de 10 GB comprimido com gzip</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li>Split = min(128 MB, 1,25 GB) = 128 MB. Então 10.240 / 128 = <strong>80</strong>.</li>
+<li>Total 5.000 MB, split = 128 MB. Cada arquivo soma 5 MB, e cabem 26 por partição: <strong>39</strong>. Sem <code>openCost</code> seriam 8.</li>
+<li><strong>1</strong>: gzip não pode ser dividido. Uma task de 10 GB, qualquer que seja o cluster, e domina <span class="math inline">\(t_{\max}\)</span>.</li>
+</ol>
+</div>
+</section>
+<section id="repartition-e-coalesce-a-partir-da-definição" class="slide level2 smaller">
+<h2><code>repartition</code> e <code>coalesce</code>, a partir da definição</h2>
 <table class="caption-top">
 <colgroup>
 <col style="width: 2%">
@@ -373,63 +771,352 @@ Felipe A. Moreno-Vera
 </thead>
 <tbody>
 <tr class="odd">
-<td>Shuffle</td>
+<td>Dependência</td>
+<td>Wide</td>
+<td><strong>Narrow</strong></td>
+</tr>
+<tr class="even">
+<td>Stage novo</td>
+<td>Sim</td>
+<td><strong>Não</strong></td>
+</tr>
+<tr class="odd">
+<td>Balanço</td>
+<td>Parelho (<code>RoundRobinPartitioning</code>)</td>
+<td>O que resultar da fusão</td>
+</tr>
+<tr class="even">
+<td>Pode aumentar <span class="math inline">\(n\)</span></td>
 <td>Sim</td>
 <td>Não</td>
 </tr>
-<tr class="even">
-<td>Pode aumentar partições</td>
-<td>Sim</td>
-<td>Não, só reduz</td>
-</tr>
-<tr class="odd">
-<td>Uso típico</td>
-<td>Antes de joins pesados, por chave</td>
-<td>Reduzir arquivos antes de escrever</td>
-</tr>
 </tbody>
 </table>
+<p><strong>A armadilha vem da definição.</strong> Uma dependência narrow fica no <strong>mesmo stage</strong>, e esse stage tem tantas tasks quanto partições do seu último RDD. Assim, em:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a>df.<span class="bu">filter</span>(...).withColumn(...).coalesce(<span class="dv">1</span>).write.parquet(path)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>todo o stage, incluindo <code>filter</code> e <code>withColumn</code>, roda em <strong>1 task</strong>, não só a escrita final: <span class="math inline">\(T \geq W\)</span>, com um núcleo fazendo todo o trabalho.</p>
+<p><code>repartition(1)</code> adiciona um shuffle, mas o stage anterior mantém seu paralelismo. Qual convém depende de como <span class="math inline">\(W\)</span> se compara ao custo do shuffle.</p>
+</section></section>
+<section>
+<section id="algoritmos-de-join" class="title-slide slide level1 center">
+<h1>6. Algoritmos de join</h1>
+
 </section>
-<section id="estratégias-de-join" class="slide level2">
-<h2>Estratégias de join</h2>
-<pre><code>  SORT-MERGE JOIN (default)                BROADCAST HASH JOIN
-  orders ──shuffle──┐                      products (small)
-                    ├── sort + merge         │ copy  │ copy  │ copy
-  customers ─shuffle┘                      [orders P1] [orders P2] [orders P3]</code></pre>
+<section id="o-invariante-de-um-join-distribuído" class="slide level2 smaller">
+<h2>O invariante de um join distribuído</h2>
+<p>Um equi-join precisa de uma condição: <strong>linhas com a mesma chave devem ser processadas na mesma task.</strong> Há três formas de conseguir isso:</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 40%">
-<col style="width: 32%">
-<col style="width: 28%">
+<col style="width: 21%">
+<col style="width: 33%">
+<col style="width: 45%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Estratégia</th>
-<th>Quando</th>
-<th>Custo</th>
+<th>Forma</th>
+<th>Algoritmo</th>
+<th>O que se move</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Broadcast Hash</strong></td>
-<td>Um lado é pequeno (padrão: &lt; 10 MB)</td>
-<td>Sem shuffle do lado grande; o pequeno na memória de cada executor</td>
+<td>Particionar ambos os lados com a mesma <span class="math inline">\(f\)</span></td>
+<td>Sort-merge, shuffle hash</td>
+<td>Ambas as tabelas</td>
 </tr>
 <tr class="even">
-<td><strong>Sort-Merge</strong></td>
-<td>Duas tabelas grandes</td>
-<td>Shuffle + ordenação dos dois lados</td>
+<td>Copiar um lado para todos</td>
+<td>Broadcast hash</td>
+<td>A tabela pequena</td>
 </tr>
 <tr class="odd">
-<td><strong>Shuffle Hash</strong></td>
-<td>Lado médio, sem ordenação</td>
-<td>Shuffle dos dois lados, hash do menor</td>
+<td>Já estão particionados</td>
+<td>Bucketing, ou um shuffle anterior</td>
+<td>Nada</td>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>orders.join(F.broadcast(products), <span class="st">"product_id"</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Notação: <span class="math inline">\(n_R \geq n_S\)</span> linhas, <span class="math inline">\(|R| \geq |S|\)</span> bytes, <span class="math inline">\(N\)</span> executors, <span class="math inline">\(P\)</span> partições.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 35%">
+<col style="width: 19%">
+<col style="width: 16%">
+<col style="width: 29%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Algoritmo</th>
+<th>Rede</th>
+<th>CPU</th>
+<th>Memória</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Broadcast hash</strong></td>
+<td><span class="math inline">\(N \cdot |S|\)</span></td>
+<td><span class="math inline">\(O(n_S + n_R)\)</span></td>
+<td><span class="math inline">\(|S|\)</span> em <strong>cada</strong> executor</td>
+</tr>
+<tr class="even">
+<td><strong>Shuffle hash</strong></td>
+<td><span class="math inline">\((|R| + |S|)(1 - 1/N)\)</span></td>
+<td><span class="math inline">\(O(n_S + n_R)\)</span></td>
+<td><span class="math inline">\(|S|/P\)</span> por task, deve caber</td>
+</tr>
+<tr class="odd">
+<td><strong>Sort-merge</strong></td>
+<td><span class="math inline">\((|R| + |S|)(1 - 1/N)\)</span></td>
+<td><span class="math inline">\(O(n \log (n/P))\)</span></td>
+<td>Pode despejar: o mais robusto</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="broadcast-ou-shuffle-onde-está-o-limite" class="slide level2 smaller">
+<h2>Broadcast ou shuffle: onde está o limite?</h2>
+<p>Só pela rede, broadcast ganha se <span class="math inline">\(N|S| &lt; (|R| + |S|)(1 - 1/N)\)</span>, ou seja:</p>
+<p><span class="math display">\[|S| \;&lt;\; |R| \cdot \frac{1 - 1/N}{N - 1 + 1/N} \;\approx\; \frac{|R|}{N}\]</span></p>
+<p>Com <span class="math inline">\(|R| = 1\)</span> TB e <span class="math inline">\(N = 10\)</span>: broadcast economizaria rede até <span class="math inline">\(|S| \approx\)</span> 99 GB. Mas o limiar padrão é <strong>10 MB</strong>. Por quê?</p>
+<p><strong>Porque a rede não é o que limita:</strong></p>
+<ul>
+<li>O lado de construção é <strong>coletado primeiro no driver</strong> (<code>executeCollectIterator</code>).</li>
+<li>Deve caber na memória de <strong>cada</strong> executor, como tabela hash.</li>
+<li>Limites rígidos: <strong>8 GiB</strong>, e até 512 milhões de linhas (341 milhões se a chave não for um só inteiro).</li>
+<li><code>spark.sql.broadcastTimeout</code> = 300 s: passado isso, o job falha.</li>
+<li>A decisão usa uma <strong>estimativa</strong>, que pode estar muito errada (veja o slide de <code>Filter</code>).</li>
+</ul>
+<p>Um sort-merge errado é lento. Um broadcast errado <strong>derruba o job</strong>. Um risco assimétrico justifica um limiar conservador.</p>
+</section>
+<section id="como-o-planejador-escolhe" class="slide level2 smaller">
+<h2>Como o planejador escolhe</h2>
+<p><code>JoinSelection</code> segue uma ordem fixa. Ganha o primeiro aplicável:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 46%">
+<col style="width: 53%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Caso</th>
+<th>Ordem</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Com hint</strong></td>
+<td><code>BROADCAST</code> &gt; <code>MERGE</code> &gt; <code>SHUFFLE_HASH</code> &gt; <code>SHUFFLE_REPLICATE_NL</code></td>
+</tr>
+<tr class="even">
+<td><strong>Equi-join</strong></td>
+<td>Broadcast hash ▶ Shuffle hash ▶ Sort-merge ▶ Cartesiano ▶ Broadcast nested loop</td>
+</tr>
+<tr class="odd">
+<td><strong>Join sem igualdade</strong></td>
+<td>Broadcast nested loop ▶ Cartesiano ▶ Broadcast nested loop</td>
+</tr>
+</tbody>
+</table>
+<p>Shuffle hash só tem prioridade se <code>spark.sql.join.preferSortMergeJoin</code> for <code>false</code> (padrão <code>true</code>), então o habitual é <strong>broadcast se couber, senão sort-merge</strong>.</p>
+<p><strong>Um hint é uma preferência e não uma ordem:</strong> uma estratégia que não suporta o tipo de join é ignorada.</p>
+<p><strong>Um join sem igualdade não tem chave para hash</strong>, então o invariante não se consegue particionando. Comparam-se todos os pares: <span class="math inline">\(10^6 \times 10^4 = 10^{10}\)</span> comparações, não importa quantas linhas coincidam. Uma condição <code>a.x &lt; b.y</code> pode mudar a classe de complexidade de toda a consulta.</p>
+</section>
+<section id="exercício-por-que-aqui-não-dá-para-fazer-broadcast" class="slide level2 smaller">
+<h2>Exercício: por que aqui não dá para fazer broadcast?</h2>
+<p><code>small</code> tem 1 MB, <code>big</code> tem 1 TB, com o limiar padrão:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href=""></a>small.join(big, <span class="st">"k"</span>, <span class="st">"left"</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="fragment">
+<p><strong>Não dá para fazer broadcast.</strong> Cada executor teria uma cópia de <code>small</code>, enquanto <code>big</code> está distribuída entre eles. Um <code>LEFT JOIN</code> deve emitir as linhas de <code>small</code> <strong>sem correspondência em nenhuma</strong> partição de <code>big</code>. Mas nenhuma task vê todo o <code>big</code>, então nenhuma pode decidir que uma linha não tem correspondência.</p>
+<p>Por isso o lado preservado não pode ser o de construção:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Tipo de join</th>
+<th>Pode fazer broadcast de</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Inner</td>
+<td>Qualquer lado</td>
+</tr>
+<tr class="even">
+<td><code>LEFT</code>, <code>LEFT SEMI</code>, <code>LEFT ANTI</code></td>
+<td>Só o <strong>direito</strong></td>
+</tr>
+<tr class="odd">
+<td><code>RIGHT</code></td>
+<td>Só o <strong>esquerdo</strong></td>
+</tr>
+<tr class="even">
+<td><code>FULL OUTER</code></td>
+<td>Nenhum (sem broadcast hash join)</td>
+</tr>
+</tbody>
+</table>
+<p>Aqui o Spark recorre a um sort-merge com um shuffle de 1 TB. A restrição é lógica e nenhum hint a remove.</p>
+</div>
+</section>
+<section id="a-saída-pode-ser-maior-que-a-entrada" class="slide level2 smaller">
+<h2>A saída pode ser maior que a entrada</h2>
+<p>Se a chave <span class="math inline">\(k\)</span> aparece <span class="math inline">\(a_k\)</span> vezes em <span class="math inline">\(R\)</span> e <span class="math inline">\(b_k\)</span> vezes em <span class="math inline">\(S\)</span>:</p>
+<p><span class="math display">\[|R \bowtie S| = \sum_k a_k \, b_k\]</span></p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 46%">
+<col style="width: 53%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Caso</th>
+<th>Saída</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Fatos × dimensão, chave única em <span class="math inline">\(S\)</span> (<span class="math inline">\(b_k = 1\)</span>)</td>
+<td><span class="math inline">\(\leq n_R\)</span></td>
+</tr>
+<tr class="even">
+<td>Duplicatas em ambos os lados, <span class="math inline">\(a_k = b_k = 1000\)</span> em uma chave</td>
+<td><span class="math inline">\(10^6\)</span> linhas a partir de 2.000</td>
+</tr>
+<tr class="odd">
+<td>Uma só chave em todas as linhas</td>
+<td><span class="math inline">\(n_R \cdot n_S\)</span>: um produto cartesiano</td>
+</tr>
+</tbody>
+</table>
+<p><strong>O custo de um join tem um termo que nenhum algoritmo evita: sua saída.</strong> O “tempo linear” do merge só vale com poucas duplicatas, e uma task com uma chave quente pode produzir muito mais linhas do que leu.</p>
+<p><strong>Verifique antes de unir:</strong> a chave é única em um lado? Uma duplicata silenciosa multiplica linhas, e também todo <code>sum</code> calculado depois, sem nenhum erro.</p>
+</section>
+<section id="de-onde-vem-cada-exchange" class="slide level2 smaller">
+<h2>De onde vem cada <code>Exchange</code></h2>
+<p>Os operadores físicos <strong>declaram o que precisam</strong> dos filhos:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Operador</th>
+<th>Requer</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>SortMergeJoin</code></td>
+<td>Ambos os filhos agrupados pela chave, e ordenados</td>
+</tr>
+<tr class="even">
+<td><code>HashAggregate</code> final</td>
+<td>Agrupado pelas chaves do grupo</td>
+</tr>
+<tr class="odd">
+<td><code>Sort</code> global</td>
+<td>Distribuição ordenada (partição por faixa)</td>
+</tr>
+</tbody>
+</table>
+<p>A regra <code>EnsureRequirements</code> compara cada requisito com o que o filho já fornece e <strong>adiciona um <code>Exchange</code> ou <code>Sort</code> só se não for atendido</strong>. Por isso os planos mostram <code>ENSURE_REQUIREMENTS</code>.</p>
+<p><strong>Então um shuffle pode ser evitado.</strong> <code>hash(k)</code> já agrupa por <code>k</code>, então:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href=""></a>a.join(b, <span class="st">"k"</span>).groupBy(<span class="st">"k"</span>).count()   <span class="co"># 2 Exchanges: reutiliza o do join</span></span>
+<span id="cb9-2"><a href=""></a>a.join(b, <span class="st">"k"</span>).groupBy(<span class="st">"x"</span>).count()   <span class="co"># 3 Exchanges: x exige outro</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Para prever um plano, siga a propriedade de <strong>particionamento</strong> de baixo para cima.</p>
+</section>
+<section id="exercício-preveja-o-plano" class="slide level2 smaller">
+<h2>Exercício: preveja o plano</h2>
+<p>AQE e broadcast automático desligados, <code>a</code> e <code>b</code> com 10 partições de leitura cada, <span class="math inline">\(R = 200\)</span>. Para cada consulta: nós <code>Exchange</code>, stages e tasks.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href=""></a>q1 <span class="op">=</span> a.groupBy(<span class="st">"k"</span>).count()</span>
+<span id="cb10-2"><a href=""></a>q2 <span class="op">=</span> a.join(b, <span class="st">"k"</span>).groupBy(<span class="st">"k"</span>).count()</span>
+<span id="cb10-3"><a href=""></a>q3 <span class="op">=</span> a.join(b, <span class="st">"k"</span>).groupBy(<span class="st">"x"</span>).count()</span>
+<span id="cb10-4"><a href=""></a>q4 <span class="op">=</span> a.join(F.broadcast(b), <span class="st">"k"</span>).groupBy(<span class="st">"x"</span>).count()</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="fragment">
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Consulta</th>
+<th><code>Exchange</code> (shuffle)</th>
+<th>Stages</th>
+<th>Tasks</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>q1</code></td>
+<td>1</td>
+<td>2</td>
+<td><span class="math inline">\(10 + 200 = 210\)</span></td>
+</tr>
+<tr class="even">
+<td><code>q2</code></td>
+<td>2</td>
+<td>3</td>
+<td><span class="math inline">\(10 + 10 + 200 = 220\)</span></td>
+</tr>
+<tr class="odd">
+<td><code>q3</code></td>
+<td>3</td>
+<td>4</td>
+<td><span class="math inline">\(10 + 10 + 200 + 200 = 420\)</span></td>
+</tr>
+<tr class="even">
+<td><code>q4</code></td>
+<td>1</td>
+<td>2</td>
+<td><span class="math inline">\(10 + 200 = 210\)</span>, mais um job para coletar <code>b</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="fragment">
+<p>Compare <code>q3</code> e <code>q4</code>, que retornam o mesmo: <strong>dois shuffles e 210 tasks a menos</strong>, em troca de manter <code>b</code> em memória.</p>
+</div>
+</section></section>
+<section>
+<section id="problema-integrador" class="title-slide slide level1 center">
+<h1>7. Problema integrador</h1>
 
 </section>
+<section id="orçamento-de-uma-consulta" class="slide level2 smaller">
+<h2>Orçamento de uma consulta</h2>
+<p>20 nós de 16 núcleos e 10 Gb/s. <code>orders</code>: 2 TB em Parquet; após pruning e filtro, 200 GB. <code>customers</code>: 100 GB em Parquet, lidos por inteiro.</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href=""></a>(orders.<span class="bu">filter</span>(...)</span>
+<span id="cb11-2"><a href=""></a>       .join(customers, <span class="st">"customer_id"</span>)</span>
+<span id="cb11-3"><a href=""></a>       .groupBy(<span class="st">"segment"</span>).agg(F.<span class="bu">sum</span>(<span class="st">"revenue"</span>))   <span class="co"># 3 segmentos</span></span>
+<span id="cb11-4"><a href=""></a>       .orderBy(F.desc(<span class="st">"sum(revenue)"</span>)))</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Sem executá-la, e com AQE desligado, responda:</p>
+<ol type="1">
+<li>Qual algoritmo de join? Poderia ser broadcast?</li>
+<li>Quantos <code>Exchange</code> e stages?</li>
+<li>Quantas tasks de leitura?</li>
+<li>Qual o limite inferior do tempo de rede do join?</li>
+<li><span class="math inline">\(R = 200\)</span> é adequado? Qual valor você usaria?</li>
+<li>Quantos dados movem os dois últimos shuffles?</li>
+</ol>
+</section>
+<section id="orçamento-de-uma-consulta-solução" class="slide level2 smaller">
+<h2>Orçamento de uma consulta: solução</h2>
+<ol type="1">
+<li><strong>Sort-merge.</strong> 100 GB supera muito os 10 MB e o limite rígido de 8 GiB.</li>
+<li><strong>4 <code>Exchange</code></strong> (2 do join, 1 de <code>segment</code>, 1 da ordenação por faixa), então <strong>5 stages</strong>.</li>
+<li>Por arquivos, não por colunas: <span class="math inline">\(2.000.000 / 128 =\)</span> <strong>15.625</strong> + <span class="math inline">\(\lceil 100.000 / 128 \rceil =\)</span> <strong>782</strong>.</li>
+<li><span class="math inline">\(D = 300\)</span> GB, e cruzam 95%: 285 GB. Capacidade <span class="math inline">\(20 \times 1{,}25 = 25\)</span> GB/s, então <span class="math inline">\(T \geq\)</span> <strong>11,4 s</strong>.</li>
+<li>Não: <span class="math inline">\(300\ \text{GB} / 200 = 1{,}5\)</span> GB por partição. Para cerca de 150 MB, <span class="math inline">\(R \approx\)</span> <strong>2.000</strong>, cerca de 6 tasks por núcleo.</li>
+<li>Quase nada. <code>sum</code> é decomponível com <span class="math inline">\(d = 3\)</span>: no máximo <span class="math inline">\(2.000 \times 3 = 6.000\)</span> linhas, e depois <strong>3 linhas</strong> para ordenar.</li>
+</ol>
+<p><strong>Total de tasks:</strong> <span class="math inline">\(15.625 + 782 + 2.000 + 2.000 + (\leq 3) \approx\)</span> <strong>20.400</strong>.</p>
+<p><strong>Onde está o custo:</strong> a leitura e o join. As alavancas ficam claras: reduzir os 2 TB percorridos (partições, <code>PushedFilters</code>), reduzir <code>customers</code> (selecionar só as colunas necessárias) e agregar antes do join quando possível. Mudar <code>orderBy</code> ou <code>segment</code> não economizaria nada.</p>
+</section>
+<section id="referências" class="slide level2 smaller">
+<h2>Referências</h2>
+<ul>
+<li>Zaharia, M., Chowdhury, M., Das, T., et al.&nbsp;(2012). <em>Resilient Distributed Datasets: A Fault-Tolerant Abstraction for In-Memory Cluster Computing</em>. NSDI ’12.</li>
+<li>Armbrust, M., Xin, R. S., Lian, C., et al.&nbsp;(2015). <em>Spark SQL: Relational Data Processing in Spark</em>. SIGMOD ’15.</li>
+<li>Graham, R. L. (1969). <em>Bounds on Multiprocessing Timing Anomalies</em>. SIAM Journal on Applied Mathematics, 17(2), 416–429.</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/sql-performance-tuning.html">Performance Tuning</a>, <a href="https://spark.apache.org/docs/4.0.1/tuning.html">Tuning Guide</a>, <a href="https://spark.apache.org/docs/4.0.1/rdd-programming-guide.html#shuffle-operations">RDD Programming Guide: Shuffle</a>, <a href="https://spark.apache.org/docs/4.0.1/configuration.html">Configuration</a>.</li>
+<li>Apache Spark 4.0.1, source code: <code>FilePartition.scala</code>, <code>SparkStrategies.scala</code> (<code>JoinSelection</code>), <code>BroadcastExchangeExec.scala</code>, <code>SizeInBytesOnlyStatsPlanVisitor.scala</code>, <code>partitioning.scala</code>.</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

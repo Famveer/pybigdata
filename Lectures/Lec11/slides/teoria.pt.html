@@ -28,71 +28,6 @@
       margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
       vertical-align: middle;
     }
-    /* CSS for syntax highlighting */
-    pre > code.sourceCode { white-space: pre; position: relative; }
-    pre > code.sourceCode > span { line-height: 1.25; }
-    pre > code.sourceCode > span:empty { height: 1.2em; }
-    .sourceCode { overflow: visible; }
-    code.sourceCode > span { color: inherit; text-decoration: inherit; }
-    div.sourceCode { margin: 1em 0; }
-    pre.sourceCode { margin: 0; }
-    @media screen {
-    div.sourceCode { overflow: auto; }
-    }
-    @media print {
-    pre > code.sourceCode { white-space: pre-wrap; }
-    pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
-    }
-    pre.numberSource code
-      { counter-reset: source-line 0; }
-    pre.numberSource code > span
-      { position: relative; left: -4em; counter-increment: source-line; }
-    pre.numberSource code > span > a:first-child::before
-      { content: counter(source-line);
-        position: relative; left: -1em; text-align: right; vertical-align: baseline;
-        border: none; display: inline-block;
-        -webkit-touch-callout: none; -webkit-user-select: none;
-        -khtml-user-select: none; -moz-user-select: none;
-        -ms-user-select: none; user-select: none;
-        padding: 0 4px; width: 4em;
-      }
-    pre.numberSource { margin-left: 3em;  padding-left: 4px; }
-    div.sourceCode
-      { color: #e1e4e8; background-color: #24292e; }
-    @media screen {
-    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
-    }
-    code span { color: #e1e4e8; } /* Normal */
-    code span.al { color: #ff5555; font-weight: bold; } /* Alert */
-    code span.an { color: #6a737d; } /* Annotation */
-    code span.at { color: #f97583; } /* Attribute */
-    code span.bn { color: #79b8ff; } /* BaseN */
-    code span.bu { color: #f97583; } /* BuiltIn */
-    code span.cf { color: #f97583; } /* ControlFlow */
-    code span.ch { color: #9ecbff; } /* Char */
-    code span.cn { color: #79b8ff; } /* Constant */
-    code span.co { color: #6a737d; } /* Comment */
-    code span.cv { color: #6a737d; } /* CommentVar */
-    code span.do { color: #6a737d; } /* Documentation */
-    code span.dt { color: #f97583; } /* DataType */
-    code span.dv { color: #79b8ff; } /* DecVal */
-    code span.er { color: #ff5555; text-decoration: underline; } /* Error */
-    code span.ex { color: #f97583; font-weight: bold; } /* Extension */
-    code span.fl { color: #79b8ff; } /* Float */
-    code span.fu { color: #b392f0; } /* Function */
-    code span.im { color: #9ecbff; } /* Import */
-    code span.in { color: #6a737d; } /* Information */
-    code span.kw { color: #f97583; } /* Keyword */
-    code span.op { color: #e1e4e8; } /* Operator */
-    code span.ot { color: #b392f0; } /* Other */
-    code span.pp { color: #f97583; } /* Preprocessor */
-    code span.re { color: #6a737d; } /* RegionMarker */
-    code span.sc { color: #79b8ff; } /* SpecialChar */
-    code span.ss { color: #9ecbff; } /* SpecialString */
-    code span.st { color: #9ecbff; } /* String */
-    code span.va { color: #ffab70; } /* Variable */
-    code span.vs { color: #9ecbff; } /* VerbatimString */
-    code span.wa { color: #ff5555; } /* Warning */
   </style>
   <link rel="stylesheet" href="teoria.pt_files/libs/revealjs/dist/theme/quarto-939dac980516321e8ca7f2ac425f5b62.css">
   <link href="teoria.pt_files/libs/revealjs/plugin/quarto-line-highlight/line-highlight.css" rel="stylesheet">
@@ -188,6 +123,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,275 +142,564 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="o-que-você-vai-aprender" class="slide level2">
-<h2>O que você vai aprender</h2>
+<section id="o-que-você-poderá-fazer" class="slide level2 smaller">
+<h2>O que você poderá fazer</h2>
 <ul>
-<li>Transformer, Estimator e Pipeline</li>
-<li>Preparação de features: nulos, categorias e vetores</li>
-<li>Treinar e avaliar um classificador (churn de clientes)</li>
-<li>Escolher o limiar de decisão</li>
-<li>Validação cruzada, salvar modelos, scoring em batch e streaming</li>
+<li>Decidir se um problema precisa de treinamento distribuído</li>
+<li>Explicar por que <code>fit</code> deve ver só dados de treino, e como um Pipeline garante isso</li>
+<li>Explicar como a regressão logística é distribuída, e estimar seu custo de rede</li>
+<li>Explicar por que as árvores usam histogramas, e quanto custam seus parâmetros</li>
+<li>Ler uma matriz de confusão, e escolher um limiar pelos custos do negócio</li>
+<li>Contar quanto custa a validação cruzada, e evitar o otimismo da seleção</li>
 </ul>
-</section>
-<section id="quando-usar-mllib" class="slide level2">
-<h2>Quando usar MLlib</h2>
 <table class="caption-top">
-<colgroup>
-<col style="width: 3%">
-<col style="width: 48%">
-<col style="width: 48%">
-</colgroup>
 <thead>
 <tr class="header">
-<th></th>
-<th>scikit-learn</th>
-<th>Spark MLlib</th>
+<th>Bloco</th>
+<th>Tema</th>
+<th>Min</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Dados</td>
-<td>Cabem na memória de uma máquina</td>
-<td>Distribuídos, sem limite prático</td>
+<td>1</td>
+<td>Você precisa de ML distribuído?</td>
+<td>15</td>
 </tr>
 <tr class="even">
-<td>Entrada</td>
-<td>NumPy / Pandas</td>
-<td>Spark DataFrame</td>
+<td>2</td>
+<td>Pipelines e vazamento de dados</td>
+<td>20</td>
 </tr>
 <tr class="odd">
-<td>Features</td>
-<td>Uma matriz <code>X</code></td>
-<td><strong>Uma coluna do tipo vetor</strong> (<code>features</code>)</td>
+<td>3</td>
+<td>Regressão logística em escala</td>
+<td>25</td>
 </tr>
 <tr class="even">
-<td>Algoritmos</td>
-<td>Muito amplo</td>
-<td>Os principais: lineares, árvores, ensembles, clustering, ALS</td>
+<td>4</td>
+<td>Árvores: dividir sem ordenar</td>
+<td>20</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Avaliação e limiares</td>
+<td>25</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Ajuste, e problema integrador</td>
+<td>15</td>
 </tr>
 </tbody>
 </table>
-<p>Regra prática: se os dados de treino cabem em uma máquina, scikit-learn costuma ser mais simples.</p>
 </section>
-<section id="três-conceitos-centrais" class="slide level2">
-<h2>Três conceitos centrais</h2>
+<section>
+<section id="você-precisa-de-ml-distribuído" class="title-slide slide level1 center">
+<h1>1. Você precisa de ML distribuído?</h1>
+
+</section>
+<section id="mais-dados-ajudam-cada-vez-menos" class="slide level2 smaller">
+<h2>Mais dados ajudam cada vez menos</h2>
+<p>O erro de um modelo costuma cair com o tamanho <span class="math inline">\(n\)</span> com retornos decrescentes: o erro estatístico de muitos modelos cai aproximadamente como <span class="math inline">\(O(1/\sqrt{n})\)</span>. <strong>Passar de 1 milhão para 100 milhões de linhas costuma dividir essa parte do erro por 10, e ela pode já ser desprezível frente ao viés do modelo.</strong></p>
+<p><strong>Então teste antes de escalar:</strong> treine com amostras crescentes, e plote a métrica de validação.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 32%">
-<col style="width: 39%">
-<col style="width: 28%">
+<col style="width: 61%">
+<col style="width: 25%">
+<col style="width: 13%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>A curva de aprendizado…</th>
+<th>Significa</th>
+<th>Ação</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>É plana com 1% dos dados</td>
+<td>Mais linhas não acrescentam</td>
+<td><strong>Amostre</strong>, e use scikit-learn em uma máquina</td>
+</tr>
+<tr class="even">
+<td>Continua subindo</td>
+<td>Os dados são o gargalo</td>
+<td>MLlib, ou uma máquina maior</td>
+</tr>
+</tbody>
+</table>
+<table class="caption-top">
+<colgroup>
+<col style="width: 41%">
+<col style="width: 58%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Use MLlib quando</th>
+<th>Use scikit-learn quando</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>A curva continua subindo, e o pipeline é distribuído</td>
+<td>Uma amostra cabe na RAM de uma máquina</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Treinar distribuído e avaliar distribuído são problemas diferentes:</strong> um modelo treinado com uma amostra pode ser aplicado no Spark a todos os dados.</p>
+</section></section>
+<section>
+<section id="pipelines-e-vazamento-de-dados" class="title-slide slide level1 center">
+<h1>2. Pipelines e vazamento de dados</h1>
+
+</section>
+<section id="transformer-estimator-pipeline-como-tipos" class="slide level2 smaller">
+<h2>Transformer, Estimator, Pipeline: como tipos</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 40%">
+<col style="width: 24%">
+<col style="width: 36%">
 </colgroup>
 <thead>
 <tr class="header">
 <th>Conceito</th>
-<th>O que é</th>
-<th>Método</th>
+<th>Tipo</th>
+<th>Exemplo</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td><strong>Transformer</strong></td>
-<td>Recebe um DataFrame e devolve outro com colunas novas</td>
-<td><code>.transform(df)</code></td>
+<td><span class="math inline">\(\text{DataFrame} \to \text{DataFrame}\)</span></td>
+<td>Um modelo treinado, <code>VectorAssembler</code></td>
 </tr>
 <tr class="even">
 <td><strong>Estimator</strong></td>
-<td>Aprende dos dados e produz um Transformer</td>
-<td><code>.fit(df)</code></td>
+<td><span class="math inline">\(\text{DataFrame} \to \text{Transformer}\)</span></td>
+<td><code>Imputer</code>, <code>StringIndexer</code>, <code>LogisticRegression</code></td>
 </tr>
 <tr class="odd">
 <td><strong>Pipeline</strong></td>
-<td>Sequência de estágios; ele próprio é um Estimator</td>
-<td><code>.fit(df)</code> gera um <code>PipelineModel</code></td>
+<td>É em si um Estimator: <code>fit</code> dá um <code>PipelineModel</code></td>
+<td></td>
 </tr>
 </tbody>
 </table>
-<div class="callout callout-important callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Importante</strong></p>
-</div>
-<div class="callout-content">
-<p>Tudo que aprende dos dados é ajustado <strong>só no treino</strong>. Caso contrário, a avaliação fica otimista (<em>data leakage</em>). O Pipeline garante isso.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="preparação-de-features" class="slide level2">
-<h2>Preparação de features</h2>
-<table class="caption-top">
-<thead>
-<tr class="header">
-<th>Coluna</th>
-<th>Problema</th>
-<th>Estágio</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>last_rating</code>, <code>monthly_spend</code></td>
-<td>Nulos</td>
-<td><code>Imputer</code> (mediana)</td>
-</tr>
-<tr class="even">
-<td><code>plan</code>, <code>region</code></td>
-<td>Texto</td>
-<td><code>StringIndexer</code> + <code>OneHotEncoder</code></td>
-</tr>
-<tr class="odd">
-<td>Todas</td>
-<td>Várias colunas</td>
-<td><code>VectorAssembler</code></td>
-</tr>
-<tr class="even">
-<td>Numéricas</td>
-<td>Escalas diferentes</td>
-<td><code>StandardScaler</code></td>
-</tr>
-</tbody>
-</table>
-<div class="sourceCode" id="cb1"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href=""></a>train, test <span class="op">=</span> customers.randomSplit([<span class="fl">0.8</span>, <span class="fl">0.2</span>], seed<span class="op">=</span><span class="dv">42</span>)   <span class="co"># before any preparation</span></span>
-<span id="cb1-2"><a href=""></a></span>
-<span id="cb1-3"><a href=""></a>lr <span class="op">=</span> LogisticRegression(featuresCol<span class="op">=</span><span class="st">"features"</span>, labelCol<span class="op">=</span><span class="st">"churn"</span>, maxIter<span class="op">=</span><span class="dv">50</span>)</span>
-<span id="cb1-4"><a href=""></a>pipeline <span class="op">=</span> Pipeline(stages<span class="op">=</span>[imputer, indexer, encoder, assembler, scaler, lr])</span>
-<span id="cb1-5"><a href=""></a>model <span class="op">=</span> pipeline.fit(train)</span>
-<span id="cb1-6"><a href=""></a>pred  <span class="op">=</span> model.transform(test)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="avaliação" class="slide level2 smaller">
-<h2>Avaliação</h2>
+<p><strong>A regra é uma frase: tudo que aprende dos dados é um Estimator, e deve ser ajustado só com o treino.</strong> A mediana, a lista de categorias e as escalas são parâmetros do modelo.</p>
+<p><strong>Por que importa: o vazamento.</strong> Suponha que uma feature seja o churn médio por região, calculado com todos os dados, de modo que as linhas de teste ajudaram a calcular sua própria feature. A avaliação fica <strong>otimista</strong>, e esse otimismo só desaparece em produção, onde ninguém avisa.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 22%">
-<col style="width: 28%">
-<col style="width: 48%">
+<col style="width: 54%">
+<col style="width: 45%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Métrica</th>
-<th>Pergunta</th>
-<th>Quando importa</th>
+<th>Vazamento comum</th>
+<th>Por que vaza</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>AUC-ROC</strong></td>
-<td>O modelo ordena bem os clientes por risco?</td>
-<td>Comparar modelos, independente do limiar</td>
+<td>Imputar ou escalar antes de dividir</td>
+<td>Estatísticas de teste entraram no treino</td>
 </tr>
 <tr class="even">
-<td><strong>AUC-PR</strong></td>
-<td>Idem, focando na classe positiva</td>
-<td>Classes desbalanceadas</td>
+<td>Uma feature calculada após a data do alvo</td>
+<td>Não existiria ao prever</td>
 </tr>
 <tr class="odd">
-<td><strong>Precision</strong></td>
-<td>Dos que marquei como churn, quantos eram?</td>
-<td>Custo de abordar um cliente sem necessidade</td>
+<td>Divisão aleatória de dados temporais</td>
+<td>Treina com o futuro para prever o passado</td>
 </tr>
 <tr class="even">
-<td><strong>Recall</strong></td>
-<td>Dos que eram churn, quantos encontrei?</td>
-<td>Custo de perder um cliente</td>
-</tr>
-<tr class="odd">
-<td><strong>Accuracy</strong></td>
-<td>Quantos acertei no total?</td>
-<td>Enganosa com classes desbalanceadas</td>
+<td>Linhas de um cliente em ambos os lados</td>
+<td>O modelo reconhece o cliente</td>
 </tr>
 </tbody>
 </table>
-<p>O limiar de 0.5 raramente é o ideal: a escolha é uma <strong>decisão de negócio</strong>.</p>
+</section></section>
+<section>
+<section id="regressão-logística-em-escala" class="title-slide slide level1 center">
+<h1>3. Regressão logística em escala</h1>
+
 </section>
-<section id="comparando-modelos" class="slide level2">
-<h2>Comparando modelos</h2>
+<section id="o-gradiente-é-uma-soma-então-se-distribui" class="slide level2 smaller">
+<h2>O gradiente é uma soma, então se distribui</h2>
+<p><span class="math display">\[P(y = 1 \mid x) = \sigma(w \cdot x) = \frac{1}{1 + e^{-w \cdot x}} \qquad \text{perda: } L(w) = -\sum_i \big[y_i \log p_i + (1 - y_i)\log(1 - p_i)\big]\]</span></p>
+<p>Seu gradiente tem uma forma muito conveniente:</p>
+<p><span class="math display">\[\nabla L(w) = \sum_{i=1}^{n} \big(\sigma(w \cdot x_i) - y_i\big)\, x_i = \sum_{p \in \text{partições}} \ \sum_{i \in p} \big(\sigma(w \cdot x_i) - y_i\big)\, x_i\]</span></p>
+<p><strong>É uma agregação distributiva</strong> (Aula 4). Cada partição calcula sua soma parcial, e estas são fundidas. Uma iteração faz:</p>
+<pre><code> driver: w ──broadcast──▶ executors: gradiente por partição ──agregação em árvore──▶ driver: ∇L, novo w</code></pre>
+<p><strong>Custo por iteração:</strong> uma passada completa pelos dados, mais <span class="math inline">\(w\)</span> na ida e <span class="math inline">\(\nabla L\)</span> na volta. Com <span class="math inline">\(d\)</span> features em doubles e <span class="math inline">\(N\)</span> executors, a rede leva cerca de <span class="math inline">\(2 N d \times 8\)</span> bytes.</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Caso</th>
+<th><span class="math inline">\(d\)</span></th>
+<th><span class="math inline">\(N\)</span></th>
+<th>Por iteração</th>
+<th>50 iterações</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Lab 10</td>
+<td>14</td>
+<td>24</td>
+<td>5,4 KB</td>
+<td>269 KB: <strong>irrelevante</strong></td>
+</tr>
+<tr class="even">
+<td>Features de texto</td>
+<td><span class="math inline">\(10^7\)</span></td>
+<td>100</td>
+<td><strong>16 GB</strong></td>
+<td><strong>800 GB</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Então o gargalo se move com <span class="math inline">\(d\)</span></strong>: com poucas features domina a CPU. Com muitas, a rede e o driver. <strong>Faça cache da entrada:</strong> com <span class="math inline">\(k = 50\)</span> iterações, a desigualdade da Aula 6 é atendida com folga.</p>
+</section>
+<section id="regularização-e-ler-os-coeficientes" class="slide level2 smaller">
+<h2>Regularização, e ler os coeficientes</h2>
+<p>O MLlib minimiza a perda mais uma penalização elastic-net, com <span class="math inline">\(\alpha\)</span> = <code>elasticNetParam</code>, e <span class="math inline">\(\lambda\)</span> = <code>regParam</code>:</p>
+<p><span class="math display">\[\min_w\ L(w) + \lambda\left[\frac{1 - \alpha}{2}\,\|w\|_2^2 + \alpha\,\|w\|_1\right]\]</span></p>
 <table class="caption-top">
 <colgroup>
 <col style="width: 1%">
-<col style="width: 34%">
-<col style="width: 24%">
-<col style="width: 39%">
+<col style="width: 49%">
+<col style="width: 49%">
 </colgroup>
 <thead>
 <tr class="header">
 <th></th>
-<th>Regressão logística</th>
+<th><span class="math inline">\(\alpha = 0\)</span>: ridge (L2)</th>
+<th><span class="math inline">\(\alpha = 1\)</span>: lasso (L1)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Efeito</td>
+<td>Encolhe todos os coeficientes</td>
+<td><strong>Deixa alguns exatamente em zero</strong></td>
+</tr>
+<tr class="even">
+<td>Uso</td>
+<td>Features correlacionadas</td>
+<td>Seleção de features</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Por que a regularização não ajudou no Lab 11?</strong> Com <span class="math inline">\(n\)</span> = 160.000 e <span class="math inline">\(d\)</span> = 14, temos <span class="math inline">\(n/d \approx 11.000\)</span>: nada a sobreajustar. AUC média medida: 0,8337 com <span class="math inline">\(\lambda = 0\)</span>, 0,8331 com <span class="math inline">\(\lambda = 0{,}1\)</span> e L2, e <strong>0,7786</strong> com <span class="math inline">\(\lambda = 0{,}1\)</span> e L1, que removeu features úteis. <strong>A regularização só compensa quando <span class="math inline">\(d\)</span> é grande frente a <span class="math inline">\(n\)</span>.</strong></p>
+<p><strong>A escala importa.</strong> A penalização trata todos os coeficientes igual, então uma feature em milhares tem um coeficiente pequeno, e quase não é penalizada. Por isso, <strong>padronize primeiro</strong>. Assim um coeficiente compara efeitos: <code>support_tickets</code> +1,10, <code>tenure_months</code> −0,86, enquanto a região fica abaixo de 0,01, igual à regra que gerou os dados.</p>
+</section></section>
+<section>
+<section id="árvores-dividir-sem-ordenar" class="title-slide slide level1 center">
+<h1>4. Árvores: dividir sem ordenar</h1>
+
+</section>
+<section id="ordenar-é-caro-demais-histogramas" class="slide level2 smaller">
+<h2>Ordenar é caro demais: histogramas</h2>
+<p>Uma árvore de decisão em uma máquina testa cada valor único de cada feature como divisão: <strong>requer ordenar</strong>, e é proibitivo em distribuído. O MLlib discretiza antes (documentação do Spark):</p>
+<ol type="1">
+<li>Calcula <strong>quantis aproximados</strong> sobre uma amostra, e obtém até <code>maxBins</code> divisões candidatas (padrão <strong>32</strong>).</li>
+<li>Para cada nível da árvore, cada partição constrói um <strong>histograma</strong> por nó, feature e bin, com as contagens de classe.</li>
+<li>Funde os histogramas. São aditivos: de novo uma <strong>agregação distributiva</strong>. Depois escolhe no driver a melhor divisão por nó.</li>
+</ol>
+<p><strong>O tamanho dessas estatísticas é o que precisa viajar:</strong></p>
+<p><span class="math display">\[\text{nós} \times d \times \text{bins} \times \text{classes} \times 8\ \text{B}\]</span></p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Nível (profundidade)</th>
+<th>Nós</th>
+<th>Com <span class="math inline">\(d = 14\)</span>, 32 bins, 2 classes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>3</td>
+<td>8</td>
+<td>57 KB</td>
+</tr>
+<tr class="even">
+<td>8</td>
+<td>256</td>
+<td><strong>1,8 MB</strong></td>
+</tr>
+<tr class="odd">
+<td>15</td>
+<td>32.768</td>
+<td><strong>235 MB</strong></td>
+</tr>
+</tbody>
+</table>
+<p>A profundidade aumenta o custo de forma <strong>exponencial</strong>: limite-a. Se as estatísticas superam <code>maxMemoryInMB</code> (padrão 256 MiB), os nós são processados em grupos, com mais passadas pelos dados. Segundo a documentação, a comunicação escala quase linearmente com as features e <code>maxBins</code>.</p>
+</section>
+<section id="ensembles-e-uma-lição-sobre-complexidade" class="slide level2 smaller">
+<h2>Ensembles, e uma lição sobre complexidade</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 2%">
+<col style="width: 37%">
+<col style="width: 60%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
 <th>Random Forest</th>
 <th>Gradient-Boosted Trees</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Relações</td>
-<td>Lineares</td>
-<td>Não-lineares</td>
-<td>Não-lineares</td>
+<td>Árvores</td>
+<td><strong>Independentes</strong>: bootstrap + features ao acaso</td>
+<td><strong>Sequenciais</strong>: cada uma ajusta os erros da anterior</td>
 </tr>
 <tr class="even">
-<td>Interpretação</td>
-<td>Coeficientes</td>
-<td>Importância de features</td>
-<td>Importância de features</td>
+<td>Paralelismo</td>
+<td>Pode treinar nós de muitas árvores ao mesmo tempo</td>
+<td>Só dentro de cada árvore</td>
 </tr>
 <tr class="odd">
-<td>Treino</td>
-<td>Rápido</td>
-<td>Paralelo (árvores independentes)</td>
-<td>Sequencial (mais lento)</td>
+<td>Reduz</td>
+<td>Variância</td>
+<td>Viés</td>
 </tr>
 <tr class="even">
-<td>Risco de overfitting</td>
-<td>Baixo</td>
-<td>Médio</td>
-<td>Maior, exige tuning</td>
+<td>Mais árvores</td>
+<td>Não sobreajusta, só custa mais</td>
+<td><strong>Pode sobreajustar</strong></td>
 </tr>
 </tbody>
 </table>
-<div class="callout callout-tip callout-titled callout-style-default">
-<div class="callout-body">
-<div class="callout-title">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<p><strong>Dica</strong></p>
-</div>
-<div class="callout-content">
-<p>O modelo mais complexo não é automaticamente o melhor: sempre compare com uma base simples.</p>
-</div>
-</div>
-</div>
-</section>
-<section id="validação-cruzada" class="slide level2">
-<h2>Validação cruzada</h2>
-<pre><code>  params 1:  [train ][train ][valid ]  -&gt; AUC_1
-             [train ][valid ][train ]  -&gt; AUC_2
-             [valid ][train ][train ]  -&gt; AUC_3   =&gt; mean
-  params 2:  ...                                  =&gt; mean</code></pre>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a>grid <span class="op">=</span> (ParamGridBuilder()</span>
-<span id="cb3-2"><a href=""></a>        .addGrid(lr.regParam, [<span class="fl">0.0</span>, <span class="fl">0.01</span>, <span class="fl">0.1</span>])</span>
-<span id="cb3-3"><a href=""></a>        .addGrid(lr.elasticNetParam, [<span class="fl">0.0</span>, <span class="fl">1.0</span>]).build())</span>
-<span id="cb3-4"><a href=""></a>cv <span class="op">=</span> CrossValidator(estimator<span class="op">=</span>pipeline, estimatorParamMaps<span class="op">=</span>grid,</span>
-<span id="cb3-5"><a href=""></a>                    evaluator<span class="op">=</span>BinaryClassificationEvaluator(labelCol<span class="op">=</span><span class="st">"churn"</span>),</span>
-<span id="cb3-6"><a href=""></a>                    numFolds<span class="op">=</span><span class="dv">3</span>, parallelism<span class="op">=</span><span class="dv">2</span>, seed<span class="op">=</span><span class="dv">42</span>)</span>
-<span id="cb3-7"><a href=""></a>best <span class="op">=</span> cv.fit(train).bestModel</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="salvar-e-servir" class="slide level2">
-<h2>Salvar e servir</h2>
-<p>Um <code>PipelineModel</code> salvo contém <strong>todos os estágios</strong>: quem o carrega aplica a mesma preparação. Também funciona em DataFrames de streaming.</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href=""></a>best.write().overwrite().save(MODEL_PATH)</span>
-<span id="cb4-2"><a href=""></a>loaded <span class="op">=</span> PipelineModel.load(MODEL_PATH)</span>
-<span id="cb4-3"><a href=""></a></span>
-<span id="cb4-4"><a href=""></a>stream <span class="op">=</span> spark.readStream.schema(schema).json(STREAM_IN)</span>
-<span id="cb4-5"><a href=""></a>q <span class="op">=</span> (loaded.transform(stream)</span>
-<span id="cb4-6"><a href=""></a>     .select(<span class="st">"customer_id"</span>,</span>
-<span id="cb4-7"><a href=""></a>             F.<span class="bu">round</span>(vector_to_array(<span class="st">"probability"</span>)[<span class="dv">1</span>], <span class="dv">3</span>).alias(<span class="st">"p_churn"</span>))</span>
-<span id="cb4-8"><a href=""></a>     .<span class="bu">filter</span>(<span class="st">"p_churn &gt;= 0.5"</span>)</span>
-<span id="cb4-9"><a href=""></a>     .writeStream.<span class="bu">format</span>(<span class="st">"memory"</span>).queryName(<span class="st">"at_risk"</span>)</span>
-<span id="cb4-10"><a href=""></a>     .outputMode(<span class="st">"append"</span>).start())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>O modelo não se escolhe por reputação.</strong> No Lab 10, com os mesmos dados de teste:</p>
+<table class="caption-top" style="width:100%;">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 19%">
+<col style="width: 21%">
+<col style="width: 23%">
+<col style="width: 17%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Modelo</th>
+<th>AUC-ROC</th>
+<th>Accuracy</th>
+<th>Precision</th>
+<th>Recall</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Regressão logística</strong></td>
+<td><strong>0,831</strong></td>
+<td>0,760</td>
+<td>0,731</td>
+<td>0,655</td>
+</tr>
+<tr class="even">
+<td>Random Forest (60 árvores, profundidade 8)</td>
+<td>0,818</td>
+<td>0,751</td>
+<td>0,733</td>
+<td>0,615</td>
+</tr>
+</tbody>
+</table>
+<p>O modelo complexo perde, e é <strong>o resultado esperado</strong>: os dados foram gerados por uma regra linear no logit. Uma árvore precisa aproximar uma função suave com degraus. <strong>Compare sempre primeiro com uma base simples</strong>: ela diz quanto a complexidade realmente compra.</p>
+</section></section>
+<section>
+<section id="avaliação-e-limiares" class="title-slide slide level1 center">
+<h1>5. Avaliação e limiares</h1>
 
 </section>
+<section id="toda-métrica-vem-de-uma-tabela" class="slide level2 smaller">
+<h2>Toda métrica vem de uma tabela</h2>
+<p>Matriz de confusão do Lab 10 para a regressão logística, 39.909 clientes de teste:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th></th>
+<th>Previsão: fica</th>
+<th>Previsão: sai</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Fica</strong></td>
+<td>TN = 19.641</td>
+<td>FP = 3.932</td>
+</tr>
+<tr class="even">
+<td><strong>Sai</strong></td>
+<td>FN = 5.636</td>
+<td>TP = 10.700</td>
+</tr>
+</tbody>
+</table>
+<p><span class="math display">\[\text{accuracy} = \frac{TP + TN}{\text{total}} = 0{,}760 \quad\ \text{precision} = \frac{TP}{TP + FP} = 0{,}731 \quad\ \text{recall} = \frac{TP}{TP + FN} = 0{,}655\]</span></p>
+<p><strong>Precision</strong> é a qualidade do alerta, e <strong>recall</strong> sua cobertura: “dos que saem, quantos encontro?”</p>
+<p><strong>Por que a accuracy sozinha falha:</strong> com 1% de churn, “ninguém sai” obtém <strong>99% de accuracy</strong> e não serve para nada. Compare sempre com a taxa base, que aqui é de 40,8%.</p>
+<p><strong>A AUC tem um significado preciso que costuma passar despercebido:</strong> é a <strong>probabilidade de um positivo ao acaso receber maior pontuação que um negativo ao acaso</strong> (Mann-Whitney). Uma AUC de 0,831 significa que o modelo ordena bem esse par 83% das vezes. Assim, mede a <strong>ordem</strong>, e não depende de nenhum limiar.</p>
+</section>
+<section id="o-limiar-é-uma-decisão-econômica" class="slide level2 smaller">
+<h2>O limiar é uma decisão econômica</h2>
+<p>Contatar um cliente custa <span class="math inline">\(c\)</span>, e perdê-lo custa <span class="math inline">\(V\)</span>. Supondo que o contato o retém, age-se quando a perda esperada supera o custo:</p>
+<p><span class="math display">\[p \cdot V &gt; c \quad\Longrightarrow\quad p^* = \frac{c}{V}\]</span></p>
+<p><strong>Com <span class="math inline">\(c = 10\)</span> e <span class="math inline">\(V = 100\)</span>: <span class="math inline">\(p^* =\)</span> 0,1, não o 0,5 padrão.</strong> O custo <span class="math inline">\(10 \times \text{contatados} + 100 \times \text{FN}\)</span>, na tabela do Lab 10:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Limiar</th>
+<th>Contatados</th>
+<th>Precision</th>
+<th>Recall</th>
+<th>Custo total</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0,2</td>
+<td>27.307</td>
+<td>0,549</td>
+<td>0,918</td>
+<td><strong>407.500</strong></td>
+</tr>
+<tr class="even">
+<td>0,3</td>
+<td>22.384</td>
+<td>0,614</td>
+<td>0,841</td>
+<td>483.100</td>
+</tr>
+<tr class="odd">
+<td>0,5 (padrão)</td>
+<td>14.632</td>
+<td>0,731</td>
+<td>0,655</td>
+<td>710.300</td>
+</tr>
+<tr class="even">
+<td>0,7</td>
+<td>8.218</td>
+<td>0,835</td>
+<td>0,420</td>
+<td>1.029.600</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Mover o limiar economiza 43% frente ao padrão, com o mesmo modelo.</strong> Pode valer mais que semanas de ajuste por uma AUC um pouco melhor.</p>
+<p><strong>Dois avisos:</strong> isso precisa de probabilidades <strong>calibradas</strong>, então verifique-as, ou ao menos escolha o limiar empiricamente, como acima. E o contato não retém a todos: com efetividade <span class="math inline">\(e\)</span>, <span class="math inline">\(p^* = c / (eV)\)</span>.</p>
+</section></section>
+<section>
+<section id="ajuste-e-problema-integrador" class="title-slide slide level1 center">
+<h1>6. Ajuste, e problema integrador</h1>
+
+</section>
+<section id="quanto-custa-a-validação-cruzada-e-o-que-promete" class="slide level2 smaller">
+<h2>Quanto custa a validação cruzada, e o que promete</h2>
+<p><span class="math display">\[\text{modelos treinados} = (\text{combinações}) \times k + 1\]</span></p>
+<p>O último “+1” é o reajuste final, com todo o treino e os melhores parâmetros.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 13%">
+<col style="width: 9%">
+<col style="width: 26%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Grade</th>
+<th><span class="math inline">\(k\)</span></th>
+<th>Treinamentos</th>
+<th>Com 5 s cada, sequencial</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Lab 11: <span class="math inline">\(3 \times 2\)</span></td>
+<td>3</td>
+<td>19</td>
+<td>95 s (medido: 14,7 s nos 18 ajustes, com <code>parallelism=2</code>)</td>
+</tr>
+<tr class="even">
+<td>5 parâmetros, 4 valores cada</td>
+<td>3</td>
+<td>3.073</td>
+<td><strong>4,3 horas</strong></td>
+</tr>
+</tbody>
+</table>
+<p>A grade cresce de forma <strong>exponencial com o número de parâmetros</strong>. Opções: <code>TrainValidationSplit</code> (uma divisão, não <span class="math inline">\(k\)</span>), busca aleatória, ou uma grade pequena ao redor do que se sabe que funciona.</p>
+<p><strong>O otimismo da seleção.</strong> O melhor de muitos modelos parece melhor do que é: com 3.072 tentativas, algum ganha por acaso. Assim, <strong>a pontuação CV do vencedor é enviesada para cima</strong>, e por isso o conjunto de teste é usado <strong>uma vez, no final</strong>. Usá-lo para comparar modelos o transforma em dados de validação, e não resta uma estimativa honesta.</p>
+<p><code>parallelism</code> treina combinações ao mesmo tempo, e segundo a documentação bastam até cerca de 10. Compete pelos mesmos núcleos que as tasks de cada ajuste.</p>
+</section>
+<section id="revise-este-projeto" class="slide level2 smaller">
+<h2>Revise este projeto</h2>
+<p>Uma equipe reporta: <em>“Modelo de fraude, accuracy 99,2%, AUC 0,97. 5 bilhões de linhas, <span class="math inline">\(d\)</span> = 200, em um cluster de 50 nós. Mediana imputada, depois divisão 80/20 ao acaso. As features incluem <code>chargebacks_next_30d</code>. Testamos 500 configurações, escolhendo a melhor pela AUC de teste. Limiar 0,5. 0,5% das transações são fraude.”</em></p>
+<p><strong>Encontre todos os problemas.</strong></p>
+<div class="fragment">
+<table class="caption-top">
+<colgroup>
+<col style="width: 52%">
+<col style="width: 47%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Problema</th>
+<th>Por quê</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Accuracy 99,2%</td>
+<td>“Sem fraude” consegue <strong>99,5%</strong>: este modelo é <strong>pior que não fazer nada</strong></td>
+</tr>
+<tr class="even">
+<td>Imputar antes de dividir</td>
+<td>Vazamento: medianas de teste entraram no treino. Use um Pipeline</td>
+</tr>
+<tr class="odd">
+<td><code>chargebacks_next_30d</code></td>
+<td><strong>Vazamento direto do futuro</strong>: provavelmente a razão dessa AUC</td>
+</tr>
+<tr class="even">
+<td>Divisão aleatória de transações</td>
+<td>Treina com o futuro. Divida por <strong>tempo</strong></td>
+</tr>
+<tr class="odd">
+<td>Seleção sobre o teste</td>
+<td>A AUC é enviesada: 500 tentativas sobre os dados de teste</td>
+</tr>
+<tr class="even">
+<td>Limiar 0,5</td>
+<td>Uma fraude custa muito mais que uma revisão: <span class="math inline">\(p^* = c/V\)</span> é muito menor</td>
+</tr>
+<tr class="odd">
+<td>5 bilhões de linhas</td>
+<td>Com <span class="math inline">\(d = 200\)</span>, a curva de aprendizado pode achatar muito antes: verifique antes de pagar 50 nós</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="referências" class="slide level2 smaller">
+<h2>Referências</h2>
+<ul>
+<li>Meng, X., Bradley, J., Yavuz, B., et al.&nbsp;(2016). <em>MLlib: Machine Learning in Apache Spark</em>. JMLR, 17(34).</li>
+<li>Breiman, L. (2001). <em>Random Forests</em>. Machine Learning, 45(1).</li>
+<li>Friedman, J. H. (2001). <em>Greedy Function Approximation: A Gradient Boosting Machine</em>. Annals of Statistics, 29(5).</li>
+<li>Liu, D. C., Nocedal, J. (1989). <em>On the Limited Memory BFGS Method for Large Scale Optimization</em>. Mathematical Programming, 45.</li>
+<li>Hanley, J. A., McNeil, B. J. (1982). <em>The Meaning and Use of the Area under a ROC Curve</em>. Radiology, 143(1).</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/ml-classification-regression.html">Classification and regression</a>, <a href="https://spark.apache.org/docs/4.0.1/mllib-decision-tree.html">Decision trees</a>, <a href="https://spark.apache.org/docs/4.0.1/mllib-optimization.html">Optimization</a>, <a href="https://spark.apache.org/docs/4.0.1/ml-tuning.html">Tuning</a>.</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

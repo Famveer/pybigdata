@@ -28,71 +28,6 @@
       margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
       vertical-align: middle;
     }
-    /* CSS for syntax highlighting */
-    pre > code.sourceCode { white-space: pre; position: relative; }
-    pre > code.sourceCode > span { line-height: 1.25; }
-    pre > code.sourceCode > span:empty { height: 1.2em; }
-    .sourceCode { overflow: visible; }
-    code.sourceCode > span { color: inherit; text-decoration: inherit; }
-    div.sourceCode { margin: 1em 0; }
-    pre.sourceCode { margin: 0; }
-    @media screen {
-    div.sourceCode { overflow: auto; }
-    }
-    @media print {
-    pre > code.sourceCode { white-space: pre-wrap; }
-    pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
-    }
-    pre.numberSource code
-      { counter-reset: source-line 0; }
-    pre.numberSource code > span
-      { position: relative; left: -4em; counter-increment: source-line; }
-    pre.numberSource code > span > a:first-child::before
-      { content: counter(source-line);
-        position: relative; left: -1em; text-align: right; vertical-align: baseline;
-        border: none; display: inline-block;
-        -webkit-touch-callout: none; -webkit-user-select: none;
-        -khtml-user-select: none; -moz-user-select: none;
-        -ms-user-select: none; user-select: none;
-        padding: 0 4px; width: 4em;
-      }
-    pre.numberSource { margin-left: 3em;  padding-left: 4px; }
-    div.sourceCode
-      { color: #e1e4e8; background-color: #24292e; }
-    @media screen {
-    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
-    }
-    code span { color: #e1e4e8; } /* Normal */
-    code span.al { color: #ff5555; font-weight: bold; } /* Alert */
-    code span.an { color: #6a737d; } /* Annotation */
-    code span.at { color: #f97583; } /* Attribute */
-    code span.bn { color: #79b8ff; } /* BaseN */
-    code span.bu { color: #f97583; } /* BuiltIn */
-    code span.cf { color: #f97583; } /* ControlFlow */
-    code span.ch { color: #9ecbff; } /* Char */
-    code span.cn { color: #79b8ff; } /* Constant */
-    code span.co { color: #6a737d; } /* Comment */
-    code span.cv { color: #6a737d; } /* CommentVar */
-    code span.do { color: #6a737d; } /* Documentation */
-    code span.dt { color: #f97583; } /* DataType */
-    code span.dv { color: #79b8ff; } /* DecVal */
-    code span.er { color: #ff5555; text-decoration: underline; } /* Error */
-    code span.ex { color: #f97583; font-weight: bold; } /* Extension */
-    code span.fl { color: #79b8ff; } /* Float */
-    code span.fu { color: #b392f0; } /* Function */
-    code span.im { color: #9ecbff; } /* Import */
-    code span.in { color: #6a737d; } /* Information */
-    code span.kw { color: #f97583; } /* Keyword */
-    code span.op { color: #e1e4e8; } /* Operator */
-    code span.ot { color: #b392f0; } /* Other */
-    code span.pp { color: #f97583; } /* Preprocessor */
-    code span.re { color: #6a737d; } /* RegionMarker */
-    code span.sc { color: #79b8ff; } /* SpecialChar */
-    code span.ss { color: #9ecbff; } /* SpecialString */
-    code span.st { color: #9ecbff; } /* String */
-    code span.va { color: #ffab70; } /* Variable */
-    code span.vs { color: #9ecbff; } /* VerbatimString */
-    code span.wa { color: #ff5555; } /* Warning */
   </style>
   <link rel="stylesheet" href="teoria.pt_files/libs/revealjs/dist/theme/quarto-939dac980516321e8ca7f2ac425f5b62.css">
   <link href="teoria.pt_files/libs/revealjs/plugin/quarto-line-highlight/line-highlight.css" rel="stylesheet">
@@ -188,6 +123,7 @@
       margin-right: 0; 
     }
   </style>
+  <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
 </head>
 <body class="quarto-dark">
   <div class="reveal">
@@ -206,245 +142,369 @@ Felipe A. Moreno-Vera
 </div>
 
 </section>
-<section id="o-que-você-vai-aprender" class="slide level2">
-<h2>O que você vai aprender</h2>
+<section id="o-que-você-poderá-fazer" class="slide level2 smaller">
+<h2>O que você poderá fazer</h2>
 <ul>
-<li>Os três pilares do Hadoop: HDFS, MapReduce e YARN</li>
-<li>MapReduce com scripts Python, comparado com Spark</li>
-<li>Como o Spark usa a API FileSystem do Hadoop (e por que <code>s3a://</code> funciona)</li>
-<li>Um HDFS de um nó com Spark e Pandas</li>
-<li>Hadoop hoje e o caminho para a nuvem</li>
+<li>Derivar as decisões de projeto do HDFS de suas premissas, incluindo o tamanho do bloco</li>
+<li>Estimar a memória do NameNode e a probabilidade de perder dados</li>
+<li>Enunciar o modelo MapReduce e explicar sua tolerância a falhas e seus limites</li>
+<li>Dimensionar executors em um cluster YARN</li>
+<li>Explicar por que o S3 não é um sistema de arquivos, e o que quebra por isso</li>
 </ul>
-</section>
-<section id="de-onde-veio-o-hadoop" class="slide level2">
-<h2>De onde veio o Hadoop</h2>
 <table class="caption-top">
-<colgroup>
-<col style="width: 41%">
-<col style="width: 58%">
-</colgroup>
 <thead>
 <tr class="header">
-<th>Ano</th>
-<th>Marco</th>
+<th>Bloco</th>
+<th>Tema</th>
+<th>Min</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>2003–04</td>
-<td>Google publica os artigos do <strong>GFS</strong> e do <strong>MapReduce</strong></td>
+<td>1</td>
+<td>Premissas de projeto</td>
+<td>10</td>
 </tr>
 <tr class="even">
-<td>2006</td>
-<td>Doug Cutting e Mike Cafarella criam o <strong>Hadoop</strong>, open source</td>
+<td>2</td>
+<td>HDFS: os números por trás do projeto</td>
+<td>35</td>
 </tr>
 <tr class="odd">
-<td>2012</td>
-<td>Hadoop 2 separa o gerenciamento de recursos no <strong>YARN</strong></td>
+<td>3</td>
+<td>MapReduce: modelo, falhas, limites</td>
+<td>30</td>
 </tr>
 <tr class="even">
-<td>2014</td>
-<td><strong>Spark</strong> vira projeto principal da Apache: o mesmo modelo, em memória</td>
+<td>4</td>
+<td>YARN: dividir um cluster</td>
+<td>15</td>
 </tr>
 <tr class="odd">
-<td>Hoje</td>
-<td>Na nuvem, object storage e Kubernetes; on-premise, Hadoop segue em produção</td>
+<td>5</td>
+<td>API FileSystem e armazenamento de objetos</td>
+<td>15</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Problema integrador</td>
+<td>15</td>
 </tr>
 </tbody>
 </table>
-<p>A ideia central: <strong>centenas de máquinas comuns em vez de um servidor gigante</strong>, aceitando que algumas vão falhar o tempo todo.</p>
 </section>
-<section id="os-três-pilares" class="slide level2">
-<h2>Os três pilares</h2>
-<table class="caption-top">
-<colgroup>
-<col style="width: 16%">
-<col style="width: 13%">
-<col style="width: 69%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Pilar</th>
-<th>Papel</th>
-<th>Equivalente moderno mais comum</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><strong>HDFS</strong></td>
-<td>Sistema de arquivos distribuído</td>
-<td>S3, GCS, ADLS</td>
-</tr>
-<tr class="even">
-<td><strong>YARN</strong></td>
-<td>Gerenciador de recursos do cluster</td>
-<td>Kubernetes, gerenciadores de Databricks/EMR</td>
-</tr>
-<tr class="odd">
-<td><strong>MapReduce</strong></td>
-<td>Modelo e motor de processamento</td>
-<td>Spark, Flink</td>
-</tr>
-</tbody>
-</table>
-<p>Em volta deles, um ecossistema: <strong>Hive</strong> (seu Metastore ainda é um catálogo comum), <strong>HBase</strong>, <strong>Sqoop</strong> (aposentado), <strong>Oozie</strong> (substituído por Airflow e similares) e <strong>Parquet/ORC</strong>, mais usados do que nunca.</p>
-</section>
-<section id="hdfs-blocos-e-replicação" class="slide level2">
-<h2>HDFS: blocos e replicação</h2>
-<pre><code>  vendas.csv (300 MB) -&gt; bloco A (128) | bloco B (128) | bloco C (44)
+<section>
+<section id="premissas-de-projeto" class="title-slide slide level1 center">
+<h1>1. Premissas de projeto</h1>
 
-             NameNode ("vendas.csv = A, B, C; A está em 1, 2, 4...")
-                │
-     ┌──────────┼──────────┬──────────┬──────────┐
-  DataNode 1  DataNode 2  DataNode 3  DataNode 4  DataNode 5
-  [A] [C]     [A] [B]     [B] [C]     [A] [C]     [B]</code></pre>
+</section>
+<section id="um-sistema-é-explicado-por-suas-premissas" class="slide level2 smaller">
+<h2>Um sistema é explicado por suas premissas</h2>
+<p>O Hadoop implementa dois artigos do Google: GFS (2003) e MapReduce (2004). O GFS começa declarando o que supõe, e cada decisão decorre disso:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 37%">
+<col style="width: 15%">
+<col style="width: 47%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Premissa (GFS, §2.1)</th>
+<th>Decisão</th>
+<th>Consequência ainda visível</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Componentes falham o tempo todo</td>
+<td>Replicação, recuperação automática</td>
+<td>Tasks são repetidas</td>
+</tr>
+<tr class="even">
+<td>Arquivos são enormes</td>
+<td>Blocos grandes</td>
+<td>O problema dos arquivos pequenos</td>
+</tr>
+<tr class="odd">
+<td>Leituras grandes e sequenciais</td>
+<td>Sem cache de dados no cliente</td>
+<td>Ruim para acesso aleatório</td>
+</tr>
+<tr class="even">
+<td>Adiciona-se, não se modifica</td>
+<td><strong>Write-once</strong></td>
+<td>Sem <code>UPDATE</code>: daí Delta e Iceberg</td>
+</tr>
+<tr class="odd">
+<td>Throughput importa mais que latência</td>
+<td>Projeto em lote</td>
+<td>Dezenas de segundos por job</td>
+</tr>
+</tbody>
+</table>
+<p><strong>O método desta aula:</strong> pegue cada mecanismo e pergunte qual premissa o justifica. Ao mudar as premissas, como fez a nuvem ao separar armazenamento e computação, o projeto também precisa mudar. Por isso parte do Hadoop envelheceu, e parte não.</p>
+</section></section>
+<section>
+<section id="hdfs-os-números-por-trás-do-projeto" class="title-slide slide level1 center">
+<h1>2. HDFS: os números por trás do projeto</h1>
+
+</section>
+<section id="arquitetura-separar-metadados-de-dados" class="slide level2 smaller">
+<h2>Arquitetura: separar metadados de dados</h2>
+<pre><code>              1. onde estão os blocos de sales.csv?
+   Cliente ────────────────────────────────────────▶ NameNode
+     │   ◀───────── A: nós 1, 2, 4 ────────────────  namespace + mapa de blocos, EM MEMÓRIA
+     │ 2. lê diretamente                                 ▲ heartbeats, relatórios de blocos
+     ▼                                                   │
+   DataNode 1 [A][C]   DataNode 2 [A][B]   DataNode 3 [B][C]   DataNode 4 [A][C]</code></pre>
+<p><strong>A decisão chave: os dados nunca passam pelo NameNode.</strong> Assim, um só processo pode coordenar milhares de nós, porque sua carga depende do número de <strong>operações de metadados</strong>, e não dos bytes lidos.</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Mecanismo</th>
+<th>Propósito</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>EditLog</code> + <code>FsImage</code></td>
+<td>Metadados duráveis: o mapa em memória é reconstruído do disco</td>
+</tr>
+<tr class="even">
+<td>Heartbeat</td>
+<td>Sem sinal por mais de 10 min: o nó está morto, e seus blocos são re-replicados</td>
+</tr>
+<tr class="odd">
+<td>Checksums</td>
+<td>Clientes verificam ao ler; se não confere, usam outra réplica</td>
+</tr>
+</tbody>
+</table>
+<p>O preço: a memória do NameNode limita o <strong>número de arquivos</strong>, e sua falha para todo o sistema de arquivos, salvo com alta disponibilidade configurada.</p>
+</section>
+<section id="por-que-128-mb-duas-razões-independentes" class="slide level2 smaller">
+<h2>Por que 128 MB? Duas razões independentes</h2>
+<p><strong>1. Disco.</strong> Ler um bloco custa um seek e depois uma transferência. Para os seeks ficarem abaixo de 1% do tempo, com tempo de seek <span class="math inline">\(t_s\)</span> e velocidade <span class="math inline">\(r\)</span>:</p>
+<p><span class="math display">\[\frac{t_s}{B / r} \leq 0{,}01 \quad\Longrightarrow\quad B \geq 100\, t_s\, r\]</span></p>
+<p>Com <span class="math inline">\(t_s = 10\)</span> ms e <span class="math inline">\(r = 200\)</span> MB/s: <span class="math inline">\(B \geq\)</span> <strong>200 MB</strong>. A mesma ordem dos 128 MB padrão (64 MB no GFS original, com discos mais lentos).</p>
+<p><strong>2. Metadados.</strong> Cada arquivo e bloco ocupa cerca de <strong>150 bytes</strong> do heap do NameNode (regra prática, não uma constante). Para 1 PB, contando um arquivo e um bloco por objeto:</p>
+<table class="caption-top">
+<thead>
+<tr class="header">
+<th>Tamanho do arquivo</th>
+<th>Arquivos</th>
+<th>Objetos</th>
+<th>Heap do NameNode</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>128 MB</td>
+<td>7,8 milhões</td>
+<td>15,6 milhões</td>
+<td><strong>2,3 GB</strong></td>
+</tr>
+<tr class="even">
+<td>1 MB</td>
+<td>1 bilhão</td>
+<td>2 bilhões</td>
+<td><strong>300 GB</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Mesmos dados, 128× a memória: é o <strong>problema dos arquivos pequenos</strong>, e também atrasa as leituras, porque cada arquivo custa uma ida e volta ao NameNode. É a razão para compactar (<code>coalesce</code> antes de gravar, <code>OPTIMIZE</code> no Delta).</p>
+</section>
+<section id="qual-a-probabilidade-de-perder-dados" class="slide level2 smaller">
+<h2>Qual a probabilidade de perder dados?</h2>
+<p>Réplicas em 3 nós ao acaso de <span class="math inline">\(N\)</span>. Se <span class="math inline">\(k\)</span> nós falham <strong>ao mesmo tempo</strong>, um bloco dado é perdido se suas 3 réplicas estão entre eles:</p>
+<p><span class="math display">\[P(\text{bloco perdido}) = \binom{k}{3} \Big/ \binom{N}{3}\]</span></p>
+<p>Com <span class="math inline">\(N = 1000\)</span> nós e <span class="math inline">\(B = 10^7\)</span> blocos, a perda esperada é <span class="math inline">\(B \cdot P\)</span>:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 31%">
+<col style="width: 23%">
+<col style="width: 44%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Falhas simultâneas</th>
+<th><span class="math inline">\(P\)</span> por bloco</th>
+<th>Blocos perdidos (esperado)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(k = 2\)</span></td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(k = 3\)</span></td>
+<td><span class="math inline">\(6 \times 10^{-9}\)</span></td>
+<td>0,06</td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(k = 10\)</span> (1%, ex. queda de energia)</td>
+<td><span class="math inline">\(7{,}2 \times 10^{-7}\)</span></td>
+<td><strong>7,2</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Duas lições:</strong></p>
 <ul>
-<li>Blocos de <strong>128 MB</strong> por padrão, <strong>3 cópias</strong> em máquinas diferentes</li>
-<li>Se um DataNode morre, o NameNode manda recriar as cópias que faltam</li>
-<li>O cliente pergunta ao NameNode onde estão os blocos e <strong>lê direto dos DataNodes</strong></li>
+<li>Falhas independentes são quase inofensivas, porque re-replicar fecha a janela rápido. Falhas <strong>correlacionadas</strong> são as que perdem dados (Cidon et al., 2013).</li>
+<li>Com muitos blocos, quase sempre algum bloco tem todas as réplicas entre os nós caídos, por mais improvável que seja para cada um.</li>
 </ul>
 </section>
-<section id="hdfs-limites-que-ainda-importam" class="slide level2">
-<h2>HDFS: limites que ainda importam</h2>
+<section id="posicionamento-e-suas-alternativas" class="slide level2 smaller">
+<h2>Posicionamento e suas alternativas</h2>
+<p><strong>O posicionamento por rack</strong> visa o caso correlacionado (projeto do HDFS): uma réplica no nó que grava, e duas em <strong>outro</strong> rack.</p>
 <table class="caption-top">
 <colgroup>
-<col style="width: 35%">
-<col style="width: 65%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Limite</th>
-<th>Consequência</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Arquivos <strong>write-once</strong> (só append)</td>
-<td>Sem UPDATE; daí Delta e Iceberg</td>
-</tr>
-<tr class="even">
-<td>O NameNode guarda tudo na memória (~150 bytes por arquivo ou bloco)</td>
-<td>O <strong>problema dos arquivos pequenos</strong></td>
-</tr>
-<tr class="odd">
-<td>Armazenamento e processamento nas mesmas máquinas</td>
-<td>Mais disco significa comprar mais CPU</td>
-</tr>
-</tbody>
-</table>
-<p><strong>Localidade de dados: mover o código até os dados.</strong> Mover 1 TB pela rede é lento; mover um programa de 10 KB é instantâneo. O Spark herdou isso: veja <strong>Locality Level</strong> na Spark UI (<code>NODE_LOCAL</code>, <code>RACK_LOCAL</code>, <code>ANY</code>).</p>
-</section>
-<section id="a-api-filesystem-do-hadoop" class="slide level2">
-<h2>A API FileSystem do Hadoop</h2>
-<p>O Spark nunca fala diretamente com o disco, o HDFS ou o S3. O <strong>esquema da URL</strong> escolhe a implementação.</p>
-<pre><code>     spark.read.parquet("&lt;esquema&gt;://caminho")
-                    │
-         API FileSystem do Hadoop
-                    │
-    ┌───────┬───────┼──────────┬──────────┐
-  file://  hdfs://  s3a://     gs://      abfs://
-  local    HDFS     Amazon S3  Google     Azure</code></pre>
-<p><code>hdfs://</code> funciona de cara: o PySpark traz o cliente do Hadoop. <code>s3a://</code>, <code>gs://</code> e <code>abfs://</code> precisam do conector. Toda configuração do Hadoop passa pelo prefixo <code>spark.hadoop.*</code>.</p>
-</section>
-<section id="blocos-e-partições-do-spark" class="slide level2">
-<h2>Blocos e partições do Spark</h2>
-<table class="caption-top">
-<colgroup>
+<col style="width: 20%">
+<col style="width: 18%">
+<col style="width: 25%">
 <col style="width: 17%">
-<col style="width: 82%">
+<col style="width: 17%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>API</th>
-<th>Como divide a entrada</th>
+<th>Replicação</th>
+<th>Sobrevive</th>
+<th>Armazenamento</th>
+<th>Escritas</th>
+<th>Leituras</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>sc.textFile</code> (RDD)</td>
-<td><code>InputFormat</code> do Hadoop: <strong>uma partição por bloco</strong></td>
+<td>3 réplicas, ao acaso</td>
+<td>2 nós</td>
+<td>3×</td>
+<td>Cadeia a 3</td>
+<td>Qualquer de 3</td>
 </tr>
 <tr class="even">
-<td><code>spark.read</code> (DataFrame)</td>
-<td>Critério próprio (<code>spark.sql.files.maxPartitionBytes</code>); os blocos decidem <strong>onde</strong> cada task roda</td>
+<td>3 réplicas, 2 racks</td>
+<td>2 nós <strong>ou 1 rack</strong></td>
+<td>3×</td>
+<td>Menos tráfego entre racks</td>
+<td>Qualquer de 3</td>
+</tr>
+<tr class="odd">
+<td>Código de apagamento RS(6,3)</td>
+<td><strong>Quaisquer 3 de 9 peças</strong></td>
+<td><strong>1,5×</strong></td>
+<td>CPU para codificar</td>
+<td>Reconstruir se perder uma</td>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb3"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href=""></a><span class="bu">print</span>(sc.textFile(CORPUS).getNumPartitions())</span>
-<span id="cb3-2"><a href=""></a><span class="bu">print</span>(spark.read.text(CORPUS).rdd.getNumPartitions())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>O código de apagamento</strong> divide em 6 peças de dados e adiciona 3 de paridade. Tolera <em>mais</em> falhas que a replicação com metade do armazenamento. Por que a replicação ainda é usada?</p>
+<ul>
+<li><strong>Localidade:</strong> um bloco replicado é lido inteiro em 3 nós; um codificado está distribuído.</li>
+<li><strong>Recuperação:</strong> reconstruir uma peça perdida lê outras 6 pela rede.</li>
+</ul>
+<p><strong>Regra de uso:</strong> réplicas para dados quentes, código de apagamento para dados frios. Os armazenamentos de objetos na nuvem fazem o mesmo compromisso internamente.</p>
 </section>
-<section id="mapreduce-o-modelo" class="slide level2">
-<h2>MapReduce: o modelo</h2>
-<pre><code>  MAP                     SHUFFLE &amp; SORT           REDUCE
-  "spark hdfs" -&gt; (spark,1)(hdfs,1)    hdfs  -&gt; [1,1] -&gt; (hdfs, 2)
-  "hdfs yarn"  -&gt; (hdfs,1)(yarn,1) ──▶ spark -&gt; [1,1] -&gt; (spark, 2)
-  "spark"      -&gt; (spark,1)            yarn  -&gt; [1]   -&gt; (yarn, 1)</code></pre>
+<section id="localidade-de-dados-uma-probabilidade-não-uma-garantia" class="slide level2 smaller">
+<h2>Localidade de dados: uma probabilidade, não uma garantia</h2>
+<p>“Mover o código até os dados” precisa de um espaço livre em um nó que tenha o bloco. Se uma fração <span class="math inline">\(u\)</span> dos espaços está ocupada, e os <span class="math inline">\(r\)</span> nós com réplica são independentes:</p>
+<p><span class="math display">\[P(\text{há um espaço local livre}) = 1 - u^{\,r}\]</span></p>
 <table class="caption-top">
 <thead>
 <tr class="header">
-<th>Etapa</th>
-<th>Quem escreve</th>
-<th>Paralelismo</th>
+<th>Carga do cluster <span class="math inline">\(u\)</span></th>
+<th><span class="math inline">\(r = 1\)</span></th>
+<th><span class="math inline">\(r = 3\)</span></th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Map</td>
-<td>Você</td>
-<td>Uma task por bloco de entrada</td>
+<td>50%</td>
+<td>50%</td>
+<td><strong>88%</strong></td>
 </tr>
 <tr class="even">
-<td>Shuffle &amp; Sort</td>
-<td>O framework</td>
-<td><code>hash(chave) % R</code> escolhe o reducer</td>
-</tr>
-<tr class="odd">
-<td>Reduce</td>
-<td>Você</td>
-<td>R tasks, com chaves <strong>ordenadas</strong></td>
+<td>90%</td>
+<td>10%</td>
+<td><strong>27%</strong></td>
 </tr>
 </tbody>
 </table>
-<p>O mesmo que um <code>groupBy</code> do Spark: map é o stage antes do <code>Exchange</code>, reduce o stage depois.</p>
+<p><strong>Então a replicação também compra localidade</strong>, não só segurança, e a localidade cai justamente quando o cluster está mais ocupado.</p>
+<p>A resposta do Spark é o <strong>delay scheduling</strong> (Zaharia et al., 2010): sem espaço local livre, espera um pouco antes de ceder, de process-local a node-local, rack-local e any. No Spark, <code>spark.locality.wait</code> vale <strong>3 s</strong> por padrão.</p>
+<p><strong>Um compromisso sem valor universal:</strong> uma espera longa mantém as tasks locais mas retém espaços ociosos. E em uma nuvem com S3 não há localidade a preservar: o nível é sempre <code>ANY</code>.</p>
+</section></section>
+<section>
+<section id="mapreduce-modelo-falhas-limites" class="title-slide slide level1 center">
+<h1>3. MapReduce: modelo, falhas, limites</h1>
+
 </section>
-<section id="hadoop-streaming-mapreduce-em-python" class="slide level2">
-<h2>Hadoop Streaming: MapReduce em Python</h2>
-<p>Qualquer programa que leia stdin e escreva stdout. Dá para testar um job inteiro no terminal:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode numberSource bash number-lines code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href=""></a><span class="fu">cat</span> input <span class="kw">|</span> <span class="ex">python</span> mapper.py <span class="kw">|</span> <span class="fu">sort</span> <span class="kw">|</span> <span class="ex">python</span> reducer.py</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="sourceCode" id="cb6"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href=""></a><span class="co"># mapper.py</span></span>
-<span id="cb6-2"><a href=""></a><span class="cf">for</span> line <span class="kw">in</span> sys.stdin:</span>
-<span id="cb6-3"><a href=""></a>    <span class="cf">for</span> word <span class="kw">in</span> re.findall(<span class="vs">r"[a-z]+"</span>, line.lower()):</span>
-<span id="cb6-4"><a href=""></a>        <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>word<span class="sc">}</span><span class="ch">\t</span><span class="ss">1"</span>)</span>
-<span id="cb6-5"><a href=""></a></span>
-<span id="cb6-6"><a href=""></a><span class="co"># reducer.py: a entrada está ordenada, cada chave chega junta</span></span>
-<span id="cb6-7"><a href=""></a>current, count <span class="op">=</span> <span class="va">None</span>, <span class="dv">0</span></span>
-<span id="cb6-8"><a href=""></a><span class="cf">for</span> line <span class="kw">in</span> sys.stdin:</span>
-<span id="cb6-9"><a href=""></a>    word, n <span class="op">=</span> line.rstrip(<span class="st">"</span><span class="ch">\n</span><span class="st">"</span>).split(<span class="st">"</span><span class="ch">\t</span><span class="st">"</span>)</span>
-<span id="cb6-10"><a href=""></a>    <span class="cf">if</span> word <span class="op">!=</span> current:</span>
-<span id="cb6-11"><a href=""></a>        <span class="cf">if</span> current <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
-<span id="cb6-12"><a href=""></a>            <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>current<span class="sc">}</span><span class="ch">\t</span><span class="sc">{</span>count<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb6-13"><a href=""></a>        current, count <span class="op">=</span> word, <span class="dv">0</span></span>
-<span id="cb6-14"><a href=""></a>    count <span class="op">+=</span> <span class="bu">int</span>(n)</span>
-<span id="cb6-15"><a href=""></a><span class="cf">if</span> current <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
-<span id="cb6-16"><a href=""></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>current<span class="sc">}</span><span class="ch">\t</span><span class="sc">{</span>count<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="o-modelo-em-duas-assinaturas" class="slide level2 smaller">
+<h2>O modelo, em duas assinaturas</h2>
+<p>Dean e Ghemawat (2004) definem todo o modelo de programação com:</p>
+<p><span class="math display">\[\text{map}\ (k_1, v_1) \to \text{list}(k_2, v_2) \qquad\quad \text{reduce}\ (k_2, \text{list}(v_2)) \to \text{list}(v_2)\]</span></p>
+<p>O framework faz todo o resto: particionar, agendar, agrupar por <span class="math inline">\(k_2\)</span> e repetir.</p>
+<pre><code> split 1 ─▶ map ─┐ partition    ┌─ sort, merge ─▶ reduce ─▶ out 1
+ split 2 ─▶ map ─┼─ hash(k2)%R ─┤
+ split 3 ─▶ map ─┘ local disk   └─ sort, merge ─▶ reduce ─▶ out 2
+   M map tasks                     R reduce tasks        on GFS/HDFS</code></pre>
+<p><strong>Por que um modelo tão estreito?</strong> Porque restringir o programa permite ao sistema <strong>paralelizar e se recuperar automaticamente</strong>. Se map e reduce são funções determinísticas da entrada, reexecutá-las dá a mesma saída: reexecutar <em>é</em> a tolerância a falhas, e o resultado distribuído equivale a um sequencial (§3.3).</p>
+<p><strong>É a mesma ideia da linhagem do Spark,</strong> e a mesma razão pela qual uma UDF deve ser determinística.</p>
 </section>
-<section id="o-mesmo-word-count-no-spark" class="slide level2">
-<h2>O mesmo word count no Spark</h2>
-<div class="sourceCode" id="cb7"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href=""></a><span class="co"># RDD: a API original, imita map/reduce</span></span>
-<span id="cb7-2"><a href=""></a>(sc.textFile(CORPUS)</span>
-<span id="cb7-3"><a href=""></a>   .flatMap(<span class="kw">lambda</span> line: re.findall(<span class="vs">r"[a-z]+"</span>, line.lower()))</span>
-<span id="cb7-4"><a href=""></a>   .<span class="bu">map</span>(<span class="kw">lambda</span> w: (w, <span class="dv">1</span>))</span>
-<span id="cb7-5"><a href=""></a>   .reduceByKey(<span class="kw">lambda</span> a, b: a <span class="op">+</span> b))</span>
-<span id="cb7-6"><a href=""></a></span>
-<span id="cb7-7"><a href=""></a><span class="co"># DataFrame</span></span>
-<span id="cb7-8"><a href=""></a>(spark.read.text(CORPUS)</span>
-<span id="cb7-9"><a href=""></a>   .select(F.explode(F.split(F.lower(<span class="st">"value"</span>), <span class="st">" "</span>)).alias(<span class="st">"word"</span>))</span>
-<span id="cb7-10"><a href=""></a>   .groupBy(<span class="st">"word"</span>).count())</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="falhas-e-tarefas-lentas" class="slide level2 smaller">
+<h2>Falhas e tarefas lentas</h2>
+<table class="caption-top">
+<colgroup>
+<col style="width: 24%">
+<col style="width: 48%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Evento</th>
+<th>O que acontece</th>
+<th>Por quê</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Morre um worker <strong>map</strong>, task <strong>terminada</strong></td>
+<td><strong>É reexecutada</strong></td>
+<td>Sua saída estava no disco local dessa máquina</td>
+</tr>
+<tr class="even">
+<td>Morre um worker <strong>reduce</strong>, task terminada</td>
+<td><strong>Não</strong> é reexecutada</td>
+<td>Sua saída já está no GFS, replicada</td>
+</tr>
+<tr class="odd">
+<td>Qualquer task em andamento</td>
+<td>Reexecutada em outro</td>
+<td>Ainda não há nada confirmado</td>
+</tr>
+<tr class="even">
+<td>Morre o master</td>
+<td>O job falha (no artigo)</td>
+<td>Suposto raro: só uma máquina</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Tarefas lentas (<em>stragglers</em>).</strong> Uma máquina pode ser muito mais lenta que as outras, por um disco ruim ou um nó ocupado, e pelo limite <span class="math inline">\(T \geq t_{\max}\)</span>, essa task define o fim do job.</p>
+<p><strong>Backup tasks:</strong> quando o job quase termina, o framework lança cópias das tasks restantes, e ganha a que terminar primeiro. A ordenação do artigo leva <strong>44% mais tempo sem elas</strong> (§3.6).</p>
+<p>Isso só é seguro porque as tasks são determinísticas. A versão do Spark é <code>spark.speculation</code>, desligada por padrão.</p>
+<p><strong>Estado no master:</strong> <span class="math inline">\(O(M + R)\)</span> decisões de agendamento e <span class="math inline">\(O(M \cdot R)\)</span> de estado: o mesmo <span class="math inline">\(M \times R\)</span> do número de blocos do shuffle.</p>
 </section>
-<section id="por-que-o-spark-substituiu-o-mapreduce" class="slide level2">
-<h2>Por que o Spark substituiu o MapReduce</h2>
-<pre><code>  MapReduce: HDFS ─▶ [job 1] ─▶ HDFS ─▶ [job 2] ─▶ HDFS ─▶ ...
-  Spark:     HDFS ─▶ [stage 1] ─shuffle─▶ [stage 2] ─▶ HDFS</code></pre>
+<section id="por-que-o-mapreduce-perdeu-o-custo-de-uma-cadeia" class="slide level2 smaller">
+<h2>Por que o MapReduce perdeu: o custo de uma cadeia</h2>
+<p>Cada job lê e <strong>grava no HDFS</strong> com replicação. Para <span class="math inline">\(j\)</span> passos sobre dados de tamanho <span class="math inline">\(D\)</span>, com <span class="math inline">\(r = 3\)</span>:</p>
+<p><span class="math display">\[\text{bytes gravados} = j \cdot r \cdot D \qquad\quad \text{bytes pela rede} \geq j \cdot (r - 1) \cdot D\]</span></p>
+<p><strong>Exemplo:</strong> <span class="math inline">\(D\)</span> = 100 GB, <span class="math inline">\(j = 10\)</span> iterações de um algoritmo de ML: <strong>3 TB gravados</strong>, 2 TB deles pela rede, só para guardar resultados intermediários que ninguém reutilizará.</p>
 <table class="caption-top">
 <colgroup>
 <col style="width: 5%">
@@ -460,185 +520,153 @@ Felipe A. Moreno-Vera
 </thead>
 <tbody>
 <tr class="odd">
-<td>Entre etapas</td>
-<td>Escreve no HDFS (disco + replicação)</td>
-<td>Memória / disco local</td>
+<td>Resultados intermediários</td>
+<td>HDFS: duráveis, 3×</td>
+<td>Memória ou disco local, 1×</td>
 </tr>
 <tr class="even">
-<td>Algoritmos iterativos</td>
-<td>Um job por iteração</td>
-<td>Dados em cache entre iterações</td>
+<td>Uma falha</td>
+<td>Reinicia da última gravação no HDFS</td>
+<td>Recalcula pela linhagem</td>
 </tr>
 <tr class="odd">
-<td>API</td>
-<td>Só map e reduce</td>
-<td>DataFrames, SQL, streaming, ML</td>
-</tr>
-<tr class="even">
-<td>Otimizador</td>
-<td>Nenhum</td>
-<td>Catalyst + AQE</td>
+<td>Plano</td>
+<td>Cada job isolado</td>
+<td>Todo o DAG, otimizado</td>
 </tr>
 </tbody>
 </table>
+<p><strong>O compromisso é real, e o Spark não o eliminou.</strong> O MapReduce paga um custo fixo por durabilidade em cada passo. O Spark aposta que as falhas são raras o bastante para que recalcular saia mais barato do que gravar sempre. Em jobs muito longos com falhas frequentes, essa aposta pode perder, e para isso existe <code>checkpoint</code>.</p>
+</section></section>
+<section>
+<section id="yarn-dividir-um-cluster" class="title-slide slide level1 center">
+<h1>4. YARN: dividir um cluster</h1>
+
 </section>
-<section id="yarn-quem-roda-onde" class="slide level2">
-<h2>YARN: quem roda onde</h2>
+<section id="dois-níveis-de-decisão" class="slide level2 smaller">
+<h2>Dois níveis de decisão</h2>
+<p>O Hadoop 1 misturava o gerenciamento de recursos e o agendamento de jobs em um só processo. O YARN os separa: o <strong>ResourceManager</strong> aloca contêineres às aplicações, e cada <strong>ApplicationMaster</strong> decide como usar os seus. Isso permite que Spark, Flink e MapReduce compartilhem um cluster.</p>
 <table class="caption-top">
 <thead>
 <tr class="header">
 <th>YARN</th>
-<th>Spark</th>
+<th>No Spark</th>
+<th>Pergunta de dimensionamento</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>ResourceManager</td>
-<td>O “master” do cluster</td>
+<td>Contêiner</td>
+<td>Executor</td>
+<td>Núcleos e memória de cada um</td>
 </tr>
 <tr class="even">
 <td>ApplicationMaster</td>
-<td>No modo <code>cluster</code>, o driver roda dentro dele</td>
+<td>Driver em modo <code>cluster</code></td>
+<td>Onde o driver roda</td>
 </tr>
 <tr class="odd">
-<td>Container</td>
-<td>Cada <strong>executor</strong> é um container</td>
-</tr>
-<tr class="even">
-<td>Filas</td>
-<td>Limitam quanto cada time pode usar</td>
+<td>Fila</td>
+<td><code>--queue</code></td>
+<td>Que fração cada equipe pode usar</td>
 </tr>
 </tbody>
 </table>
-<p>Do lado do Spark, a principal mudança é o <code>--master</code> (<code>local[*]</code>, <code>yarn</code>, <code>k8s://...</code>, <code>spark://...</code>):</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode numberSource bash number-lines code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href=""></a><span class="ex">spark-submit</span> <span class="at">--master</span> yarn <span class="at">--deploy-mode</span> cluster <span class="dt">\</span></span>
-<span id="cb9-2"><a href=""></a>  <span class="at">--num-executors</span> 10 <span class="at">--executor-cores</span> 4 <span class="at">--executor-memory</span> 8g <span class="dt">\</span></span>
-<span id="cb9-3"><a href=""></a>  <span class="at">--queue</span> analytics pipeline_silver.py</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="mão-na-massa-hdfs-de-um-nó" class="slide level2">
-<h2>Mão na massa: HDFS de um nó</h2>
-<p>NameNode e DataNode em uma máquina: o mesmo software de um cluster de 1.000 nós.</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode numberSource bash number-lines code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href=""></a><span class="ex">hdfs</span> namenode <span class="at">-format</span> <span class="at">-force</span> <span class="at">-nonInteractive</span></span>
-<span id="cb10-2"><a href=""></a><span class="ex">hdfs</span> <span class="at">--daemon</span> start namenode</span>
-<span id="cb10-3"><a href=""></a><span class="ex">hdfs</span> <span class="at">--daemon</span> start datanode</span>
-<span id="cb10-4"><a href=""></a></span>
-<span id="cb10-5"><a href=""></a><span class="ex">hdfs</span> dfs <span class="at">-mkdir</span> <span class="at">-p</span> /aula9/raw</span>
-<span id="cb10-6"><a href=""></a><span class="ex">hdfs</span> dfs <span class="at">-put</span> <span class="at">-f</span> corpus.txt /aula9/raw/corpus.txt</span>
-<span id="cb10-7"><a href=""></a><span class="ex">hdfs</span> dfs <span class="at">-D</span> dfs.blocksize=4194304 <span class="at">-put</span> <span class="at">-f</span> corpus.txt /aula9/raw/corpus_4mb.txt</span>
-<span id="cb10-8"><a href=""></a><span class="ex">hdfs</span> dfs <span class="at">-ls</span> <span class="at">-h</span> /aula9/raw</span>
-<span id="cb10-9"><a href=""></a><span class="ex">hdfs</span> fsck /aula9/raw/corpus_4mb.txt <span class="at">-files</span> <span class="at">-blocks</span> <span class="at">-locations</span></span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Os blocos são arquivos <code>blk_&lt;id&gt;</code> comuns no disco do DataNode. O NameNode nunca vê o conteúdo.</p>
-</section>
-<section id="spark-e-pandas-no-hdfs" class="slide level2">
-<h2>Spark e Pandas no HDFS</h2>
-<div class="sourceCode" id="cb11"><pre class="sourceCode numberSource python number-lines code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href=""></a><span class="co"># Spark: o HDFS é só mais um esquema de URL</span></span>
-<span id="cb11-2"><a href=""></a>HDFS <span class="op">=</span> <span class="st">"hdfs://localhost:9000"</span></span>
-<span id="cb11-3"><a href=""></a>words <span class="op">=</span> (spark.read.text(<span class="ss">f"</span><span class="sc">{</span>HDFS<span class="sc">}</span><span class="ss">/aula9/raw/corpus.txt"</span>)</span>
-<span id="cb11-4"><a href=""></a>         .select(F.explode(F.split(<span class="st">"value"</span>, <span class="st">" "</span>)).alias(<span class="st">"word"</span>))</span>
-<span id="cb11-5"><a href=""></a>         .groupBy(<span class="st">"word"</span>).count())</span>
-<span id="cb11-6"><a href=""></a>words.write.mode(<span class="st">"overwrite"</span>).parquet(<span class="ss">f"</span><span class="sc">{</span>HDFS<span class="sc">}</span><span class="ss">/aula9/gold/wordcount"</span>)</span>
-<span id="cb11-7"><a href=""></a></span>
-<span id="cb11-8"><a href=""></a><span class="co"># Pandas via PyArrow (libhdfs)</span></span>
-<span id="cb11-9"><a href=""></a>hdfs <span class="op">=</span> pafs.HadoopFileSystem(<span class="st">"localhost"</span>, <span class="dv">9000</span>)</span>
-<span id="cb11-10"><a href=""></a>wc <span class="op">=</span> pq.read_table(<span class="st">"/aula9/gold/wordcount"</span>, filesystem<span class="op">=</span>hdfs).to_pandas()</span>
-<span id="cb11-11"><a href=""></a></span>
-<span id="cb11-12"><a href=""></a><span class="co"># Sem libhdfs: WebHDFS, a API REST</span></span>
-<span id="cb11-13"><a href=""></a>requests.get(<span class="st">"http://localhost:9870/webhdfs/v1/aula9/raw?op=LISTSTATUS"</span>).json()</span></code><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>O marcador <code>_SUCCESS</code> indica que a saída está completa. O Spark também o escreve, herança do Hadoop.</p>
-</section>
-<section id="hadoop-hoje" class="slide level2 smaller">
-<h2>Hadoop hoje</h2>
-<p>A maior mudança: <strong>separar armazenamento e processamento</strong>. Object storage barato o tempo todo; clusters que sobem e descem por job.</p>
-<table class="caption-top">
-<colgroup>
-<col style="width: 57%">
-<col style="width: 42%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Componente</th>
-<th>Situação</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><strong>HDFS</strong></td>
-<td>Ainda forte on-premise; na nuvem, substituído por object storage</td>
-</tr>
-<tr class="even">
-<td><strong>MapReduce</strong></td>
-<td>Praticamente só em sistemas legados</td>
-</tr>
-<tr class="odd">
-<td><strong>YARN</strong></td>
-<td>Ainda muito usado (inclusive no AWS EMR); Kubernetes cresce rápido</td>
-</tr>
-<tr class="even">
-<td><strong>API FileSystem</strong></td>
-<td><strong>Onipresente</strong>: é como Spark, Hive, Trino e Flink acessam S3/GCS/ADLS</td>
-</tr>
-<tr class="odd">
-<td><strong>Parquet/ORC</strong></td>
-<td>O padrão de armazenamento analítico</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="resumo" class="slide level2 smaller">
-<h2>Resumo</h2>
-<table class="caption-top" style="width:100%;">
-<colgroup>
-<col style="width: 33%">
-<col style="width: 29%">
-<col style="width: 37%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Conceito</th>
-<th>Hadoop</th>
-<th>No Spark</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Arquivos distribuídos</td>
-<td>HDFS: blocos de 128 MB, 3 réplicas</td>
-<td><code>hdfs://</code> via API FileSystem</td>
-</tr>
-<tr class="even">
-<td>Processamento</td>
-<td>MapReduce: map, shuffle e sort, reduce</td>
-<td>Stages separados por shuffles</td>
-</tr>
-<tr class="odd">
-<td>Recursos</td>
-<td>YARN: ResourceManager, containers</td>
-<td><code>--master yarn</code>, executors = containers</td>
-</tr>
-<tr class="even">
-<td>Código até os dados</td>
-<td>Localidade de blocos</td>
-<td><code>Locality Level</code> na Spark UI</td>
-</tr>
-<tr class="odd">
-<td>Saída concluída</td>
-<td>Marcador <code>_SUCCESS</code></td>
-<td>O mesmo marcador</td>
-</tr>
-<tr class="even">
-<td>Configurações</td>
-<td><code>core-site.xml</code>, <code>hdfs-site.xml</code></td>
-<td><code>spark.hadoop.*</code></td>
-</tr>
-<tr class="odd">
-<td>Nuvem</td>
-<td>Conectores S3A, GCS, ABFS</td>
-<td><code>s3a://</code>, <code>gs://</code>, <code>abfs://</code></td>
-</tr>
-</tbody>
-</table>
+<p><strong>Exercício.</strong> 20 nós, cada um com 16 núcleos e 64 GB. Com <code>--executor-cores 4 --executor-memory 8g</code>, quantos executors cabem, e qual recurso os limita? Memória extra: <code>max(10%, 384 MiB)</code>.</p>
+<div class="fragment">
+<p>Contêiner: <span class="math inline">\(8 + 0{,}8 =\)</span> 8,8 GB. Por nó: núcleos <span class="math inline">\(16/4 =\)</span> <strong>4</strong>; memória <span class="math inline">\(64/8{,}8 =\)</span> 7. <strong>Os núcleos são o limite</strong>: 4 executors por nó, 35 GB usados, e 29 GB desperdiçados.</p>
+<p>Total <span class="math inline">\(20 \times 4 = 80\)</span> executors, 320 espaços de task. Com 14 GB cada, ficaria equilibrado: <span class="math inline">\(15{,}4 \times 4 \approx\)</span> 62 GB.</p>
+<p><strong>Por que não um só executor enorme?</strong> Heaps muito grandes alongam as pausas de GC, e cada executor é uma unidade de falha: perder um perde mais cache e mais saída de shuffle.</p>
+</div>
+</section></section>
+<section>
+<section id="api-filesystem-e-armazenamento-de-objetos" class="title-slide slide level1 center">
+<h1>5. API FileSystem e armazenamento de objetos</h1>
 
 </section>
+<section id="uma-interface-garantias-diferentes" class="slide level2 smaller">
+<h2>Uma interface, garantias diferentes</h2>
+<p>O Spark nunca fala diretamente com um disco. Chama a interface <code>FileSystem</code> do Hadoop, e o esquema da URL escolhe a implementação: <code>file://</code>, <code>hdfs://</code>, <code>s3a://</code>, <code>gs://</code>, <code>abfs://</code>.</p>
+<p><strong>A interface é a mesma, mas a semântica não.</strong> Um armazenamento de objetos é um mapa chave-valor que só parece uma árvore:</p>
+<table class="caption-top">
+<colgroup>
+<col style="width: 31%">
+<col style="width: 18%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operação</th>
+<th>HDFS</th>
+<th>S3 e similares</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>rename(dir)</code></td>
+<td><strong>Atômico</strong>, <span class="math inline">\(O(1)\)</span>: muda metadados</td>
+<td><strong>Cópia + exclusão</strong>, <span class="math inline">\(O(\text{bytes})\)</span>, não atômico</td>
+</tr>
+<tr class="even">
+<td><code>list(dir)</code></td>
+<td>Uma chamada ao NameNode</td>
+<td>Requisições paginadas por prefixo</td>
+</tr>
+<tr class="odd">
+<td>Localidade</td>
+<td>Sim</td>
+<td>Não: toda leitura passa pela rede</td>
+</tr>
+<tr class="even">
+<td>Append</td>
+<td>Sim</td>
+<td>Não</td>
+</tr>
+<tr class="odd">
+<td>Modelo de custo</td>
+<td>Máquinas</td>
+<td>Por requisição e por GB</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Por que importa:</strong> o commit de saída clássico do Hadoop grava em uma pasta temporária e depois a <strong>renomeia</strong> para publicar de forma atômica. No S3, esse rename é lento, e uma queda no meio deixa um resultado parcial. Por isso existem os committers S3A, e é a motivação principal de formatos de tabela como Delta, onde um commit é uma escrita atômica no log (Aula 9).</p>
+</section></section>
+<section>
+<section id="problema-integrador" class="title-slide slide level1 center">
+<h1>6. Problema integrador</h1>
+
+</section>
+<section id="dimensionar-um-cluster-hdfs" class="slide level2 smaller">
+<h2>Dimensionar um cluster HDFS</h2>
+<p>500 TB de dados, <span class="math inline">\(r = 3\)</span>, nós com 48 TB de disco (12 discos de 200 MB/s). Arquivo médio: 1 GB.</p>
+<ol type="1">
+<li>Quantos nós para armazenar? 2. Quanto heap no NameNode? 3. Quanto se os arquivos fossem de 1 MB? 4. Quanto leva uma varredura completa? 5. Quanto RS(6,3) economizaria?</li>
+</ol>
+<div class="fragment">
+<ol type="1">
+<li>Bruto: <span class="math inline">\(500 \times 3 =\)</span> 1.500 TB, então <span class="math inline">\(1500 / 48 =\)</span> <strong>32 nós</strong>, sem folga. Com 25% livre: 40 nós.</li>
+<li><span class="math inline">\(500.000\)</span> arquivos + <span class="math inline">\(500\ \text{TB} / 128\ \text{MB} \approx 3{,}9\)</span> M blocos <span class="math inline">\(=\)</span> 4,4 M objetos <span class="math inline">\(\times\)</span> 150 B <span class="math inline">\(\approx\)</span> <strong>660 MB</strong>.</li>
+<li>500 M arquivos + 500 M blocos <span class="math inline">\(=\)</span> <span class="math inline">\(10^9 \times 150\)</span> B <span class="math inline">\(=\)</span> <strong>150 GB</strong>: mesmos dados, 227× o heap.</li>
+<li>32 nós <span class="math inline">\(\times\)</span> 12 <span class="math inline">\(\times\)</span> 200 MB/s <span class="math inline">\(=\)</span> 76,8 GB/s; <span class="math inline">\(500\ \text{TB} / 76{,}8\ \text{GB/s} \approx\)</span> <strong>1,8 h</strong>. CPU e rede são à parte.</li>
+<li><span class="math inline">\(500 \times 1{,}5 =\)</span> 750 TB: metade dos discos. Em troca: menos localidade e recuperação mais cara. Use para dados frios.</li>
+</ol>
+<p><strong>O heap de (2) é trivial, e o de (3) é um problema sério.</strong> O volume dos dados não mudou: mudou sua <strong>organização</strong>.</p>
+</div>
+</section>
+<section id="referências" class="slide level2 smaller">
+<h2>Referências</h2>
+<ul>
+<li>Ghemawat, S., Gobioff, H., Leung, S.-T. (2003). <em>The Google File System</em>. SOSP.</li>
+<li>Dean, J., Ghemawat, S. (2004). <em>MapReduce: Simplified Data Processing on Large Clusters</em>. OSDI.</li>
+<li>Vavilapalli, V. K., et al.&nbsp;(2013). <em>Apache Hadoop YARN: Yet Another Resource Negotiator</em>. SoCC.</li>
+<li>Zaharia, M., et al.&nbsp;(2010). <em>Delay Scheduling: A Simple Technique for Achieving Locality and Fairness in Cluster Scheduling</em>. EuroSys.</li>
+<li>Cidon, A., et al.&nbsp;(2013). <em>Copysets: Reducing the Frequency of Data Loss in Cloud Storage</em>. USENIX ATC.</li>
+<li>Apache Hadoop 3.4.1: <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-project-dist/hadoop-hdfs/HdfsDesign.html">HDFS Architecture</a>, <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-project-dist/hadoop-hdfs/HDFSErasureCoding.html">Erasure Coding</a>, <a href="https://hadoop.apache.org/docs/r3.4.1/hadoop-aws/tools/hadoop-aws/committers.html">S3A Committers</a>.</li>
+<li>Cloudera: <a href="https://www.cloudera.com/blog/technical/the-small-files-problem.html">The Small Files Problem</a> (150-byte rule of thumb).</li>
+<li>Apache Spark 4.0.1: <a href="https://spark.apache.org/docs/4.0.1/configuration.html">Configuration</a>, <a href="https://spark.apache.org/docs/4.0.1/running-on-yarn.html">Running on YARN</a>.</li>
+</ul>
+
+</section></section>
     </div>
   <div class="quarto-auto-generated-content" style="display: none;">
 <div class="footer footer-default">

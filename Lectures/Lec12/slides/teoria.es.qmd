@@ -13,247 +13,246 @@ format:
     code-block-height: 380px
     highlight-style: github-dark
     fontsize: 30px
+    include-in-header:
+      text: |
+        <style>.reveal pre code, .reveal div.sourceCode pre code { font-size: 20px !important; line-height: 1.25 !important; }</style>
   html:
     allow-html: true
 ---
 
-## Lo que aprenderás
+## Lo que podrás hacer {.smaller}
 
-- Qué hace rápidos a Polars y DuckDB
-- La misma consulta en cinco herramientas: tiempo, memoria y sintaxis
-- Pandas API on Spark para migrar código Pandas
-- Apache Arrow para intercambiar datos entre herramientas
-- Un criterio claro para decidir
+- Ajustar un modelo simple de costo a mediciones reales, y ubicar el cruce entre herramientas
+- Explicar, desde el hardware, por qué los motores columnares y vectorizados son mucho más rápidos
+- Explicar qué cambia Arrow, y cuándo las conversiones no cuestan nada
+- Separar la pregunta del tiempo de la pregunta de la memoria
+- Elegir una herramienta con un criterio razonado, y defender la elección
 
----
+| Bloque | Tema | Min |
+|--------|------|-----|
+| 1 | Qué dicen las mediciones | 25 |
+| 2 | Por qué son rápidos: el hardware | 30 |
+| 3 | Memoria y out-of-core | 15 |
+| 4 | Apache Arrow | 15 |
+| 5 | Pandas API on Spark | 10 |
+| 6 | Cómo decidir | 15 |
+| 7 | Problema integrador | 10 |
 
-## Las herramientas {.smaller}
+# 1. Qué dicen las mediciones
 
-| | Pandas | Polars | DuckDB | Pandas API on Spark | Spark |
-|-|--------|--------|--------|---------------------|-------|
-| Interfaz | Python | Python (expresiones) | **SQL** | Sintaxis de Pandas | DataFrame + SQL |
-| Motor | NumPy/C | Rust | C++ | Spark | Spark (JVM) |
-| Ejecución | Eager | Eager **o lazy** | Lazy | Lazy | Lazy |
-| Núcleos | **1** (casi siempre) | Todos | Todos | Todos / clúster | Todos / clúster |
-| Datos mayores que la RAM | No | Sí (streaming) | Sí (spill) | Sí | Sí |
-| Varias máquinas | No | No | No | **Sí** | **Sí** |
+## La misma consulta, la misma máquina {.smaller}
 
----
+Lab 12, con 24 núcleos: facturación por segmento y categoría, con un filtro y dos joins. Mejor tiempo por herramienta, sobre Parquet:
 
-## Por qué Polars y DuckDB son rápidos
+| Filas | Pandas | Polars | DuckDB | Spark |
+|-------|--------|--------|--------|-------|
+| 1 M | 0,11 s | 0,02 s | 0,03 s | 0,33 s |
+| 5 M | 0,46 s | 0,04 s | 0,04 s | 0,34 s |
+| 20 M | **2,14 s** | **0,11 s** | **0,08 s** | **0,49 s** |
 
-| Técnica | Idea |
-|---------|------|
-| **Almacenamiento columnar** (Arrow) | Los valores de una columna, contiguos en memoria |
-| **Ejecución vectorizada** | Lotes de miles de valores por instrucción |
-| **Paralelismo** | El trabajo se reparte entre todos los núcleos |
-| **Optimización de consultas** | Empuja filtros, lee solo las columnas usadas |
-| **Out-of-core** | Usa disco cuando se acaba la RAM |
+**Ajusta el modelo más simple:** un costo fijo $a$ más un costo por fila $b$, usando los extremos:
 
-Las mismas ideas de Spark, **sin el costo de coordinar un clúster**.
+$$T(n) = a + b \cdot n$$
 
----
+| Herramienta | Costo fijo $a$ | Costo por fila $b$ |
+|-------------|----------------|--------------------|
+| Pandas | ≈ 0 | **107 ns** |
+| Spark | **0,32 s** | 8,4 ns |
+| Polars | 15 ms | 4,7 ns |
+| DuckDB | 27 ms | **2,6 ns** |
 
-## El costo fijo de Spark
-
-```
-  Pandas / Polars / DuckDB        Spark
-  ┌──────────────────────┐        ┌───────────────────────────────┐
-  │ proceso Python       │        │ Python ─py4j─▶ JVM (driver)   │
-  │ └─ biblioteca nativa │        │   ├─ planificación (Catalyst) │
-  │    lee, calcula,     │        │   ├─ jobs, stages, tasks      │
-  │    devuelve          │        │   ├─ shuffle (disco)          │
-  └──────────────────────┘        │   └─ resultado ─▶ Python      │
-                                  └───────────────────────────────┘
-  ~ milisegundos                  ~ cientos de ms a segundos
-```
-
-Irrelevante con 1 TB en 50 máquinas. Con 2 GB en un portátil, domina.
+Cuatro filas de una tabla acaban de explicar todo el debate: **Spark tiene un $a$ enorme, y Pandas un $b$ enorme.**
 
 ---
 
-## La misma consulta: Pandas y Polars
+## Dónde se cruzan las rectas {.smaller}
+
+Dos herramientas empatan cuando $a_1 + b_1 n = a_2 + b_2 n$:
+
+$$n^* = \frac{a_2 - a_1}{b_1 - b_2}$$
+
+| Comparación | $n^*$ | Lectura |
+|-------------|-------|---------|
+| Spark vs Pandas | $\dfrac{0{,}32}{(107 - 8{,}4) \times 10^{-9}} \approx$ **3,2 M de filas** | Por debajo gana Pandas, por encima Spark |
+| Spark vs Polars | **Nunca** | Spark tiene más $a$ **y** más $b$ |
+
+**El modelo predijo la realidad.** Ubica el cruce entre 1 M y 5 M, y eso es justo lo que muestra la tabla: Pandas gana con 1 M (0,11 vs 0,33 s), y pierde con 5 M (0,46 vs 0,34 s).
+
+**Los límites honestos de este análisis:**
+
+- Es una máquina, con cache caliente, y "el mejor de 2" intentos: no es un benchmark.
+- $T(n)$ se ajustó con dos puntos, así que la linealidad es un supuesto.
+- Ignora la memoria: Pandas puede romperse mucho antes de ponerse lento.
+
+**La conclusión central resiste esos límites.** En una máquina, el $b$ de Spark no es mejor que el de Polars o DuckDB. **Su ventaja debe venir de lo que ellos no pueden hacer: usar más máquinas.** Spark no es para ir rápido en una máquina.
+
+# 2. Por qué son rápidos: el hardware
+
+## 107 ns vs 2,6 ns: ¿de dónde salen 40×? {.smaller}
+
+Todos ejecutan aquí un hash join. La diferencia viene de **cómo usan el hardware**, con cuatro palancas independientes:
+
+| Palanca | Pandas | Polars, DuckDB | Ganancia aproximada |
+|---------|--------|----------------|---------------------|
+| **Núcleos** | 1, casi siempre | Todos | Hasta 24× aquí, según Amdahl |
+| **Vectorización** | En parte (NumPy) | Lotes, en todas las etapas | Decenas de veces |
+| **Optimización** | Ninguna: inmediato | Pushdown, pruning | Según la consulta |
+| **Materialización** | Cada paso crea un resultado | Flujo entre operadores | Memoria y cache |
+
+**Latencias aproximadas** (orden de magnitud):
+
+| Operación | Tiempo | Respecto a un ciclo de núcleo |
+|-----------|--------|-------------------------------|
+| Ciclo de CPU | 0,3 ns | 1 |
+| **Memoria principal** | **100 ns** | **300** |
+
+**Un fallo de memoria cuesta cientos de operaciones.** Un motor moderno es, ante todo, **un diseño para no fallar la cache**.
+
+---
+
+## De fila a fila a vectores {.smaller}
+
+**Volcano, el modelo clásico:** cada operador le pide a su hijo **una fila a la vez**. Limpio, componible y terriblemente lento: una llamada virtual por operador y por fila, y ni el predictor de saltos ni la cache de la CPU pueden ayudar.
 
 ```python
-# Pandas: cada paso corre al momento
-o = pd.read_parquet(ORDERS, columns=["customer_id", "product_id",
-                                     "quantity", "price", "order_date"])
-o = o[o["order_date"] >= CUTOFF]
-o = o.assign(revenue=o["price"] * o["quantity"])
-df = o.merge(c, on="customer_id").merge(p, on="product_id")
-df.groupby(["segment", "category"], as_index=False) \
-  .agg(orders=("revenue", "size"), revenue=("revenue", "sum"))
+for row in child:                  # Volcano: interpret per row
+    if row.price > 100: yield row
 
-# Polars: arma un plan, corre en collect()
-(pl.scan_parquet(ORDERS)
-   .filter(pl.col("order_date") >= pl.date(2024, 7, 1))
-   .with_columns(revenue=pl.col("price") * pl.col("quantity"))
-   .join(c, on="customer_id").join(p, on="product_id")
-   .group_by("segment", "category")
-   .agg(orders=pl.len(), revenue=pl.col("revenue").sum())
-   .collect())
+selected = price[price > 100]      # Vectorized: tight loop per batch
 ```
 
----
+**La ejecución vectorizada** (Boncz et al., 2005) conserva el mismo árbol de operadores, pero pasa **lotes de unos mil valores de una columna**. El resultado:
 
-## La misma consulta: DuckDB y Spark
+| Efecto | Por qué |
+|--------|---------|
+| **Interpretación pagada una vez** por lote | El costo de despacho se reparte entre muchos valores |
+| **Cache** | Una columna es contigua, así que el prefetch funciona, y el lote cabe en la cache |
+| **SIMD** | Una instrucción procesa varios valores, y solo funciona sobre datos contiguos |
 
-```python
-# DuckDB: SQL puro sobre los archivos, sin paso de lectura
-duckdb.sql(f"""
-    SELECT c.segment, p.category, COUNT(*) AS orders,
-           SUM(o.price * o.quantity) AS revenue
-    FROM '{ORDERS}' o
-    JOIN '{CUSTOMERS}' c USING (customer_id)
-    JOIN '{PRODUCTS}'  p USING (product_id)
-    WHERE o.order_date >= DATE '{CUTOFF}'
-    GROUP BY ALL
-""").df()
+El artículo reporta **uno a dos órdenes de magnitud**. Parte del 40× que vimos viene de aquí, y otra de usar 24 núcleos.
 
-# Spark
-(spark.read.parquet(ORDERS)
-   .filter(F.col("order_date") >= CUTOFF)
-   .withColumn("revenue", F.col("price") * F.col("quantity"))
-   .join(c, "customer_id").join(p, "product_id")
-   .groupBy("segment", "category")
-   .agg(F.count("*").alias("orders"), F.sum("revenue").alias("revenue")))
-```
+**Spark usa otra solución al mismo problema:** whole-stage codegen, que compila el plan a un solo bucle (Clase 5). Ambas superan a Volcano. Lo que Spark paga además es la JVM y la coordinación, que forman su $a$.
 
----
+# 3. Memoria y out-of-core
 
-## Cómo leer los resultados
+## El tiempo es solo la mitad de la historia {.smaller}
 
-Los números varían con la máquina, pero el orden suele repetirse:
+Lab 12: consulta sobre 5 millones de filas, `orders.parquet` ocupa 63 MB en disco. Pico de memoria de un proceso aparte, menos los 139 MB del proceso vacío:
 
-- **Polars y DuckDB** suelen ser los más rápidos
-- **Pandas** hace los joins en un núcleo y materializa cada paso
-- **Spark** paga su costo fijo: planificación, tasks, transferencia a Python
-- **Pandas API on Spark** suma la traducción de la semántica de Pandas: hecha para escalar, no para ser rápida en una máquina
+| Herramienta | Pico (neto) | Bytes por fila | × tamaño del archivo |
+|-------------|-------------|----------------|----------------------|
+| **Pandas** | **734 MB** | **147** | **11,7×** |
+| Polars | 178 MB | 36 | 2,8× |
+| DuckDB | **83 MB** | **17** | 1,3× |
 
-**Memoria:** Pandas suele romperse por falta de RAM mucho antes de ser demasiado lento. Regla antigua: reserva de 5 a 10 veces el tamaño de los datos.
+**Por qué Pandas necesita tanto:** descomprime columnas enteras, cada `merge` crea una copia completa, y los strings son objetos de Python. Esto explica la vieja regla práctica: **cuenta con 5 a 10 veces el tamaño de los datos en RAM**.
 
----
+**En una máquina de 64 GB,** con esta medida, Pandas para cerca de 435 millones de filas, unos 5,5 GB de Parquet.
 
-## Cuando crece el volumen
+**El límite que importa:** Polars y DuckDB, cuando se acaba la memoria, pueden **usar disco (out-of-core)**: tablas hash y ordenaciones se particionan y vuelcan, como hace el shuffle de Spark. El Lab 12 corrió 5 millones de grupos con un límite de 300 MB en DuckDB. Pandas no tiene esa vía: simplemente muere.
 
-La misma consulta con 1, 5 y 20 millones de filas:
+Así, para una máquina, **"¿cabe en RAM?" es la pregunta equivocada**. Mejor: ¿cabe en su disco?
 
-- El costo fijo de Spark pesa más con poco volumen; la diferencia relativa baja al crecer
-- Pandas crece más rápido que los demás y en algún punto deja de caber en memoria
-- Polars y DuckDB crecen despacio: todos los núcleos, sin materializar pasos intermedios
+# 4. Apache Arrow
 
-**La curva que un notebook no puede mostrar:** Spark en un clúster. Con 10 máquinas, el mismo código procesa 10 veces más datos en el mismo tiempo.
+## Un formato común hace gratis la conversión {.smaller}
 
----
+Antes de Arrow, cada par de herramientas necesitaba su conversión: $n(n-1)$ conversores, cada uno copiando y serializando. **Arrow define una disposición columnar estándar en memoria**, así que $n$ herramientas hablan un formato, y compartir un buffer **no requiere copia** (el formato es reubicable, sin punteros que reescribir).
 
-## Pandas API on Spark {.smaller}
+Lab 12, 1 millón de filas:
 
-Caso de uso: **migración**. Código Pandas que funciona y cuyos datos ya no caben en una máquina.
+| Conversión | Tiempo | Qué pasa |
+|------------|--------|----------|
+| Pandas → DuckDB | **0,002 s** | Lee los mismos buffers |
+| Arrow → Polars | **0,003 s** | Sin copia |
+| Arrow → Pandas | 0,017 s | Algunas columnas deben convertirse |
+| Spark → Pandas | 0,89 s | **Cruza de la JVM a Python** |
+| Pandas → Spark | **1,70 s** | Cruza, en el otro sentido |
 
-```python
-import pyspark.pandas as ps          # en vez de: import pandas as pd
-df = ps.read_parquet(path)
-df.groupby("x")["y"].mean()          # mismo código
-```
+**Una diferencia de tres órdenes de magnitud entre "misma memoria" y "cruzar la JVM".**
 
-| Tema | Pandas | Pandas API on Spark |
-|------|--------|---------------------|
-| Índice | Siempre existe | Hay que **generarlo**; su tipo afecta el rendimiento |
-| Orden de filas | Garantizado | No garantizado tras operaciones distribuidas |
-| `iterrows`, `.to_numpy()` | Normales | Traen **todo** al driver |
-| Modo ANSI de Spark 4 | — | Debe estar apagado |
+La opción de Arrow en la propia JVM ayuda mucho, pero **viene apagada por defecto** en PySpark 4.0. Medido, 300.000 filas:
 
----
+| `arrow.pyspark.enabled` | Pandas → Spark | Spark → Pandas |
+|-------------------------|----------------|----------------|
+| `false` (por defecto) | 5,09 s | 1,35 s |
+| `true` | **0,52 s** (10×) | **0,31 s** (4×) |
 
-## El índice por defecto
+# 5. Pandas API on Spark
 
-`compute.default_index_type`:
+## Misma sintaxis, otra semántica que mantener {.smaller}
 
-| Tipo | Cómo se genera | Costo |
-|------|---------------|------|
-| `sequence` (por defecto) | 0, 1, 2... **en una sola partición** | Cuello de botella: una task ve todos los datos |
-| `distributed-sequence` | 0, 1, 2... calculado por partición | Medio: un job extra |
-| `distributed` | IDs crecientes, **no consecutivos** | Bajo: úsalo si el índice no importa |
+`pyspark.pandas` conserva la API de `pd`. Su caso de uso es **migrar** código existente, no la velocidad: la tabla da 0,53 s, detrás de los 0,48 s de Spark. Pero Pandas promete cosas caras en un clúster:
+
+| Pandas promete | En Spark necesita | Costo |
+|----------------|-------------------|-------|
+| Un índice de filas | Generar uno | Una de tres estrategias, abajo |
+| Orden estable de filas | Un orden, si acaso | Un sort, o ninguna garantía |
+| Errores inmediatos | Evaluación perezosa | Los errores aparecen después |
+| Dividir por cero da `inf` | **ANSI apagado** | Si no, se niega a iniciar |
 
 ---
 
-## Polars: eager o lazy
+## El índice: el costo de una promesa {.smaller}
 
-`pl.read_parquet` ejecuta cada paso al momento. `pl.scan_parquet` arma un plan que corre en `.collect()`.
+| `compute.default_index_type` | Cómo | Costo |
+|------------------------------|------|-------|
+| `sequence` (por defecto) | 0, 1, 2... **por una sola partición** | Cuello de botella: de vuelta a Amdahl con $s \to 1$ |
+| `distributed-sequence` | 0, 1, 2... calculado por partición | Un job extra |
+| `distributed` | Creciente, **no consecutivo** | Bajo |
 
-| PySpark | Polars |
-|---------|--------|
-| `F.col("x")` | `pl.col("x")` |
-| `df.withColumn("y", expr)` | `df.with_columns(y=expr)` |
-| `df.groupBy("k").agg(...)` | `df.group_by("k").agg(...)` |
-| `F.when(c, a).otherwise(b)` | `pl.when(c).then(a).otherwise(b)` |
-| `F.sum("x").over(Window.partitionBy("k"))` | `pl.col("x").sum().over("k")` |
+**Comprueba qué requiere de verdad el código.** Si la lógica nunca usa índices consecutivos, `distributed` quita un costo que el programa no necesitaba, y esta es la lección general del bloque: **la semántica que no necesitas es un costo que puedes evitar.**
 
-`lazy.explain()` muestra predicate y column pruning. `collect(engine="streaming")` procesa datos mayores que la memoria.
+# 6. Cómo decidir
 
----
+## Un criterio en cuatro preguntas {.smaller}
 
-## DuckDB: analítica dentro de tu proceso
+Pregunta en este orden, y detente en la primera respuesta decisiva:
 
-Sin servidor, como SQLite, pero optimizado para consultas analíticas.
+| # | Pregunta | Si es sí |
+|---|----------|----------|
+| 1 | ¿Necesito **streaming, transacciones Delta, o un clúster compartido**? | **Spark**: no por velocidad, sino por funciones |
+| 2 | ¿**Supera el disco de la mayor máquina asequible**? | **Spark**, porque nada más escala en horizontal |
+| 3 | ¿Un fallo debe **recuperarse a mitad del job**? ¿Jobs largos? | **Spark**: los demás reinician desde cero |
+| 4 | Si no, una máquina: ¿equipo y código? | SQL: **DuckDB**. Python: **Polars**. Pequeño, interactivo: **Pandas** |
 
-```python
-# 1) SQL sobre archivos (Parquet, CSV, JSON, comodines, S3)
-duckdb.sql(f"SELECT region, AVG(price) FROM '{ORDERS}' GROUP BY region")
+**No exageres el argumento en sentido contrario:**
 
-# 2) SQL sobre un DataFrame en memoria: la variable se vuelve tabla
-regions_pd = pd.DataFrame({"region": REGIONS, "manager": managers})
-duckdb.sql(f"SELECT * FROM '{ORDERS}' JOIN regions_pd USING (region)").pl()
+- **"Cabe en una máquina" depende de la máquina.** Una VM grande en la nube, con cientos de GB, procesa mucho, y a veces cuesta menos que un clúster.
+- **La tolerancia a fallos es una función.** Un job de DuckDB de 6 horas reinicia desde cero al fallar. Un job de Spark reintenta una task.
+- **Se combinan**, gracias a Arrow: Spark para el ETL pesado, DuckDB para explorar su salida, Polars para las features.
 
-# 3) Out-of-core: usa disco en vez de romperse
-con = duckdb.connect()
-con.sql("SET memory_limit = '300MB'")
-con.sql(f"SET temp_directory = '{BASE}/duckdb_tmp'")
-```
+**¿Cuándo no usar Spark?** Cuando pagarías su $a$, y no usarías nada de lo que compra.
 
----
+# 7. Problema integrador
 
-## Apache Arrow: el idioma común
+## ¿Qué herramienta, y por qué? {.smaller}
 
-```
-                  ┌───────────────┐
-  Pandas ◀──────▶ │               │ ◀──────▶ Polars
-                  │ Apache Arrow  │
-  DuckDB ◀──────▶ │ (columnar, en │ ◀──────▶ Spark
-                  │  memoria)     │
- Parquet ◀──────▶ │               │ ◀──────▶ ML
-                  └───────────────┘
-```
+Usa el criterio, y los números de esta clase. Justifica en una frase.
 
-En PySpark 4.0, Arrow viene **apagado por defecto** para `toPandas()` y `createDataFrame(pandas_df)`. Enciéndelo:
+1. Un CSV de 300 MB por correo, y tres gráficos para esta tarde.
+2. Cada día, 2 TB de logs en S3, unidos con tablas Delta, escribiendo Silver.
+3. Un equipo de BI consulta 15 GB de Parquet en SQL, desde un notebook, sin clúster.
+4. Un pronóstico en Pandas funcionaba con 1 año; ahora necesita 10 años, 80 GB.
+5. Una API debe responder agregaciones sobre un archivo de 500 MB en menos de 100 ms.
 
-```python
-.config("spark.sql.execution.arrow.pyspark.enabled", "true")
-```
+::: {.fragment}
+1. **Pandas.** $n$ está muy por debajo del cruce, y $a \approx 0$: montar otra cosa no compensa.
+2. **Spark.** Lo responden las preguntas 1 y 2: Delta y fuentes distribuidas.
+3. **DuckDB.** SQL sin servidor; 15 GB es poco, y puede volcar a disco.
+4. **Pandas API on Spark** para avanzar rápido con poca reescritura, o Polars en una máquina grande: a 11,7× el archivo, Pandas necesita demasiada RAM. A medio plazo, reescribir.
+5. **DuckDB o Polars,** en el proceso del servicio. Solo el $a$ de Spark, 320 ms, supera los 100 ms disponibles, **sea cual sea el tamaño de los datos**: lo decide el costo fijo, sin necesidad de medir.
+:::
 
 ---
 
-## Cómo decidir
+## Referencias {.smaller}
 
-| Situación | Herramienta |
-|----------|------------|
-| Decenas de GB a TB, o datos que crecerán mucho | Spark |
-| Streaming, Delta Lake, MLlib, ya hay un clúster | Spark |
-| Código Pandas que ya no cabe en memoria | Pandas API on Spark |
-| Hasta decenas de GB en una máquina, equipo de SQL | DuckDB |
-| Hasta decenas de GB en una máquina, pipeline en Python | Polars |
-| Exploración rápida, pocos MB | Pandas |
-
-Spark no es solo velocidad: trae **tolerancia a fallos, escala horizontal y un ecosistema**.
-
----
-
-## Resumen {.smaller}
-
-| | Pandas | Polars | DuckDB | Pandas API on Spark | Spark |
-|-|--------|--------|--------|---------------------|-------|
-| Ideal para | Exploración, pocos datos | Pipelines Python, 1 máquina | SQL analítico, 1 máquina | Escalar código Pandas | Datos distribuidos, ecosistema |
-| Leer Parquet | `pd.read_parquet` | `pl.scan_parquet` | `FROM 'archivo.parquet'` | `ps.read_parquet` | `spark.read.parquet` |
-| Agregar | `groupby().agg()` | `group_by().agg()` | `GROUP BY` | `groupby().agg()` | `groupBy().agg()` |
-| Ver el plan | — | `.explain()` | `EXPLAIN` | `.spark.explain()` | `.explain()` |
-| A Pandas | — | `.to_pandas()` | `.df()` | `.to_pandas()` | `.toPandas()` |
+- McSherry, F., Isard, M., Murray, D. G. (2015). *Scalability! But at what COST?* HotOS XV.
+- Boncz, P., Zukowski, M., Nes, N. (2005). *MonetDB/X100: Hyper-Pipelining Query Execution*. CIDR.
+- Leis, V., Boncz, P., Kemper, A., Neumann, T. (2014). *Morsel-Driven Parallelism: A NUMA-Aware Query Evaluation Framework for the Many-Core Age*. SIGMOD.
+- Raasveldt, M., Mühleisen, H. (2019). *DuckDB: an Embeddable Analytical Database*. SIGMOD.
+- Graefe, G. (1994). *Volcano: An Extensible and Parallel Query Evaluation System*. IEEE TKDE, 6(1).
+- [Apache Arrow: Columnar Format](https://arrow.apache.org/docs/format/Columnar.html).
+- McKinney, W. (2017). [Apache Arrow and the "10 Things I Hate About pandas"](https://wesmckinney.com/blog/apache-arrow-pandas-internals/).
+- Apache Spark 4.0.1: [Pandas API on Spark](https://spark.apache.org/docs/4.0.1/api/python/user_guide/pandas_on_spark/index.html).
